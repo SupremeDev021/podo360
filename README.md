@@ -1,13 +1,13 @@
 # Podo360
 
-Podo360 e uma base SaaS white label para clinicas de podologia. O projeto nasce com arquitetura multiempresa, autenticação Supabase, separacao por `company_id`, modulos de pacientes, atendimentos, agenda, financeiro, estoque, relatorios, encaminhamento medico com IA e mapa corporal/curativos preparado para 3D.
+Podo360 e um sistema de gestao para clinicas de podologia. O projeto organiza pacientes, anamnese, atendimentos, agenda, financeiro, estoque, relatorios, encaminhamento medico com IA e mapa corporal/curativos em 3D.
 
 ## Stack
 
 - Vite + React + TypeScript
 - Supabase Auth, Postgres e Row Level Security
-- CSS responsivo com white label via variaveis CSS
-- Estrutura preparada para Three.js / React Three Fiber no mapa corporal
+- CSS responsivo com identidade visual configuravel
+- Corpo humano 3D com Three.js / React Three Fiber no mapa corporal
 - Servicos separados para facilitar futura evolucao para React Native ou Expo
 
 ## Como rodar
@@ -36,7 +36,7 @@ VITE_AI_REFERRAL_FUNCTION_URL=
 5. Cadastre um usuario e vincule-o na tabela `profiles`.
 6. Para operacao real, configure Storage buckets para logos, anexos de pacientes e fotos de curativos.
 
-## White label
+## Identidade da clinica
 
 Cada empresa possui `company_settings` com:
 

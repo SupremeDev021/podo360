@@ -7,7 +7,7 @@
 - `src/components`: componentes visuais reutilizaveis.
 - `supabase/migrations`: schema, indices, triggers e Row Level Security.
 
-## Multiempresa
+## Estrutura de empresas
 
 Todas as tabelas operacionais usam `company_id`. As policies usam `profiles.company_id`, `profiles.role` e funcoes auxiliares:
 
@@ -18,7 +18,7 @@ Todas as tabelas operacionais usam `company_id`. As policies usam `profiles.comp
 - `has_financial_access()`
 - `has_clinical_write_access()`
 
-## White label
+## Identidade da clinica
 
 `company_settings` guarda nome exibido, logo e cores. No frontend, `App.tsx` aplica:
 
