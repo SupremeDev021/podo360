@@ -277,16 +277,118 @@ create index if not exists idx_financial_company_status on public.financial_tran
 create index if not exists idx_stock_company on public.stock_products(company_id);
 create index if not exists idx_body_maps_company_patient on public.patient_body_maps(company_id, patient_id);
 
-create or replace function public.current_company_id() returns uuid language sql stable security definer set search_path = public as $$ select company_id from public.profiles where id = auth.uid() limit 1 $$;
-create or replace function public.current_role() returns public.user_role language sql stable security definer set search_path = public as $$ select role from public.profiles where id = auth.uid() limit 1 $$;
-create or replace function public.is_super_admin() returns boolean language sql stable security definer set search_path = public as $$ select coalesce(public.current_role() = 'super_admin', false) $$;
-create or replace function public.can_access_company(target_company_id uuid) returns boolean language sql stable security definer set search_path = public as $$ select public.is_super_admin() or public.current_company_id() = target_company_id $$;
-create or replace function public.has_financial_access() returns boolean language sql stable security definer set search_path = public as $$ select public.current_role() in ('super_admin', 'company_admin', 'financial') $$;
-create or replace function public.has_clinical_write_access() returns boolean language sql stable security definer set search_path = public as $$ select public.current_role() in ('super_admin', 'company_admin', 'professional') $$;
+create or replace function public.current_profile()
+returns public.profiles
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select *
+  from public.profiles
+  where id = auth.uid()
+  limit 1
+$$;
 
-create or replace function public.touch_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
+create or replace function public.current_company_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select company_id
+  from public.profiles
+  where id = auth.uid()
+  limit 1
+$$;
 
-do $$ declare table_name text; begin foreach table_name in array array['companies','company_settings','profiles','subscriptions','patients','patient_clinical_data','appointments','attendances','financial_transactions','stock_products','reports','ai_referral_reports','patient_body_maps'] loop execute format('drop trigger if exists set_updated_at on public.%I', table_name); execute format('create trigger set_updated_at before update on public.%I for each row execute function public.touch_updated_at()', table_name); end loop; end $$;
+create or replace function public.current_role()
+returns public.user_role
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role
+  from public.profiles
+  where id = auth.uid()
+  limit 1
+$$;
+
+create or replace function public.is_super_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(public.current_role() = 'super_admin', false)
+$$;
+
+create or replace function public.can_access_company(target_company_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.is_super_admin() or public.current_company_id() = target_company_id
+$$;
+
+create or replace function public.has_financial_access()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_role() in ('super_admin', 'company_admin', 'financial')
+$$;
+
+create or replace function public.has_clinical_write_access()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_role() in ('super_admin', 'company_admin', 'professional')
+$$;
+
+create or replace function public.touch_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+do $$ declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'companies',
+    'company_settings',
+    'profiles',
+    'subscriptions',
+    'patients',
+    'patient_clinical_data',
+    'appointments',
+    'attendances',
+    'financial_transactions',
+    'stock_products',
+    'reports',
+    'ai_referral_reports',
+    'patient_body_maps'
+  ]
+  loop
+    execute format('drop trigger if exists set_updated_at on public.%I', table_name);
+    execute format('create trigger set_updated_at before update on public.%I for each row execute function public.touch_updated_at()', table_name);
+  end loop;
+end $$;
 
 alter table public.plans enable row level security;
 alter table public.companies enable row level security;
@@ -305,42 +407,236 @@ alter table public.reports enable row level security;
 alter table public.ai_referral_reports enable row level security;
 alter table public.patient_body_maps enable row level security;
 
-create policy "plans are readable by authenticated users" on public.plans for select to authenticated using (true);
-create policy "super admins manage plans" on public.plans for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
-create policy "companies are isolated by membership" on public.companies for select to authenticated using (public.can_access_company(id));
-create policy "super admins manage companies" on public.companies for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
-create policy "company settings are isolated" on public.company_settings for select to authenticated using (public.can_access_company(company_id));
-create policy "admins manage company settings" on public.company_settings for all to authenticated using (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin')) with check (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'));
-create policy "profiles are isolated" on public.profiles for select to authenticated using (public.is_super_admin() or id = auth.uid() or public.current_company_id() = company_id);
-create policy "admins manage company profiles" on public.profiles for all to authenticated using (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin')) with check (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'));
-create policy "subscriptions are isolated" on public.subscriptions for select to authenticated using (public.can_access_company(company_id));
-create policy "super admins manage subscriptions" on public.subscriptions for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
-create policy "patients are isolated" on public.patients for select to authenticated using (public.can_access_company(company_id));
-create policy "care team writes patients" on public.patients for insert to authenticated with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
-create policy "care team updates patients" on public.patients for update to authenticated using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception')) with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
-create policy "clinical data is isolated" on public.patient_clinical_data for select to authenticated using (public.can_access_company(company_id));
-create policy "clinical team writes clinical data" on public.patient_clinical_data for all to authenticated using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional')) with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
-create policy "appointments are isolated" on public.appointments for select to authenticated using (public.can_access_company(company_id));
-create policy "reception and care team manage appointments" on public.appointments for all to authenticated using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception')) with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
-create policy "attendances are isolated" on public.attendances for select to authenticated using (public.can_access_company(company_id));
-create policy "professionals manage attendances" on public.attendances for all to authenticated using (public.current_company_id() = company_id and public.has_clinical_write_access()) with check (public.current_company_id() = company_id and public.has_clinical_write_access());
-create policy "history is isolated" on public.attendance_history for select to authenticated using (public.can_access_company(company_id));
-create policy "clinical team writes history" on public.attendance_history for insert to authenticated with check (public.current_company_id() = company_id and public.has_clinical_write_access());
-create policy "financial transactions require financial access" on public.financial_transactions for select to authenticated using (public.can_access_company(company_id) and public.has_financial_access());
-create policy "financial team manages transactions" on public.financial_transactions for all to authenticated using (public.current_company_id() = company_id and public.has_financial_access()) with check (public.current_company_id() = company_id and public.has_financial_access());
-create policy "stock products are isolated" on public.stock_products for select to authenticated using (public.can_access_company(company_id));
-create policy "admins and professionals manage stock" on public.stock_products for all to authenticated using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional')) with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
-create policy "stock movements are isolated" on public.stock_movements for select to authenticated using (public.can_access_company(company_id));
-create policy "admins and professionals write stock movements" on public.stock_movements for insert to authenticated with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
-create policy "reports are isolated" on public.reports for select to authenticated using (public.can_access_company(company_id));
-create policy "team manages reports" on public.reports for all to authenticated using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'financial')) with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'financial'));
-create policy "ai referral reports are isolated" on public.ai_referral_reports for select to authenticated using (public.can_access_company(company_id));
-create policy "clinical team manages ai referral reports" on public.ai_referral_reports for all to authenticated using (public.current_company_id() = company_id and public.has_clinical_write_access()) with check (public.current_company_id() = company_id and public.has_clinical_write_access());
-create policy "body maps are isolated" on public.patient_body_maps for select to authenticated using (public.can_access_company(company_id));
-create policy "clinical team manages body maps" on public.patient_body_maps for all to authenticated using (public.current_company_id() = company_id and public.has_clinical_write_access()) with check (public.current_company_id() = company_id and public.has_clinical_write_access());
+create policy "plans are readable by authenticated users"
+on public.plans for select
+to authenticated
+using (true);
 
-create or replace function public.create_attendance_side_effects() returns trigger language plpgsql security definer set search_path = public as $$ begin insert into public.attendance_history (company_id, patient_id, attendance_id, event_type, description, created_by) values (new.company_id, new.patient_id, new.id, 'attendance_created', coalesce(new.procedure_performed, 'Atendimento registrado'), new.professional_id); if new.amount > 0 then insert into public.financial_transactions (company_id, patient_id, attendance_id, description, type, amount, due_date, payment_method, category, status, created_by) values (new.company_id, new.patient_id, new.id, coalesce(new.procedure_performed, 'Atendimento'), 'income', new.amount, new.attended_at::date, 'pix', 'Atendimento', 'pending', new.professional_id); end if; return new; end; $$;
+create policy "super admins manage plans"
+on public.plans for all
+to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
+
+create policy "companies are isolated by membership"
+on public.companies for select
+to authenticated
+using (public.can_access_company(id));
+
+create policy "super admins manage companies"
+on public.companies for all
+to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
+
+create policy "company settings are isolated"
+on public.company_settings for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "admins manage company settings"
+on public.company_settings for all
+to authenticated
+using (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'))
+with check (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'));
+
+create policy "profiles are isolated"
+on public.profiles for select
+to authenticated
+using (public.is_super_admin() or id = auth.uid() or public.current_company_id() = company_id);
+
+create policy "admins manage company profiles"
+on public.profiles for all
+to authenticated
+using (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'))
+with check (public.is_super_admin() or (public.current_company_id() = company_id and public.current_role() = 'company_admin'));
+
+create policy "subscriptions are isolated"
+on public.subscriptions for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "super admins manage subscriptions"
+on public.subscriptions for all
+to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
+
+create policy "patients are isolated"
+on public.patients for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "care team writes patients"
+on public.patients for insert
+to authenticated
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
+
+create policy "care team updates patients"
+on public.patients for update
+to authenticated
+using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'))
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
+
+create policy "clinical data is isolated"
+on public.patient_clinical_data for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "clinical team writes clinical data"
+on public.patient_clinical_data for all
+to authenticated
+using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'))
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
+
+create policy "appointments are isolated"
+on public.appointments for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "reception and care team manage appointments"
+on public.appointments for all
+to authenticated
+using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'))
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'reception'));
+
+create policy "attendances are isolated"
+on public.attendances for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "professionals manage attendances"
+on public.attendances for all
+to authenticated
+using (public.current_company_id() = company_id and public.has_clinical_write_access())
+with check (public.current_company_id() = company_id and public.has_clinical_write_access());
+
+create policy "history is isolated"
+on public.attendance_history for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "clinical team writes history"
+on public.attendance_history for insert
+to authenticated
+with check (public.current_company_id() = company_id and public.has_clinical_write_access());
+
+create policy "financial transactions require financial access"
+on public.financial_transactions for select
+to authenticated
+using (public.can_access_company(company_id) and public.has_financial_access());
+
+create policy "financial team manages transactions"
+on public.financial_transactions for all
+to authenticated
+using (public.current_company_id() = company_id and public.has_financial_access())
+with check (public.current_company_id() = company_id and public.has_financial_access());
+
+create policy "stock products are isolated"
+on public.stock_products for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "admins and professionals manage stock"
+on public.stock_products for all
+to authenticated
+using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'))
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
+
+create policy "stock movements are isolated"
+on public.stock_movements for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "admins and professionals write stock movements"
+on public.stock_movements for insert
+to authenticated
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional'));
+
+create policy "reports are isolated"
+on public.reports for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "team manages reports"
+on public.reports for all
+to authenticated
+using (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'financial'))
+with check (public.current_company_id() = company_id and public.current_role() in ('company_admin', 'professional', 'financial'));
+
+create policy "ai referral reports are isolated"
+on public.ai_referral_reports for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "clinical team manages ai referral reports"
+on public.ai_referral_reports for all
+to authenticated
+using (public.current_company_id() = company_id and public.has_clinical_write_access())
+with check (public.current_company_id() = company_id and public.has_clinical_write_access());
+
+create policy "body maps are isolated"
+on public.patient_body_maps for select
+to authenticated
+using (public.can_access_company(company_id));
+
+create policy "clinical team manages body maps"
+on public.patient_body_maps for all
+to authenticated
+using (public.current_company_id() = company_id and public.has_clinical_write_access())
+with check (public.current_company_id() = company_id and public.has_clinical_write_access());
+
+create or replace function public.create_attendance_side_effects()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.attendance_history (company_id, patient_id, attendance_id, event_type, description, created_by)
+  values (new.company_id, new.patient_id, new.id, 'attendance_created', coalesce(new.procedure_performed, 'Atendimento registrado'), new.professional_id);
+
+  if new.amount > 0 then
+    insert into public.financial_transactions (
+      company_id,
+      patient_id,
+      attendance_id,
+      description,
+      type,
+      amount,
+      due_date,
+      payment_method,
+      category,
+      status,
+      created_by
+    )
+    values (
+      new.company_id,
+      new.patient_id,
+      new.id,
+      coalesce(new.procedure_performed, 'Atendimento'),
+      'income',
+      new.amount,
+      new.attended_at::date,
+      'pix',
+      'Atendimento',
+      'pending',
+      new.professional_id
+    );
+  end if;
+
+  return new;
+end;
+$$;
+
 drop trigger if exists on_attendance_created on public.attendances;
-create trigger on_attendance_created after insert on public.attendances for each row execute function public.create_attendance_side_effects();
+create trigger on_attendance_created
+after insert on public.attendances
+for each row execute function public.create_attendance_side_effects();
 
-insert into public.plans (name, slug, monthly_price, limits, features) values ('Start', 'start', 149, '{"users": 3, "patients": 300}'::jsonb, '["Agenda", "Pacientes", "Atendimentos"]'::jsonb), ('Professional', 'professional', 349, '{"users": 10, "patients": 2000}'::jsonb, '["Financeiro", "Estoque", "Relatorios IA"]'::jsonb), ('Enterprise', 'enterprise', 0, '{"users": -1, "patients": -1}'::jsonb, '["White label avancado", "Multiunidade", "API"]'::jsonb) on conflict (slug) do nothing;
+insert into public.plans (name, slug, monthly_price, limits, features)
+values
+  ('Start', 'start', 149, '{"users": 3, "patients": 300}'::jsonb, '["Agenda", "Pacientes", "Atendimentos"]'::jsonb),
+  ('Professional', 'professional', 349, '{"users": 10, "patients": 2000}'::jsonb, '["Financeiro", "Estoque", "Relatorios IA"]'::jsonb),
+  ('Enterprise', 'enterprise', 0, '{"users": -1, "patients": -1}'::jsonb, '["White label avancado", "Multiunidade", "API"]'::jsonb)
+on conflict (slug) do nothing;
