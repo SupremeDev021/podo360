@@ -349,9 +349,9 @@ function LoginScreen({ onDemoAccess }: { onDemoAccess: () => void }) {
     <main className="login-screen">
       <section className="login-brand">
         <span className="brand__mark"><ShieldCheck /></span>
-        <span className="eyebrow">SaaS white label para podologia</span>
+        <span className="eyebrow">Sistema de gestao para podologia</span>
         <h1>Podo360</h1>
-        <p>Multiempresa, clinico, financeiro, estoque, relatorios com IA e mapa corporal preparado para 3D.</p>
+        <p>Prontuario, anamnese, atendimentos, agenda e acompanhamento visual de curativos em um fluxo simples para a clinica.</p>
       </section>
 
       <form className="login-card" onSubmit={handleLogin}>
@@ -378,9 +378,9 @@ function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: Das
     <div className="page-stack">
       <section className="hero-panel">
         <div>
-          <span className="eyebrow">Sistema de Podologia White Label</span>
+          <span className="eyebrow">Sistema de gestao para podologia</span>
           <h1>Podo360</h1>
-          <p>Gestao clinica, agenda, financeiro, estoque, relatorios e IA em uma base multiempresa pronta para Supabase.</p>
+          <p>Organize pacientes, anamnese, agenda, atendimentos, financeiro, estoque e relatorios em uma experiencia clara para a equipe.</p>
         </div>
         <div className="hero-panel__actions">
           <button className="primary-button" type="button"><Plus size={18} /> Novo atendimento</button>
@@ -846,7 +846,7 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
   return (
     <div className="page-stack">
       <div className="section-heading">
-        <div><span className="eyebrow">White label</span><h1>Configuracoes da empresa</h1><p>Logo, cores, nome exibido e dados comerciais por clinica.</p></div>
+        <div><span className="eyebrow">Identidade da clinica</span><h1>Configuracoes da empresa</h1><p>Logo, cores, nome exibido e dados comerciais por clinica.</p></div>
         <Palette size={24} />
       </div>
       <section className="split-grid">
@@ -896,7 +896,7 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
 
 function SuperAdmin({ company }: { company: Company }) {
   return (
-    <ModulePage eyebrow="Painel SaaS" title="Super Admin" description="Gerencie empresas, planos, bloqueios, usuarios e saude operacional da plataforma.">
+    <ModulePage eyebrow="Gestao administrativa" title="Super Admin" description="Gerencie empresas, planos, bloqueios, usuarios e saude operacional da plataforma.">
       <section className="metrics-grid">
         <MetricCard icon={<BuildingIcon />} label="Empresas" value="1" detail="Clinicas cadastradas" tone="primary" />
         <MetricCard icon={<Users />} label="Usuarios" value={String(demoProfiles.length)} detail="Todos os perfis" />
@@ -915,7 +915,7 @@ function Plans() {
         {[
           ["Start", "R$ 149", "Agenda, pacientes e atendimentos"],
           ["Professional", "R$ 349", "Financeiro, estoque, relatorios e IA"],
-          ["Enterprise", "Sob consulta", "White label avancado, multiunidade e API"]
+          ["Enterprise", "Sob consulta", "Personalizacao avancada, multiunidade e API"]
         ].map(([name, price, description]) => (
           <article className="plan-card" key={name}>
             <span>{name}</span>

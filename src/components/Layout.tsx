@@ -47,7 +47,7 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "stock", label: "Estoque", icon: <Boxes size={18} /> },
   { key: "reports", label: "Relatorios", icon: <FileText size={18} /> },
   { key: "hci", label: "HCI", icon: <HeartPulse size={18} /> },
-  { key: "settings", label: "White label", icon: <Settings size={18} /> },
+  { key: "settings", label: "Identidade", icon: <Settings size={18} /> },
   { key: "super-admin", label: "Super Admin", icon: <ShieldCheck size={18} /> },
   { key: "plans", label: "Planos", icon: <Building2 size={18} /> }
 ];

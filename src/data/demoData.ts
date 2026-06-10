@@ -58,7 +58,7 @@ export const demoProfiles: Profile[] = [
   { id: "user-1", companyId: demoCompany.id, fullName: "Dra. Marina Costa", email: "marina@podo360.app", role: "company_admin", active: true },
   { id: "user-2", companyId: demoCompany.id, fullName: "Renata Lima", email: "recepcao@podo360.app", role: "reception", active: true },
   { id: "user-3", companyId: demoCompany.id, fullName: "Carlos Nunes", email: "financeiro@podo360.app", role: "financial", active: true },
-  { id: "user-4", companyId: null, fullName: "Admin SaaS", email: "admin@podo360.app", role: "super_admin", active: true }
+  { id: "user-4", companyId: null, fullName: "Admin Podo360", email: "admin@podo360.app", role: "super_admin", active: true }
 ];
 
 export const demoPatients: Patient[] = [
