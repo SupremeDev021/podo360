@@ -10,6 +10,22 @@ export type PaymentMethod = "pix" | "cash" | "credit_card" | "debit_card" | "ins
 
 export type BodySide = "right" | "left" | "bilateral" | "not_applicable";
 
+export type AttendanceStatus = "draft" | "in_progress" | "completed" | "cancelled";
+
+export type FootSide = "right" | "left";
+
+export type SensitivityStatus = "present" | "reduced" | "absent";
+
+export type ConsentStatus = "authorized" | "unauthorized" | "revoked" | "pending";
+
+export type HciAccessScope =
+  | "clinical_summary"
+  | "full_history"
+  | "history_with_images"
+  | "history_without_images"
+  | "medical_reports_only"
+  | "recent_attendances";
+
 export type Company = {
   id: string;
   name: string;
@@ -23,6 +39,10 @@ export type Company = {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  hciEnabled?: boolean;
+  hciConsentValidityDays?: number;
+  hciAllowImages?: boolean;
+  hciDefaultScope?: HciAccessScope;
 };
 
 export type Profile = {
@@ -37,6 +57,8 @@ export type Profile = {
 export type Patient = {
   id: string;
   companyId: string;
+  uniqueMedicalRecordId: string;
+  uniqueRecordNumber: string;
   fullName: string;
   cpf: string;
   rg?: string;
@@ -49,6 +71,32 @@ export type Patient = {
   notes?: string;
   createdAt: string;
   clinical: PatientClinicalData;
+};
+
+export type UniqueMedicalRecord = {
+  id: string;
+  uniqueRecordNumber: string;
+  patientUniqueId: string;
+  cpfHash?: string;
+  normalizedPatientName: string;
+  birthDate?: string;
+  phoneHash?: string;
+  emailHash?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type PatientCompanyLink = {
+  id: string;
+  uniqueMedicalRecordId: string;
+  patientId: string;
+  companyId: string;
+  localPatientId: string;
+  firstAttendanceDate?: string;
+  lastAttendanceDate?: string;
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt?: string;
 };
 
 export type PatientClinicalData = {
@@ -68,8 +116,13 @@ export type Attendance = {
   id: string;
   companyId: string;
   patientId: string;
+  uniqueMedicalRecordId: string;
+  uniqueRecordNumber: string;
+  baNumber: string;
   professionalId: string;
+  appointmentId?: string;
   scheduledAt: string;
+  attendanceDate?: string;
   type: string;
   procedure: string;
   complaint: string;
@@ -80,6 +133,57 @@ export type Attendance = {
   recommendedReturn?: string;
   status: AppointmentStatus;
   value: number;
+};
+
+export type AnamnesisFormData = Record<string, string | number | boolean | string[] | Record<string, unknown> | null | undefined>;
+
+export type AnamnesisRecord = {
+  id: string;
+  companyId: string;
+  patientId: string;
+  uniqueMedicalRecordId: string;
+  attendanceId: string;
+  uniqueRecordNumber: string;
+  baNumber: string;
+  formData: AnamnesisFormData;
+  currentStep: number;
+  isCompleted: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type FootSensitivityMap = {
+  id: string;
+  companyId: string;
+  patientId: string;
+  uniqueMedicalRecordId: string;
+  attendanceId: string;
+  uniqueRecordNumber: string;
+  baNumber: string;
+  footSide: FootSide;
+  regionKey: string;
+  coordinates: { x: number; y: number; z?: number };
+  sensitivityStatus: SensitivityStatus;
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type AttendanceImage = {
+  id: string;
+  companyId: string;
+  patientId: string;
+  uniqueMedicalRecordId: string;
+  attendanceId: string;
+  uniqueRecordNumber: string;
+  baNumber: string;
+  imageType: "before" | "during" | "after";
+  fileUrl: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
 };
 
 export type FinancialTransaction = {
@@ -136,7 +240,54 @@ export type AiReferralReport = {
   companyId: string;
   patientId: string;
   attendanceId?: string;
+  uniqueMedicalRecordId?: string;
+  uniqueRecordNumber?: string;
+  baNumbersAnalyzed?: string[];
   content: string;
+  editedText?: string;
+  includeHci?: boolean;
   status: "draft" | "saved" | "exported";
   createdAt: string;
+};
+
+export type HciPatientMatch = {
+  id: string;
+  patientId: string;
+  companyId: string;
+  companyName: string;
+  uniqueMedicalRecordId: string;
+  uniqueRecordNumber: string;
+  patientName: string;
+  birthDate?: string;
+  matchPriority: string;
+  consentStatus: ConsentStatus;
+  accessScope?: HciAccessScope;
+};
+
+export type HciPatientConsent = {
+  id: string;
+  uniqueMedicalRecordId: string;
+  patientId: string;
+  patientCpf: string;
+  requesterCompanyId: string;
+  sourceCompanyId: string;
+  consentStatus: ConsentStatus;
+  accessScope: HciAccessScope;
+  authorizedBy?: string;
+  requestedBy: string;
+  requestedAt: string;
+  authorizedAt?: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  notes?: string;
+};
+
+export type IntegratedClinicalHistory = {
+  patient: Patient;
+  sourceCompany: Company;
+  attendances: Attendance[];
+  anamneses: AnamnesisRecord[];
+  footSensitivityMaps: FootSensitivityMap[];
+  reports: AiReferralReport[];
+  images: AttendanceImage[];
 };

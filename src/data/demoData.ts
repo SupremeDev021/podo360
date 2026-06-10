@@ -1,4 +1,20 @@
-import type { Attendance, BodyMapEntry, Company, FinancialTransaction, Patient, Profile, StockProduct } from "../types";
+import type {
+  AiReferralReport,
+  AnamnesisRecord,
+  Attendance,
+  AttendanceImage,
+  BodyMapEntry,
+  Company,
+  FinancialTransaction,
+  FootSensitivityMap,
+  HciPatientConsent,
+  HciPatientMatch,
+  Patient,
+  PatientCompanyLink,
+  Profile,
+  StockProduct,
+  UniqueMedicalRecord
+} from "../types";
 
 export const demoCompany: Company = {
   id: "company-podo360-demo",
@@ -12,7 +28,30 @@ export const demoCompany: Company = {
   planStatus: "active",
   primaryColor: "#0f766e",
   secondaryColor: "#155e75",
-  accentColor: "#f59e0b"
+  accentColor: "#f59e0b",
+  hciEnabled: true,
+  hciConsentValidityDays: 180,
+  hciAllowImages: false,
+  hciDefaultScope: "history_without_images"
+};
+
+export const demoPartnerCompany: Company = {
+  id: "company-podo360-partner",
+  name: "clinica-integrada-centro",
+  displayName: "Clinica Integrada Centro",
+  logoUrl: "",
+  contactEmail: "contato@integrada.example",
+  contactPhone: "(11) 94000-1000",
+  document: "11.111.111/0001-11",
+  planName: "Professional",
+  planStatus: "active",
+  primaryColor: "#166534",
+  secondaryColor: "#334155",
+  accentColor: "#0ea5e9",
+  hciEnabled: true,
+  hciConsentValidityDays: 90,
+  hciAllowImages: true,
+  hciDefaultScope: "clinical_summary"
 };
 
 export const demoProfiles: Profile[] = [
@@ -26,6 +65,8 @@ export const demoPatients: Patient[] = [
   {
     id: "patient-1",
     companyId: demoCompany.id,
+    uniqueMedicalRecordId: "unique-record-1",
+    uniqueRecordNumber: "PU-2026-000001",
     fullName: "Ana Paula Santos",
     cpf: "123.456.789-00",
     rg: "12.345.678-9",
@@ -53,6 +94,8 @@ export const demoPatients: Patient[] = [
   {
     id: "patient-2",
     companyId: demoCompany.id,
+    uniqueMedicalRecordId: "unique-record-2",
+    uniqueRecordNumber: "PU-2026-000002",
     fullName: "Joao Ricardo Alves",
     cpf: "987.654.321-00",
     birthDate: "1966-09-21",
@@ -77,6 +120,8 @@ export const demoPatients: Patient[] = [
   {
     id: "patient-3",
     companyId: demoCompany.id,
+    uniqueMedicalRecordId: "unique-record-3",
+    uniqueRecordNumber: "PU-2026-000003",
     fullName: "Beatriz Lima Rocha",
     cpf: "456.111.222-33",
     birthDate: "1992-02-10",
@@ -100,13 +145,44 @@ export const demoPatients: Patient[] = [
   }
 ];
 
+export const demoUniqueMedicalRecords: UniqueMedicalRecord[] = demoPatients.map((patient) => ({
+  id: patient.uniqueMedicalRecordId,
+  uniqueRecordNumber: patient.uniqueRecordNumber,
+  patientUniqueId: `patient-identity-${patient.id}`,
+  cpfHash: `hash:${patient.cpf}`,
+  normalizedPatientName: patient.fullName.toLowerCase(),
+  birthDate: patient.birthDate,
+  phoneHash: `hash:${patient.whatsapp}`,
+  emailHash: patient.email ? `hash:${patient.email}` : undefined,
+  createdAt: patient.createdAt,
+  updatedAt: patient.createdAt
+}));
+
+export const demoPatientCompanyLinks: PatientCompanyLink[] = demoPatients.map((patient) => ({
+  id: `link-${patient.id}-${patient.companyId}`,
+  uniqueMedicalRecordId: patient.uniqueMedicalRecordId,
+  patientId: patient.id,
+  companyId: patient.companyId,
+  localPatientId: patient.id,
+  firstAttendanceDate: patient.createdAt,
+  lastAttendanceDate: patient.createdAt,
+  status: "active",
+  createdAt: patient.createdAt,
+  updatedAt: patient.createdAt
+}));
+
 export const demoAttendances: Attendance[] = [
   {
     id: "attendance-1",
     companyId: demoCompany.id,
     patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000001",
     professionalId: "user-1",
+    appointmentId: "appointment-1",
     scheduledAt: "2026-06-09T09:30:00",
+    attendanceDate: "2026-06-09T09:30:00",
     type: "Podologia clinica",
     procedure: "Onicocriptose - orientacao e curativo",
     complaint: "Dor lateral em halux direito",
@@ -122,8 +198,13 @@ export const demoAttendances: Attendance[] = [
     id: "attendance-2",
     companyId: demoCompany.id,
     patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000002",
     professionalId: "user-1",
+    appointmentId: "appointment-2",
     scheduledAt: "2026-06-02T10:00:00",
+    attendanceDate: "2026-06-02T10:00:00",
     type: "Retorno",
     procedure: "Reavaliacao de unha encravada",
     complaint: "Retorno por dor ao caminhar",
@@ -138,8 +219,13 @@ export const demoAttendances: Attendance[] = [
     id: "attendance-3",
     companyId: demoCompany.id,
     patientId: "patient-2",
+    uniqueMedicalRecordId: "unique-record-2",
+    uniqueRecordNumber: "PU-2026-000002",
+    baNumber: "BA-2026-000003",
     professionalId: "user-1",
+    appointmentId: "appointment-3",
     scheduledAt: "2026-06-10T15:00:00",
+    attendanceDate: "2026-06-10T15:00:00",
     type: "Avaliacao",
     procedure: "Avaliacao de fissura plantar",
     complaint: "Fissura dolorosa no calcanhar esquerdo",
@@ -149,6 +235,162 @@ export const demoAttendances: Attendance[] = [
     notes: "Agendado.",
     status: "scheduled",
     value: 160
+  }
+];
+
+export const demoAnamneses: AnamnesisRecord[] = [
+  {
+    id: "anamnesis-1",
+    companyId: demoCompany.id,
+    patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    attendanceId: "attendance-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000001",
+    currentStep: 18,
+    isCompleted: true,
+    createdBy: "user-1",
+    createdAt: "2026-06-09T09:40:00",
+    updatedAt: "2026-06-09T10:20:00",
+    formData: {
+      identification_name: "Ana Paula Santos",
+      identification_date: "2026-06-09",
+      identification_age: 48,
+      identification_profession: "Professora",
+      identification_evaluation_type: "1a avaliacao",
+      main_complaint: "Dor lateral em halux direito",
+      health_history: ["Hipertensao"],
+      medications: "Losartana",
+      skin_exam: ["Descamacao"],
+      edema: "Grau 1 + / ++++",
+      vibration_sensitivity: "Presente",
+      thermal_sensitivity: "Positivo",
+      glycemia_result: "Nao aferida",
+      eva_scale: 6,
+      podology_diagnosis: ["Onicocriptose / Unha encravada"],
+      procedure_notes: "Alivio local, higienizacao e curativo protetor.",
+      return_needed: true,
+      return_date: "2026-06-16"
+    }
+  }
+];
+
+export const demoFootSensitivityMaps: FootSensitivityMap[] = [
+  {
+    id: "foot-map-1",
+    companyId: demoCompany.id,
+    patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    attendanceId: "attendance-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000001",
+    footSide: "right",
+    regionKey: "hallux",
+    coordinates: { x: 0.2, y: 0.28, z: 0.18 },
+    sensitivityStatus: "reduced",
+    notes: "Paciente relata dor e sensibilidade diminuida no halux direito.",
+    createdBy: "user-1",
+    createdAt: "2026-06-09T10:05:00"
+  }
+];
+
+export const demoAttendanceImages: AttendanceImage[] = [
+  {
+    id: "image-1",
+    companyId: demoCompany.id,
+    patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    attendanceId: "attendance-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000001",
+    imageType: "before",
+    fileUrl: "supabase://attendance-images/patient-1/attendance-1/before-1.jpg",
+    notes: "Estrutura preparada para Supabase Storage.",
+    createdBy: "user-1",
+    createdAt: "2026-06-09T09:55:00"
+  }
+];
+
+export const demoHciMatches: HciPatientMatch[] = [
+  {
+    id: "hci-match-1",
+    patientId: "external-patient-1",
+    companyId: demoPartnerCompany.id,
+    companyName: demoPartnerCompany.displayName,
+    uniqueMedicalRecordId: "unique-record-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    patientName: "Ana Paula Santos",
+    birthDate: "1978-04-12",
+    matchPriority: "CPF + data de nascimento",
+    consentStatus: "authorized",
+    accessScope: "history_without_images"
+  },
+  {
+    id: "hci-match-2",
+    patientId: "external-patient-2",
+    companyId: "company-podo360-north",
+    companyName: "Podologia Norte",
+    uniqueMedicalRecordId: "unique-record-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    patientName: "Ana P. Santos",
+    birthDate: "1978-04-12",
+    matchPriority: "Nome completo + data de nascimento",
+    consentStatus: "pending",
+    accessScope: "clinical_summary"
+  }
+];
+
+export const demoHciConsents: HciPatientConsent[] = [
+  {
+    id: "consent-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    patientId: "external-patient-1",
+    patientCpf: "hash:patient-1-cpf",
+    requesterCompanyId: demoCompany.id,
+    sourceCompanyId: demoPartnerCompany.id,
+    consentStatus: "authorized",
+    accessScope: "history_without_images",
+    authorizedBy: "patient",
+    requestedBy: "user-1",
+    requestedAt: "2026-06-01T08:00:00",
+    authorizedAt: "2026-06-01T08:20:00",
+    expiresAt: "2026-11-28T23:59:59",
+    notes: "Consentimento autorizado para historico sem imagens."
+  }
+];
+
+export const demoIntegratedHistories = [
+  {
+    patient: {
+      ...demoPatients[0],
+      id: "external-patient-1",
+      companyId: demoPartnerCompany.id,
+      uniqueMedicalRecordId: "unique-record-1",
+      uniqueRecordNumber: "PU-2026-000001",
+      notes: "Registro de outra clinica autorizado via HCI."
+    },
+    sourceCompany: demoPartnerCompany,
+    attendances: [
+      {
+        ...demoAttendances[1],
+        id: "external-attendance-1",
+        companyId: demoPartnerCompany.id,
+        patientId: "external-patient-1",
+        uniqueMedicalRecordId: "unique-record-1",
+        uniqueRecordNumber: "PU-2026-000001",
+        baNumber: "BA-2026-000044",
+        scheduledAt: "2026-05-14T11:00:00",
+        attendanceDate: "2026-05-14T11:00:00",
+        procedure: "Avaliacao preventiva de halux",
+        complaint: "Desconforto ao usar calcado fechado",
+        clinicalEvaluation: "Sem secrecao, pele ressecada e sensibilidade preservada.",
+        conduct: "Orientacao preventiva, hidratacao e retorno se houver piora."
+      }
+    ],
+    anamneses: [],
+    footSensitivityMaps: [],
+    reports: [] as AiReferralReport[],
+    images: [] as AttendanceImage[]
   }
 ];
 

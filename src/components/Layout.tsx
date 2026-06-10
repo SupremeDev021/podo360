@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CreditCard,
   FileText,
+  HeartPulse,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -24,6 +25,7 @@ export type ViewKey =
   | "financial"
   | "stock"
   | "reports"
+  | "hci"
   | "settings"
   | "super-admin"
   | "plans";
@@ -44,6 +46,7 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "financial", label: "Financeiro", icon: <CreditCard size={18} /> },
   { key: "stock", label: "Estoque", icon: <Boxes size={18} /> },
   { key: "reports", label: "Relatorios", icon: <FileText size={18} /> },
+  { key: "hci", label: "HCI", icon: <HeartPulse size={18} /> },
   { key: "settings", label: "White label", icon: <Settings size={18} /> },
   { key: "super-admin", label: "Super Admin", icon: <ShieldCheck size={18} /> },
   { key: "plans", label: "Planos", icon: <Building2 size={18} /> }

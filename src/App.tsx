@@ -3,11 +3,11 @@ import {
   Boxes,
   CalendarCheck,
   CalendarClock,
-  CheckCircle2,
   ClipboardEdit,
   CreditCard,
   Download,
   FileText,
+  HeartPulse,
   Layers3,
   Palette,
   Plus,
@@ -23,14 +23,41 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { BodyMap3D } from "./components/BodyMap3D";
+import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
+import { FootSensitivityMap3D } from "./components/FootSensitivityMap3D";
 import { Layout, type ViewKey } from "./components/Layout";
 import { MetricCard } from "./components/MetricCard";
-import { demoAttendances, demoBodyMaps, demoCompany, demoFinancial, demoPatients, demoProfiles, demoStock } from "./data/demoData";
+import { UniqueMedicalRecordView } from "./components/UniqueMedicalRecord";
+import {
+  demoAnamneses,
+  demoAttendanceImages,
+  demoAttendances,
+  demoCompany,
+  demoFinancial,
+  demoFootSensitivityMaps,
+  demoHciConsents,
+  demoHciMatches,
+  demoIntegratedHistories,
+  demoPatients,
+  demoProfiles,
+  demoStock,
+  demoUniqueMedicalRecords
+} from "./data/demoData";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
-import type { Attendance, BodyMapEntry, Company, FinancialTransaction, Patient, StockProduct } from "./types";
+import type {
+  AnamnesisRecord,
+  Attendance,
+  AttendanceImage,
+  Company,
+  FinancialTransaction,
+  FootSensitivityMap,
+  HciPatientMatch,
+  Patient,
+  StockProduct,
+  UniqueMedicalRecord
+} from "./types";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -53,10 +80,16 @@ export function App() {
   const [signedIn, setSignedIn] = useState(false);
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [patients, setPatients] = useState<Patient[]>(demoPatients);
-  const [attendances] = useState<Attendance[]>(demoAttendances);
+  const [uniqueMedicalRecords, setUniqueMedicalRecords] = useState<UniqueMedicalRecord[]>(demoUniqueMedicalRecords);
+  const [attendances, setAttendances] = useState<Attendance[]>(demoAttendances);
+  const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
   const [financial] = useState<FinancialTransaction[]>(demoFinancial);
   const [stock] = useState<StockProduct[]>(demoStock);
-  const [bodyMaps, setBodyMaps] = useState<BodyMapEntry[]>(demoBodyMaps);
+  const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
+  const [attendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
+  const [includeHciInReport, setIncludeHciInReport] = useState(false);
+  const [hciQuery, setHciQuery] = useState("");
+  const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
   const [selectedPatientId, setSelectedPatientId] = useState(demoPatients[0].id);
   const [aiReport, setAiReport] = useState("");
   const profile = demoProfiles[0];
@@ -68,8 +101,20 @@ export function App() {
   }, [company]);
 
   const selectedPatient = patients.find((patient) => patient.id === selectedPatientId) ?? patients[0];
+  const selectedUniqueMedicalRecord = uniqueMedicalRecords.find((record) => record.id === selectedPatient.uniqueMedicalRecordId);
   const selectedPatientAttendances = attendances.filter((attendance) => attendance.patientId === selectedPatient.id);
-  const selectedPatientBodyMaps = bodyMaps.filter((entry) => entry.patientId === selectedPatient.id);
+  const selectedPatientAnamneses = anamneses.filter((record) => record.patientId === selectedPatient.id);
+  const selectedPatientFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === selectedPatient.id);
+  const selectedPatientImages = attendanceImages.filter((image) => image.patientId === selectedPatient.id);
+  const authorizedHciHistories = includeHciInReport
+    ? demoIntegratedHistories.filter((history) =>
+        demoHciConsents.some((consent) =>
+          consent.uniqueMedicalRecordId === selectedPatient.uniqueMedicalRecordId &&
+          consent.sourceCompanyId === history.sourceCompany.id &&
+          consent.consentStatus === "authorized"
+        )
+      )
+    : [];
 
   const dashboard = useMemo(() => {
     const completed = attendances.filter((attendance) => attendance.status === "completed");
@@ -100,34 +145,85 @@ export function App() {
       company,
       patient: selectedPatient,
       attendances: selectedPatientAttendances,
+      anamneses: selectedPatientAnamneses,
+      footSensitivityMaps: selectedPatientFootMaps,
+      integratedHistories: authorizedHciHistories,
+      includeHci: includeHciInReport,
       professionalName: profile.fullName,
       reason
     });
     setAiReport(content);
   }
 
-  function handleSaveBodyMap(entry: Omit<BodyMapEntry, "id" | "createdAt">) {
-    setBodyMaps((current) => [
+  function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
+    setFootSensitivityMaps((current) => [
       {
         ...entry,
-        id: `body-${current.length + 1}`,
+        id: `foot-map-${current.length + 1}`,
         createdAt: new Date().toISOString()
       },
       ...current
     ]);
   }
 
+  function handleSaveAnamnesis(record: AnamnesisRecord) {
+    setAnamneses((current) => {
+      const index = current.findIndex((item) => item.id === record.id);
+      if (index < 0) return [record, ...current];
+      return current.map((item) => (item.id === record.id ? record : item));
+    });
+  }
+
+  function handleCreateAttendance(patient: Patient) {
+    const nextBaNumber = generateBaNumber(company.id, attendances);
+    const attendance: Attendance = {
+      id: `attendance-${attendances.length + 1}`,
+      companyId: company.id,
+      patientId: patient.id,
+      uniqueMedicalRecordId: patient.uniqueMedicalRecordId,
+      uniqueRecordNumber: patient.uniqueRecordNumber,
+      baNumber: nextBaNumber,
+      professionalId: profile.id,
+      scheduledAt: new Date().toISOString(),
+      attendanceDate: new Date().toISOString(),
+      type: "Atendimento",
+      procedure: "Atendimento em andamento",
+      complaint: patient.clinical.chiefComplaint,
+      clinicalEvaluation: "",
+      conduct: "",
+      productsUsed: [],
+      notes: "BA gerado automaticamente.",
+      status: "in_progress",
+      value: 0
+    };
+
+    setAttendances((current) => [attendance, ...current]);
+    setActiveView("patient-profile");
+  }
+
   function handleAddPatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const fullName = String(form.get("fullName"));
+    const cpf = String(form.get("cpf"));
+    const birthDate = String(form.get("birthDate"));
+    const whatsapp = String(form.get("whatsapp"));
+    const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, demoHciMatches);
+
+    if (existingUniqueRecord) {
+      window.alert(`Paciente ja possui ProntuárioÚnico no Podo360: ${existingUniqueRecord.uniqueRecordNumber}. Um vinculo sera criado para esta clinica.`);
+    }
+
     const patient: Patient = {
       id: `patient-${patients.length + 1}`,
       companyId: company.id,
-      fullName: String(form.get("fullName")),
-      cpf: String(form.get("cpf")),
-      birthDate: String(form.get("birthDate")),
-      phone: String(form.get("whatsapp")),
-      whatsapp: String(form.get("whatsapp")),
+      uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
+      uniqueRecordNumber: existingUniqueRecord?.uniqueRecordNumber ?? generateUniqueRecordNumber(patients),
+      fullName,
+      cpf,
+      birthDate,
+      phone: whatsapp,
+      whatsapp,
       address: String(form.get("address")),
       profession: String(form.get("profession") || ""),
       createdAt: new Date().toISOString(),
@@ -146,6 +242,23 @@ export function App() {
     };
 
     setPatients((current) => [patient, ...current]);
+    if (!existingUniqueRecord) {
+      setUniqueMedicalRecords((current) => [
+        {
+          id: patient.uniqueMedicalRecordId,
+          uniqueRecordNumber: patient.uniqueRecordNumber,
+          patientUniqueId: `patient-identity-${patient.id}`,
+          cpfHash: `hash:${patient.cpf}`,
+          normalizedPatientName: normalizeText(patient.fullName),
+          birthDate: patient.birthDate,
+          phoneHash: `hash:${patient.whatsapp}`,
+          emailHash: patient.email ? `hash:${patient.email}` : undefined,
+          createdAt: patient.createdAt,
+          updatedAt: patient.createdAt
+        },
+        ...current
+      ]);
+    }
     setSelectedPatientId(patient.id);
     setActiveView("patient-profile");
   }
@@ -162,9 +275,14 @@ export function App() {
         <PatientProfile
           patient={selectedPatient}
           attendances={selectedPatientAttendances}
-          bodyMaps={selectedPatientBodyMaps}
+          uniqueMedicalRecord={selectedUniqueMedicalRecord}
+          anamneses={selectedPatientAnamneses}
+          footSensitivityMaps={selectedPatientFootMaps}
+          attendanceImages={selectedPatientImages}
           onGenerateReport={handleGenerateAiReport}
-          onSaveBodyMap={handleSaveBodyMap}
+          onCreateAttendance={handleCreateAttendance}
+          onSaveAnamnesis={handleSaveAnamnesis}
+          onSaveFootSensitivity={handleSaveFootSensitivity}
           company={company}
           professionalId={profile.id}
         />
@@ -173,7 +291,26 @@ export function App() {
       {activeView === "schedule" && <Schedule attendances={attendances} patients={patients} />}
       {activeView === "financial" && <Financial financial={financial} />}
       {activeView === "stock" && <Stock stock={stock} />}
-      {activeView === "reports" && <Reports patient={selectedPatient} report={aiReport} onGenerate={handleGenerateAiReport} onChangeReport={setAiReport} />}
+      {activeView === "reports" && (
+        <Reports
+          patient={selectedPatient}
+          report={aiReport}
+          includeHci={includeHciInReport}
+          hciAvailable={demoHciMatches.some((match) => match.consentStatus === "authorized")}
+          onIncludeHciChange={setIncludeHciInReport}
+          onGenerate={handleGenerateAiReport}
+          onChangeReport={setAiReport}
+        />
+      )}
+      {activeView === "hci" && (
+        <HciView
+          query={hciQuery}
+          onQueryChange={setHciQuery}
+          matches={filterHciMatches(hciQuery, demoHciMatches)}
+          selectedMatch={hciSelectedMatch}
+          onSelectMatch={setHciSelectedMatch}
+        />
+      )}
       {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} />}
       {activeView === "super-admin" && <SuperAdmin company={company} />}
       {activeView === "plans" && <Plans />}
@@ -351,65 +488,119 @@ function Patients({ patients, onSelect, onAddPatient }: { patients: Patient[]; o
 function PatientProfile({
   patient,
   attendances,
-  bodyMaps,
+  uniqueMedicalRecord,
+  anamneses,
+  footSensitivityMaps,
+  attendanceImages,
   onGenerateReport,
-  onSaveBodyMap,
+  onCreateAttendance,
+  onSaveAnamnesis,
+  onSaveFootSensitivity,
   company,
   professionalId
 }: {
   patient: Patient;
   attendances: Attendance[];
-  bodyMaps: BodyMapEntry[];
+  uniqueMedicalRecord?: UniqueMedicalRecord;
+  anamneses: AnamnesisRecord[];
+  footSensitivityMaps: FootSensitivityMap[];
+  attendanceImages: AttendanceImage[];
   onGenerateReport: () => void;
-  onSaveBodyMap: (entry: Omit<BodyMapEntry, "id" | "createdAt">) => void;
+  onCreateAttendance: (patient: Patient) => void;
+  onSaveAnamnesis: (record: AnamnesisRecord) => void;
+  onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
   company: Company;
   professionalId: string;
 }) {
+  const currentAttendance = attendances[0];
+  const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
+  const currentFootMaps = currentAttendance ? footSensitivityMaps.filter((entry) => entry.attendanceId === currentAttendance.id) : [];
+
   return (
     <div className="page-stack">
       <section className="profile-header">
         <div>
-          <span className="eyebrow">Ficha do paciente</span>
+          <span className="eyebrow">ProntuárioÚnico: {patient.uniqueRecordNumber}</span>
           <h1>{patient.fullName}</h1>
           <p>{patient.whatsapp} · {patient.profession || "Profissao nao informada"} · CPF {patient.cpf}</p>
         </div>
-        <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
+        <div className="hero-panel__actions">
+          <button className="ghost-action" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={18} /> Novo BA</button>
+          <button className="ghost-action" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
+          <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
+        </div>
       </section>
 
       <section className="tabs-bar">
-        {["Dados pessoais", "Historico", "Mapa corporal / Curativos", "Financeiro", "Relatorios"].map((tab, index) => (
-          <button className={index === 2 ? "is-active" : ""} key={tab} type="button">{tab}</button>
+        {["Dados do paciente", "ProntuárioÚnico", "Anamnese", "Pe 3D / Sensibilidade", "Procedimentos", "Curativo", "Imagens", "Evolucao", "Relatorios"].map((tab, index) => (
+          <button className={index === 1 ? "is-active" : ""} key={tab} type="button">{tab}</button>
         ))}
       </section>
 
+      {currentAttendance && (
+        <section className="attendance-topline">
+          <div><span>Paciente</span><strong>{patient.fullName}</strong></div>
+          <div><span>ProntuárioÚnico</span><strong>{patient.uniqueRecordNumber}</strong></div>
+          <div><span>BA atual</span><strong>{currentAttendance.baNumber}</strong></div>
+          <div><span>Data</span><strong>{formatDateTime(currentAttendance.scheduledAt)}</strong></div>
+          <div><span>Profissional</span><strong>Dra. Marina Costa</strong></div>
+        </section>
+      )}
+
+      <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} />
+
+      {currentAttendance ? (
+        <>
+          <AnamnesisWizard
+            patient={patient}
+            record={currentAnamnesis}
+            onSave={onSaveAnamnesis}
+            companyId={company.id}
+            attendanceId={currentAttendance.id}
+            uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+            uniqueRecordNumber={patient.uniqueRecordNumber}
+            baNumber={currentAttendance.baNumber}
+            createdBy={professionalId}
+          />
+
+          <FootSensitivityMap3D
+            entries={currentFootMaps}
+            onSave={onSaveFootSensitivity}
+            patientId={patient.id}
+            companyId={company.id}
+            professionalId={professionalId}
+            attendanceId={currentAttendance.id}
+            uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+            uniqueRecordNumber={patient.uniqueRecordNumber}
+            baNumber={currentAttendance.baNumber}
+          />
+        </>
+      ) : (
+        <div className="data-panel">
+          <h2>Nenhum BA registrado</h2>
+          <p className="muted">Crie um novo BA para abrir anamnese, sensibilidade, procedimentos, imagens e evolucao.</p>
+        </div>
+      )}
+
       <section className="split-grid">
         <div className="data-panel">
-          <div className="section-heading">
-            <div><h2>Dados clinicos</h2><p>Anamnese principal do paciente</p></div>
-            <ClipboardEdit size={20} />
-          </div>
-          <dl className="definition-grid">
-            <div><dt>Queixa principal</dt><dd>{patient.clinical.chiefComplaint}</dd></div>
-            <div><dt>Historico</dt><dd>{patient.clinical.diseaseHistory}</dd></div>
-            <div><dt>Diabetes</dt><dd>{patient.clinical.diabetes ? "Sim" : "Nao"}</dd></div>
-            <div><dt>Hipertensao</dt><dd>{patient.clinical.hypertension ? "Sim" : "Nao"}</dd></div>
-            <div><dt>Medicamentos</dt><dd>{patient.clinical.medications || "Nao informado"}</dd></div>
-            <div><dt>Alergias</dt><dd>{patient.clinical.allergies || "Nao informado"}</dd></div>
-          </dl>
-        </div>
-        <div className="data-panel">
-          <div className="section-heading">
-            <div><h2>Historico de atendimentos</h2><p>Evolucoes e retornos</p></div>
-            <CheckCircle2 size={20} />
+          <div className="section-heading section-heading--compact">
+            <div><h2>Imagens do atendimento</h2><p>Antes, durante e depois com estrutura para Supabase Storage</p></div>
           </div>
           <Table
-            headers={["Data", "Procedimento", "Status"]}
-            rows={attendances.map((attendance) => [formatDateTime(attendance.scheduledAt), attendance.procedure, statusLabel(attendance.status)])}
+            headers={["BA", "Tipo", "Arquivo", "Observacoes"]}
+            rows={attendanceImages.map((image) => [image.baNumber, imageTypeLabel(image.imageType), image.fileUrl, image.notes || ""])}
           />
         </div>
+        <div className="data-panel">
+          <h2>Exportacoes</h2>
+          <div className="report-list">
+            <button onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps)} type="button"><FileText size={18} /> Exportar BA atual</button>
+            <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
+            <button type="button"><Layers3 size={18} /> Dados legados preservados fora da anamnese</button>
+          </div>
+        </div>
       </section>
-
-      <BodyMap3D entries={bodyMaps} onSave={onSaveBodyMap} patientId={patient.id} companyId={company.id} professionalId={professionalId} attendanceId={attendances[0]?.id} />
     </div>
   );
 }
@@ -500,7 +691,23 @@ function Stock({ stock }: { stock: StockProduct[] }) {
   );
 }
 
-function Reports({ patient, report, onGenerate, onChangeReport }: { patient: Patient; report: string; onGenerate: () => void; onChangeReport: (value: string) => void }) {
+function Reports({
+  patient,
+  report,
+  includeHci,
+  hciAvailable,
+  onIncludeHciChange,
+  onGenerate,
+  onChangeReport
+}: {
+  patient: Patient;
+  report: string;
+  includeHci: boolean;
+  hciAvailable: boolean;
+  onIncludeHciChange: (value: boolean) => void;
+  onGenerate: () => void;
+  onChangeReport: (value: string) => void;
+}) {
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -516,6 +723,13 @@ function Reports({ patient, report, onGenerate, onChangeReport }: { patient: Pat
             <button type="button"><ClipboardEdit size={18} /> Historico de atendimento</button>
           </div>
           <p className="muted">Paciente atual: {patient.fullName}</p>
+          {hciAvailable && (
+            <label className="toggle-row">
+              <input checked={includeHci} onChange={(event) => onIncludeHciChange(event.target.checked)} type="checkbox" />
+              Incluir HCI autorizado no relatorio
+            </label>
+          )}
+          {!hciAvailable && <p className="muted">HCI so aparece quando houver consentimento autorizado e permissao de acesso.</p>}
         </div>
         <div className="data-panel">
           <div className="section-heading section-heading--compact">
@@ -527,6 +741,97 @@ function Reports({ patient, report, onGenerate, onChangeReport }: { patient: Pat
             </div>
           </div>
           <textarea className="report-editor" value={report || "Clique em Gerar relatorio com IA para criar o encaminhamento."} onChange={(event) => onChangeReport(event.target.value)} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HciView({
+  query,
+  onQueryChange,
+  matches,
+  selectedMatch,
+  onSelectMatch
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  matches: HciPatientMatch[];
+  selectedMatch: HciPatientMatch | null;
+  onSelectMatch: (match: HciPatientMatch) => void;
+}) {
+  const integratedHistory = selectedMatch?.consentStatus === "authorized"
+    ? demoIntegratedHistories.find((history) => history.patient.id === selectedMatch.patientId)
+    : undefined;
+
+  return (
+    <div className="page-stack">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">LGPD · consentimento · auditoria</span>
+          <h1>HCI — Historico Clinico Integrado</h1>
+          <p>Consulta segura pelo ProntuárioÚnico do paciente, sem quebrar isolamento por empresa.</p>
+        </div>
+        <HeartPulse size={26} />
+      </div>
+
+      <section className="data-panel">
+        <div className="hci-search">
+          <label>
+            Buscar por nome, CPF, ProntuárioÚnico, telefone ou data de nascimento
+            <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Ex.: Ana Paula, 123.456.789-00, PU-2026-000001" />
+          </label>
+          <button className="primary-button" type="button"><Search size={18} /> Buscar paciente</button>
+        </div>
+      </section>
+
+      <section className="split-grid">
+        <div className="data-panel">
+          <div className="section-heading section-heading--compact">
+            <div><h2>Possiveis pacientes encontrados</h2><p>Priorizacao: CPF, CPF + nascimento, nome + nascimento, nome + telefone</p></div>
+          </div>
+          <div className="hci-results">
+            {matches.map((match) => (
+              <button className={selectedMatch?.id === match.id ? "is-active" : ""} key={match.id} onClick={() => onSelectMatch(match)} type="button">
+                <strong>{match.companyName}</strong>
+                <span>{match.patientName} · ProntuárioÚnico {match.uniqueRecordNumber}</span>
+                <small>{match.matchPriority} · {consentLabel(match.consentStatus)}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="data-panel">
+          {selectedMatch?.consentStatus === "authorized" && integratedHistory ? (
+            <>
+              <div className="section-heading section-heading--compact">
+                <div><h2>Historico autorizado</h2><p>Origem: {integratedHistory.sourceCompany.displayName}</p></div>
+                <ShieldCheck size={20} />
+              </div>
+              <dl className="definition-grid">
+                <div><dt>Paciente</dt><dd>{integratedHistory.patient.fullName}</dd></div>
+                <div><dt>ProntuárioÚnico</dt><dd>{integratedHistory.patient.uniqueRecordNumber}</dd></div>
+                <div><dt>Escopo</dt><dd>{selectedMatch.accessScope}</dd></div>
+              </dl>
+              <Table
+                headers={["BA", "Data", "Queixa", "Procedimento"]}
+                rows={integratedHistory.attendances.map((attendance) => [
+                  attendance.baNumber,
+                  formatDateTime(attendance.scheduledAt),
+                  attendance.complaint,
+                  attendance.procedure
+                ])}
+              />
+              <p className="muted">Acesso deve registrar log em hci_access_logs com usuario, empresa solicitante, empresa origem, motivo e secoes acessadas.</p>
+            </>
+          ) : (
+            <div className="consent-empty">
+              <ShieldCheck size={30} />
+              <h2>Consentimento necessario</h2>
+              <p>Dados clinicos de outra empresa nao podem ser exibidos sem consentimento explicito do paciente.</p>
+              <button className="primary-button" type="button">Solicitar autorizacao do paciente</button>
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -553,6 +858,29 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
           <label>Cor principal<input type="color" value={company.primaryColor} onChange={(event) => update("primaryColor", event.target.value)} /></label>
           <label>Cor secundaria<input type="color" value={company.secondaryColor} onChange={(event) => update("secondaryColor", event.target.value)} /></label>
           <label>Cor de destaque<input type="color" value={company.accentColor} onChange={(event) => update("accentColor", event.target.value)} /></label>
+          <fieldset className="option-fieldset">
+            <legend>HCI — Historico Clinico Integrado</legend>
+            <label className="toggle-row">
+              <input checked={Boolean(company.hciEnabled)} onChange={(event) => update("hciEnabled", event.target.checked)} type="checkbox" />
+              Habilitar HCI
+            </label>
+            <label>Validade padrao do consentimento em dias<input type="number" value={company.hciConsentValidityDays ?? 180} onChange={(event) => update("hciConsentValidityDays", Number(event.target.value))} /></label>
+            <label className="toggle-row">
+              <input checked={Boolean(company.hciAllowImages)} onChange={(event) => update("hciAllowImages", event.target.checked)} type="checkbox" />
+              Permitir acesso com imagens quando autorizado
+            </label>
+            <label>
+              Escopo padrao
+              <select value={company.hciDefaultScope ?? "history_without_images"} onChange={(event) => update("hciDefaultScope", event.target.value as Company["hciDefaultScope"])}>
+                <option value="clinical_summary">Apenas resumo clinico</option>
+                <option value="full_history">Historico completo</option>
+                <option value="history_with_images">Historico com imagens</option>
+                <option value="history_without_images">Historico sem imagens</option>
+                <option value="medical_reports_only">Apenas relatorios medicos</option>
+                <option value="recent_attendances">Apenas atendimentos recentes</option>
+              </select>
+            </label>
+          </fieldset>
         </form>
         <div className="brand-preview">
           <span className="brand__mark"><Layers3 /></span>
@@ -674,6 +1002,155 @@ function paymentStatusLabel(status: FinancialTransaction["status"]) {
     cancelled: "Cancelado"
   };
   return labels[status];
+}
+
+function generateUniqueRecordNumber(patients: Patient[]) {
+  const year = new Date().getFullYear();
+  const current = patients.filter((patient) => patient.uniqueRecordNumber.includes(`PU-${year}`)).length + 1;
+  return `PU-${year}-${String(current).padStart(6, "0")}`;
+}
+
+function generateBaNumber(companyId: string, attendances: Attendance[]) {
+  const year = new Date().getFullYear();
+  const current = attendances.filter((attendance) => attendance.companyId === companyId && attendance.baNumber.includes(`BA-${year}`)).length + 1;
+  return `BA-${year}-${String(current).padStart(6, "0")}`;
+}
+
+function findExistingUniqueRecordForPatient(
+  input: { fullName: string; cpf: string; birthDate: string; phone: string },
+  patients: Patient[],
+  hciMatches: HciPatientMatch[]
+) {
+  const byCpf = patients.find((patient) => normalizeDigits(patient.cpf) === normalizeDigits(input.cpf));
+  if (byCpf) return { uniqueMedicalRecordId: byCpf.uniqueMedicalRecordId, uniqueRecordNumber: byCpf.uniqueRecordNumber };
+
+  const byCpfAndBirth = patients.find((patient) => normalizeDigits(patient.cpf) === normalizeDigits(input.cpf) && patient.birthDate === input.birthDate);
+  if (byCpfAndBirth) return { uniqueMedicalRecordId: byCpfAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: byCpfAndBirth.uniqueRecordNumber };
+
+  const byNameAndBirth = patients.find((patient) => normalizeText(patient.fullName) === normalizeText(input.fullName) && patient.birthDate === input.birthDate);
+  if (byNameAndBirth) return { uniqueMedicalRecordId: byNameAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: byNameAndBirth.uniqueRecordNumber };
+
+  const byNameAndPhone = patients.find((patient) => normalizeText(patient.fullName) === normalizeText(input.fullName) && normalizeDigits(patient.whatsapp || patient.phone) === normalizeDigits(input.phone));
+  if (byNameAndPhone) return { uniqueMedicalRecordId: byNameAndPhone.uniqueMedicalRecordId, uniqueRecordNumber: byNameAndPhone.uniqueRecordNumber };
+
+  const hciByNameAndBirth = hciMatches.find((match) => normalizeText(match.patientName) === normalizeText(input.fullName) && match.birthDate === input.birthDate);
+  if (hciByNameAndBirth) return { uniqueMedicalRecordId: hciByNameAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: hciByNameAndBirth.uniqueRecordNumber };
+
+  return null;
+}
+
+function filterHciMatches(query: string, matches: HciPatientMatch[]) {
+  const normalized = normalizeText(query);
+  if (!normalized) return matches;
+  return matches.filter((match) =>
+    [match.patientName, match.uniqueRecordNumber, match.companyName, match.birthDate]
+      .filter(Boolean)
+      .some((value) => normalizeText(String(value)).includes(normalized))
+  );
+}
+
+function normalizeText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function normalizeDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function imageTypeLabel(type: AttendanceImage["imageType"]) {
+  const labels: Record<AttendanceImage["imageType"], string> = {
+    before: "Antes",
+    during: "Durante",
+    after: "Depois"
+  };
+  return labels[type];
+}
+
+function consentLabel(status: HciPatientMatch["consentStatus"]) {
+  const labels: Record<HciPatientMatch["consentStatus"], string> = {
+    authorized: "Consentimento autorizado",
+    pending: "Consentimento pendente",
+    unauthorized: "Consentimento nao autorizado",
+    revoked: "Consentimento revogado"
+  };
+  return labels[status];
+}
+
+function exportAttendanceBa(patient: Patient, company: Company, attendance: Attendance, anamneses: AnamnesisRecord[], footMaps: FootSensitivityMap[]) {
+  const relatedAnamnesis = anamneses.find((record) => record.attendanceId === attendance.id);
+  const relatedFootMaps = footMaps.filter((entry) => entry.attendanceId === attendance.id);
+  openPrintDocument(
+    `BA ${attendance.baNumber}`,
+    [
+      documentHeader(company, `Boletim de Atendimento ${attendance.baNumber}`),
+      `<h2>Paciente</h2><p>${patient.fullName}<br>ProntuárioÚnico: ${patient.uniqueRecordNumber}<br>CPF: ${patient.cpf}</p>`,
+      `<h2>Atendimento</h2><p>Data: ${formatDateTime(attendance.scheduledAt)}<br>Queixa: ${attendance.complaint}<br>Procedimento: ${attendance.procedure}<br>Conduta: ${attendance.conduct || "Nao informada"}</p>`,
+      `<h2>Anamnese</h2><pre>${JSON.stringify(relatedAnamnesis?.formData ?? {}, null, 2)}</pre>`,
+      `<h2>Sensibilidade / Pe 3D</h2><ul>${relatedFootMaps.map((entry) => `<li>${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus} · ${entry.notes}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`
+    ].join(""),
+    company.primaryColor
+  );
+}
+
+function exportMedicalRecord(
+  patient: Patient,
+  company: Company,
+  attendances: Attendance[],
+  anamneses: AnamnesisRecord[],
+  footMaps: FootSensitivityMap[],
+  images: AttendanceImage[]
+) {
+  openPrintDocument(
+    `ProntuárioÚnico ${patient.uniqueRecordNumber}`,
+    [
+      documentHeader(company, `ProntuárioÚnico ${patient.uniqueRecordNumber}`),
+      `<h2>Dados do paciente</h2><p>${patient.fullName}<br>CPF: ${patient.cpf}<br>Nascimento: ${formatDate(patient.birthDate)}<br>Telefone/WhatsApp: ${patient.whatsapp}</p>`,
+      `<h2>Dados clinicos</h2><p>Queixa principal: ${patient.clinical.chiefComplaint}<br>Historico: ${patient.clinical.diseaseHistory}<br>Medicamentos: ${patient.clinical.medications || "Nao informado"}</p>`,
+      `<h2>BAs</h2><ul>${attendances.map((attendance) => `<li>${attendance.baNumber} — ${formatDateTime(attendance.scheduledAt)} — ${attendance.procedure}</li>`).join("")}</ul>`,
+      `<h2>Anamneses</h2>${anamneses.map((record) => `<h3>${record.baNumber}</h3><pre>${JSON.stringify(record.formData, null, 2)}</pre>`).join("") || "<p>Sem anamneses registradas.</p>"}`,
+      `<h2>Sensibilidade / Pe 3D</h2><ul>${footMaps.map((entry) => `<li>${entry.baNumber} · ${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
+      `<h2>Imagens</h2><ul>${images.map((image) => `<li>${image.baNumber} · ${imageTypeLabel(image.imageType)} · ${image.fileUrl}</li>`).join("") || "<li>Sem imagens anexadas</li>"}</ul>`,
+      `<p><strong>Data da emissao:</strong> ${new Date().toLocaleString("pt-BR")}</p>`
+    ].join(""),
+    company.primaryColor
+  );
+}
+
+function documentHeader(company: Company, title: string) {
+  return `
+    <header>
+      ${company.logoUrl ? `<img src="${company.logoUrl}" alt="" />` : ""}
+      <h1>${title}</h1>
+      <p>${company.displayName}<br>${company.contactPhone} · ${company.contactEmail}<br>${company.document}</p>
+    </header>
+  `;
+}
+
+function openPrintDocument(title: string, body: string, primaryColor: string) {
+  const printWindow = window.open("", "_blank", "width=980,height=720");
+  if (!printWindow) return;
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #172033; margin: 32px; line-height: 1.45; }
+          header { border-bottom: 3px solid ${primaryColor}; margin-bottom: 24px; padding-bottom: 16px; }
+          header img { max-height: 64px; display: block; margin-bottom: 12px; }
+          h1, h2, h3 { margin-bottom: 8px; }
+          h2 { border-bottom: 1px solid #dce5ea; padding-bottom: 4px; }
+          pre { white-space: pre-wrap; background: #f8fafc; padding: 12px; border: 1px solid #dce5ea; }
+          @media print { button { display: none; } }
+        </style>
+      </head>
+      <body>
+        <button onclick="window.print()">Imprimir / salvar PDF</button>
+        ${body}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 function BuildingIcon() {
