@@ -2,9 +2,8 @@ import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Box, CalendarClock, Camera, History, Rotate3D, Save, UserRound } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import type { Group } from "three";
 import type { BodyMapEntry, BodySide } from "../types";
 
 type Region = {
@@ -215,11 +214,10 @@ function HumanBodyModel({
   view: ViewMode;
   onSelect: (key: string) => void;
 }) {
-  const groupRef = useRef<Group>(null);
   const historyKeys = new Set(entries.map((entry) => entry.regionKey));
 
   return (
-    <group ref={groupRef} rotation={[0, viewRotation[view], 0]} position={[0, 0.1, 0]}>
+    <group rotation={[0, viewRotation[view], 0]} position={[0, 0.1, 0]}>
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.42, 0]}>
         <circleGeometry args={[2.4, 64]} />
         <meshStandardMaterial color="#102033" roughness={0.9} metalness={0.1} />

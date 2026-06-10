@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, BodyMapEntry, Patient } from "../types";
+import type { AiReferralReport, AnamnesisRecord, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -21,6 +21,8 @@ export async function createPatient(patient: Patient) {
     .from("patients")
     .insert({
       company_id: patient.companyId,
+      unique_medical_record_id: patient.uniqueMedicalRecordId,
+      unique_record_number: patient.uniqueRecordNumber,
       full_name: patient.fullName,
       cpf: patient.cpf,
       rg: patient.rg,
@@ -54,6 +56,57 @@ export async function createPatient(patient: Patient) {
 
   if (clinicalError) throw clinicalError;
   return createdPatient;
+}
+
+export async function saveAnamnesisRecord(record: AnamnesisRecord) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("anamnesis_records")
+    .upsert({
+      id: record.id,
+      company_id: record.companyId,
+      patient_id: record.patientId,
+      unique_medical_record_id: record.uniqueMedicalRecordId,
+      attendance_id: record.attendanceId,
+      unique_record_number: record.uniqueRecordNumber,
+      ba_number: record.baNumber,
+      form_data: record.formData,
+      current_step: record.currentStep,
+      is_completed: record.isCompleted,
+      created_by: record.createdBy
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("foot_sensitivity_maps")
+    .insert({
+      company_id: entry.companyId,
+      patient_id: entry.patientId,
+      unique_medical_record_id: entry.uniqueMedicalRecordId,
+      attendance_id: entry.attendanceId,
+      unique_record_number: entry.uniqueRecordNumber,
+      ba_number: entry.baNumber,
+      foot_side: entry.footSide,
+      region_key: entry.regionKey,
+      coordinates: entry.coordinates,
+      sensitivity_status: entry.sensitivityStatus,
+      notes: entry.notes,
+      created_by: entry.createdBy
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function saveBodyMapEntry(entry: Omit<BodyMapEntry, "id" | "createdAt">) {
@@ -93,6 +146,12 @@ export async function saveAiReferralReport(report: Omit<AiReferralReport, "id" |
       company_id: report.companyId,
       patient_id: report.patientId,
       attendance_id: report.attendanceId,
+      unique_medical_record_id: report.uniqueMedicalRecordId,
+      unique_record_number: report.uniqueRecordNumber,
+      ba_numbers_analyzed: report.baNumbersAnalyzed,
+      generated_text: report.content,
+      edited_text: report.editedText,
+      include_hci: report.includeHci,
       content: report.content,
       status: report.status,
       created_by: report.createdBy
