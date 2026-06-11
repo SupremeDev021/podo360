@@ -32,6 +32,7 @@ import { ChartCard } from "./components/ChartCard";
 import { FootSensitivityMap3D } from "./components/FootSensitivityMap3D";
 import { ImageEvolutionComparison } from "./components/ImageEvolutionComparison";
 import { Layout, type ViewKey } from "./components/Layout";
+import { LoginScreen } from "./components/LoginScreen";
 import { MetricCard } from "./components/MetricCard";
 import { UniqueMedicalRecordView } from "./components/UniqueMedicalRecord";
 import { WoundImageModule } from "./components/WoundImageModule";
@@ -51,7 +52,7 @@ import {
   demoStock,
   demoUniqueMedicalRecords
 } from "./data/demoData";
-import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { isSupabaseConfigured } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import type {
   AnamnesisRecord,
@@ -488,7 +489,7 @@ export function App() {
   }
 
   if (!signedIn) {
-    return <LoginScreen onDemoAccess={() => setSignedIn(true)} />;
+    return <LoginScreen company={company} onDemoAccess={() => setSignedIn(true)} />;
   }
 
   return (
@@ -578,61 +579,6 @@ export function App() {
       {activeView === "super-admin" && <SuperAdmin company={company} />}
       {activeView === "plans" && <Plans />}
     </Layout>
-  );
-}
-
-function LoginScreen({ onDemoAccess }: { onDemoAccess: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(isSupabaseConfigured ? "Entre com seu usuario da clinica." : "Modo demo ativo: configure o Supabase no .env para login real.");
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email"));
-    const password = String(form.get("password"));
-
-    if (!isSupabaseConfigured || !supabase) {
-      onDemoAccess();
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    onDemoAccess();
-  }
-
-  return (
-    <main className="login-screen">
-      <section className="login-brand">
-        <span className="brand__mark"><ShieldCheck /></span>
-        <span className="eyebrow">Sistema de gestao para podologia</span>
-        <h1>Podo360</h1>
-        <p>Prontuario, anamnese, atendimentos, agenda e acompanhamento visual de curativos em um fluxo simples para a clinica.</p>
-      </section>
-
-      <form className="login-card" onSubmit={handleLogin}>
-        <h2>Acessar sistema</h2>
-        <p>{message}</p>
-        <label>
-          E-mail
-          <input name="email" placeholder="admin@clinica.com" type="email" />
-        </label>
-        <label>
-          Senha
-          <input name="password" placeholder="********" type="password" />
-        </label>
-        <button className="primary-button" disabled={loading} type="submit">
-          {loading ? "Entrando..." : isSupabaseConfigured ? "Entrar" : "Entrar no demo"}
-        </button>
-      </form>
-    </main>
   );
 }
 
