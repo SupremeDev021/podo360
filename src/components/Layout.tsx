@@ -3,6 +3,7 @@ import {
   Boxes,
   Building2,
   CalendarDays,
+  ClipboardPlus,
   CreditCard,
   FileText,
   HeartPulse,
@@ -18,6 +19,7 @@ import { roleLabel } from "../services/rbac";
 
 export type ViewKey =
   | "dashboard"
+  | "ba-opening"
   | "patients"
   | "patient-profile"
   | "attendances"
@@ -40,6 +42,7 @@ type LayoutProps = {
 
 const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = [
   { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { key: "ba-opening", label: "Abertura de BA", icon: <ClipboardPlus size={18} /> },
   { key: "patients", label: "Pacientes", icon: <Users size={18} /> },
   { key: "attendances", label: "Atendimentos", icon: <Stethoscope size={18} /> },
   { key: "schedule", label: "Agenda", icon: <CalendarDays size={18} /> },

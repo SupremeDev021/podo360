@@ -1,13 +1,14 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Save, SkipForward } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import type { AnamnesisFormData, AnamnesisRecord, Patient } from "../types";
+import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient } from "../types";
 
 type Field =
   | { name: string; label: string; type: "text" | "date" | "number" | "textarea" }
   | { name: string; label: string; type: "radio" | "checkbox"; options: string[] };
 
 type Module = {
+  key: string;
   title: string;
   description: string;
   fields: Field[];
@@ -26,89 +27,93 @@ type AnamnesisWizardProps = {
 };
 
 const modules: Module[] = [
-  { title: "Identificacao", description: "Dados basicos da ficha.", fields: [
+  { key: "identification", title: "Identificacao", description: "Dados basicos da ficha.", fields: [
     { name: "identification_name", label: "Nome", type: "text" },
     { name: "identification_date", label: "Data", type: "date" },
     { name: "identification_age", label: "Idade", type: "number" },
     { name: "identification_profession", label: "Profissao", type: "text" },
     { name: "identification_evaluation_type", label: "Tipo de avaliacao", type: "radio", options: ["1a Avaliacao", "Reavaliacao"] }
   ] },
-  { title: "Queixa principal", description: "Motivo do atendimento.", fields: [
+  { key: "chief_complaint", title: "Queixa principal", description: "Motivo do atendimento.", fields: [
     { name: "main_complaint", label: "Queixa principal", type: "textarea" },
     { name: "main_complaint_notes", label: "Observacoes livres", type: "textarea" }
   ] },
-  { title: "Medicamentos em uso", description: "Medicamentos e observacoes.", fields: [
+  { key: "medications", title: "Medicamentos em uso", description: "Medicamentos e observacoes.", fields: [
     { name: "medications", label: "Medicamentos em uso", type: "textarea" },
     { name: "medications_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { title: "Historico de saude", description: "Condições relatadas.", fields: [
+  { key: "health_history", title: "Historico de saude", description: "Condicoes relatadas.", fields: [
     { name: "health_history", label: "Historico de saude", type: "checkbox", options: ["Diabetes", "AVC", "Saude mental", "Hipertensao", "CA", "Doencas neurodegenerativas", "Tabagismo", "DPOC", "Doencas vasculares", "Outros"] }
   ] },
-  { title: "Exame fisico / Pele", description: "Estado da pele.", fields: [
+  { key: "skin_exam", title: "Exame fisico / Pele", description: "Estado da pele.", fields: [
     { name: "skin_exam", label: "Pele", type: "checkbox", options: ["Hidratada", "Anidrose", "Descamacao", "Psoriase", "Hiperhidrose"] }
   ] },
-  { title: "Alteracoes", description: "Alteracoes podologicas.", fields: [
+  { key: "changes", title: "Alteracoes", description: "Alteracoes podologicas.", fields: [
     { name: "changes", label: "Alteracoes", type: "checkbox", options: ["Calos com nucleo", "Calosidades", "Verruga plantar"] }
   ] },
-  { title: "Edema", description: "Grau de edema.", fields: [
+  { key: "edema", title: "Edema", description: "Grau de edema.", fields: [
     { name: "edema", label: "Edema", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
   ] },
-  { title: "Sensibilidade Monofilamento", description: "Preencha no pe 3D abaixo.", fields: [
+  { key: "monofilament_3d", title: "Sensibilidade Monofilamento com pe 3D", description: "Preencha no pe 3D abaixo.", fields: [
     { name: "monofilament_notes", label: "Observacoes de sensibilidade", type: "textarea" }
   ] },
-  { title: "Sensibilidade vibratoria e termica", description: "Diapasao e temperatura.", fields: [
+  { key: "vibration_thermal", title: "Sensibilidade vibratoria e termica", description: "Diapasao e temperatura.", fields: [
     { name: "vibration_sensitivity", label: "Sensibilidade vibratoria com Diapasao", type: "radio", options: ["Presente", "Ausente"] },
     { name: "thermal_sensitivity", label: "Sensibilidade termica", type: "radio", options: ["Positivo", "Negativo"] }
   ] },
-  { title: "ECO / ITB", description: "Indice tornozelo-braco.", fields: [
+  { key: "eco_itb", title: "ECO / ITB", description: "Indice tornozelo-braco.", fields: [
     { name: "itb_right_foot", label: "Pe D mmHg", type: "number" },
     { name: "itb_left_foot", label: "Pe E mmHg", type: "number" },
     { name: "itb_right_arm", label: "Braco D mmHg", type: "number" },
     { name: "itb_left_arm", label: "Braco E mmHg", type: "number" },
     { name: "itb_result", label: "Resultado ITB", type: "radio", options: ["1,0 a 1,30 Normal", "0,91 a 0,99 Limitrofe", "0,41 a 0,90 Anormal/Baixo", "Abaixo de 0,40 Severo"] }
   ] },
-  { title: "ECO / IHB", description: "Indice halux-braco.", fields: [
+  { key: "eco_ihb", title: "ECO / IHB", description: "Indice halux-braco.", fields: [
     { name: "ihb_right_hallux", label: "Halux D mmHg", type: "number" },
     { name: "ihb_left_hallux", label: "Halux E mmHg", type: "number" },
     { name: "ihb_right_arm", label: "Braco D mmHg", type: "number" },
     { name: "ihb_left_arm", label: "Braco E mmHg", type: "number" },
     { name: "ihb_result", label: "Resultado IHB", type: "radio", options: ["Maior que 0,70 Normal", "Menor ou igual a 0,70 Alterado", "Menor que 0,30 Grave"] }
   ] },
-  { title: "Glicemia", description: "Resultado em mg/dL.", fields: [
+  { key: "glycemia", title: "Glicemia", description: "Resultado em mg/dL.", fields: [
     { name: "glycemia_result", label: "Resultado em mg/dL", type: "number" },
     { name: "glycemia_context", label: "Contexto", type: "radio", options: ["Em jejum", "Apos alimentacao"] }
   ] },
-  { title: "Escala de EVA", description: "Dor de 0 a 10.", fields: [
+  { key: "eva", title: "Escala EVA", description: "Dor de 0 a 10.", fields: [
     { name: "eva_scale", label: "Valor EVA", type: "number" },
     { name: "eva_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { title: "Diagnostico / avaliacao podologica", description: "Avaliacao podologica sem diagnostico medico definitivo.", fields: [
+  { key: "podology_diagnosis", title: "Diagnostico / avaliacao podologica", description: "Avaliacao podologica sem diagnostico medico definitivo.", fields: [
     { name: "nail_anatomy", label: "Anatomico laminar", type: "checkbox", options: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil", "Curvatura", "Plana", "Normal / fisiologica", "Telha", "Gancho / Uncinada", "Caracol / Em pinca"] },
     { name: "pathologies", label: "Patologias", type: "checkbox", options: ["Onicomicose", "Paroniquia / Unheiro", "Sindrome da unha verde", "Onicocriptose / Unha encravada", "Onicogrifose", "Hematoma subungueal", "Outras"] },
     { name: "structural_changes", label: "Alteracoes estruturais e distrofias", type: "checkbox", options: ["Onicolise", "Coiloniquia", "Linhas de Beau", "Psoriase ungueal", "Paroniquia", "Onicogrifose", "Coloníquia / Unha em colher", "Unhas de Hipocrates / Baqueteamento digital", "Onicosquizia"] },
     { name: "podology_diagnosis_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { title: "Procedimento", description: "Procedimentos, instrumentos e produtos.", fields: [
+  { key: "procedure", title: "Procedimento", description: "Procedimentos, instrumentos e produtos.", fields: [
     { name: "procedure", label: "Procedimento", type: "checkbox", options: ["Debaste plantar", "Realizado", "Nao realizado", "Lixa", "Laminar", "Plantar", "Instrumentos", "Kit diabetico", "Kit nao diabetico", "Cuidados", "Higienizante", "Emoliente", "Creme hidratante", "Finalizador"] },
     { name: "sandpaper", label: "Gramatura de lixa", type: "checkbox", options: ["80g", "180g", "220g", "400g"] },
     { name: "drills", label: "Brocas", type: "checkbox", options: ["Diamantadas", "718g", "720g", "Ceramica", "Azul", "Vermelha", "Preta", "Esferica bolinha", "1014g", "1016g", "1018g"] },
     { name: "procedure_notes", label: "Observacoes do procedimento", type: "textarea" }
   ] },
-  { title: "Curativo", description: "Curativo e local de aplicacao.", fields: [
+  { key: "dressing", title: "Curativo", description: "Curativo e local de aplicacao.", fields: [
     { name: "dressing_type", label: "Tipo de curativo", type: "checkbox", options: ["Curativo oclusivo", "Curativo nao oclusivo"] },
     { name: "dressing_location", label: "Local do curativo", type: "text" },
     { name: "dressing_description", label: "Descricao", type: "textarea" },
     { name: "dressing_products", label: "Produtos utilizados", type: "textarea" },
     { name: "dressing_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { title: "Retorno", description: "Retorno sugerido.", fields: [
+  { key: "return", title: "Retorno", description: "Retorno sugerido.", fields: [
     { name: "return_date", label: "Data sugerida de retorno", type: "date" },
     { name: "return_needed", label: "Necessita retorno?", type: "radio", options: ["Sim", "Nao"] },
     { name: "return_priority", label: "Prioridade do retorno", type: "radio", options: ["Baixa", "Media", "Alta"] },
     { name: "return_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { title: "Imagens", description: "Anexos ficam preparados para Supabase Storage.", fields: [
+  { key: "images", title: "Imagens", description: "Anexos ficam preparados para Supabase Storage.", fields: [
     { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
+  ] },
+  { key: "evolution", title: "Evolucao e observacoes finais", description: "Evolucao, orientacoes e fechamento do atendimento.", fields: [
+    { name: "evolution_notes", label: "Evolucao e observacoes finais", type: "textarea" },
+    { name: "home_care_guidance", label: "Orientacoes domiciliares", type: "textarea" }
   ] }
 ];
 
@@ -129,10 +134,20 @@ export function AnamnesisWizard({
     identification_profession: patient.profession,
     ...record?.formData
   });
+  const [stepStatuses, setStepStatuses] = useState<Record<string, AnamnesisStepStatus>>(
+    () => modules.reduce<Record<string, AnamnesisStepStatus>>((acc, module) => ({ ...acc, [module.key]: record?.stepStatuses?.[module.key] ?? "not_started" }), {})
+  );
   const currentModule = modules[step - 1];
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
 
-  function save(nextStep = step, completed = false) {
+  function moduleHasValue(module: Module) {
+    return module.fields.some((field) => {
+      const value = formData[field.name];
+      return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "";
+    });
+  }
+
+  function save(nextStep = step, completed = false, overrideStatuses = stepStatuses) {
     onSave({
       id: record?.id ?? `anamnesis-${attendanceId}`,
       companyId,
@@ -143,6 +158,7 @@ export function AnamnesisWizard({
       baNumber,
       formData,
       currentStep: nextStep,
+      stepStatuses: overrideStatuses,
       isCompleted: completed,
       createdBy,
       createdAt: record?.createdAt ?? new Date().toISOString(),
@@ -153,12 +169,26 @@ export function AnamnesisWizard({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextStep = Math.min(step + 1, modules.length);
-    save(nextStep, step === modules.length);
+    const nextStatuses: Record<string, AnamnesisStepStatus> = {
+      ...stepStatuses,
+      [currentModule.key]: moduleHasValue(currentModule) ? "completed" : "partially_filled"
+    };
+    setStepStatuses(nextStatuses);
+    save(nextStep, step === modules.length, nextStatuses);
+    setStep(nextStep);
+  }
+
+  function handleSkip() {
+    const nextStep = Math.min(modules.length, step + 1);
+    const nextStatuses = { ...stepStatuses, [currentModule.key]: "skipped" as const };
+    setStepStatuses(nextStatuses);
+    save(nextStep, false, nextStatuses);
     setStep(nextStep);
   }
 
   function updateField(name: string, value: string | number | boolean | string[]) {
     setFormData((current) => ({ ...current, [name]: value }));
+    setStepStatuses((current) => ({ ...current, [currentModule.key]: current[currentModule.key] === "completed" ? "completed" : "in_progress" }));
   }
 
   return (
@@ -174,7 +204,7 @@ export function AnamnesisWizard({
 
       <div className="stepper">
         {modules.map((item, index) => (
-          <button className={step === index + 1 ? "is-active" : step > index + 1 ? "is-done" : ""} key={item.title} onClick={() => setStep(index + 1)} type="button">
+          <button className={`${step === index + 1 ? "is-active" : ""} stepper__${stepStatuses[item.key] ?? "not_started"}`} key={item.title} onClick={() => setStep(index + 1)} title={`${item.title}: ${stepStatusLabel(stepStatuses[item.key] ?? "not_started")}`} type="button">
             {index + 1}
           </button>
         ))}
@@ -194,7 +224,7 @@ export function AnamnesisWizard({
           <button className="ghost-action" onClick={() => save(step, false)} type="button">
             <Save size={17} /> Salvar rascunho
           </button>
-          <button className="ghost-action" onClick={() => setStep((current) => Math.min(modules.length, current + 1))} type="button">
+          <button className="ghost-action" onClick={handleSkip} type="button">
             <SkipForward size={17} /> Pular modulo
           </button>
           <button className="primary-button" type="submit">
@@ -205,6 +235,17 @@ export function AnamnesisWizard({
       </form>
     </section>
   );
+}
+
+function stepStatusLabel(status: AnamnesisStepStatus) {
+  const labels: Record<AnamnesisStepStatus, string> = {
+    not_started: "Nao iniciado",
+    in_progress: "Em preenchimento",
+    partially_filled: "Preenchido parcialmente",
+    completed: "Concluido",
+    skipped: "Pulado"
+  };
+  return labels[status];
 }
 
 function FieldRenderer({ field, formData, onChange }: { field: Field; formData: AnamnesisFormData; onChange: (name: string, value: string | number | boolean | string[]) => void }) {

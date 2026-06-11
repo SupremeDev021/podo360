@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -73,6 +73,7 @@ export async function saveAnamnesisRecord(record: AnamnesisRecord) {
       ba_number: record.baNumber,
       form_data: record.formData,
       current_step: record.currentStep,
+      step_statuses: record.stepStatuses,
       is_completed: record.isCompleted,
       created_by: record.createdBy
     })
@@ -97,6 +98,7 @@ export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id
       ba_number: entry.baNumber,
       foot_side: entry.footSide,
       region_key: entry.regionKey,
+      point_key: entry.pointKey,
       coordinates: entry.coordinates,
       sensitivity_status: entry.sensitivityStatus,
       notes: entry.notes,
@@ -105,6 +107,57 @@ export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id
     .select()
     .single();
 
+  if (error) throw error;
+  return data;
+}
+
+export async function createAttendanceBa(attendance: Attendance) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("attendances")
+    .insert({
+      company_id: attendance.companyId,
+      patient_id: attendance.patientId,
+      unique_medical_record_id: attendance.uniqueMedicalRecordId,
+      unique_record_number: attendance.uniqueRecordNumber,
+      ba_number: attendance.baNumber,
+      status: attendance.status,
+      opened_at: attendance.openedAt,
+      opened_by: attendance.openedBy,
+      professional_id: attendance.professionalId,
+      attendance_date: attendance.attendanceDate,
+      type: attendance.type,
+      visit_kind: attendance.visitKind,
+      initial_notes: attendance.initialNotes,
+      priority: attendance.priority,
+      patient_complaint: attendance.complaint,
+      procedure_performed: attendance.procedure,
+      clinical_evaluation: attendance.clinicalEvaluation,
+      conduct_performed: attendance.conduct,
+      products_used: attendance.productsUsed,
+      notes: attendance.notes,
+      amount: attendance.value
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function startAttendanceBa(attendanceId: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase.rpc("mark_attendance_started", { target_attendance_id: attendanceId });
+  if (error) throw error;
+  return data;
+}
+
+export async function finishAttendanceBa(attendanceId: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase.rpc("mark_attendance_finished", { target_attendance_id: attendanceId });
   if (error) throw error;
   return data;
 }

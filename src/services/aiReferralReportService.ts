@@ -100,7 +100,8 @@ function sensitivityLabel(status: FootSensitivityMap["sensitivityStatus"]) {
   const labels: Record<FootSensitivityMap["sensitivityStatus"], string> = {
     present: "presente",
     reduced: "diminuida",
-    absent: "ausente"
+    absent: "ausente",
+    not_tested: "nao testado"
   };
   return labels[status];
 }

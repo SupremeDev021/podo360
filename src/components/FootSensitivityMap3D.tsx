@@ -7,7 +7,9 @@ import type { FootSensitivityMap, FootSide, SensitivityStatus } from "../types";
 
 type FootRegion = {
   key: string;
+  pointKey: string;
   label: string;
+  region: string;
   x: number;
   y: number;
   z: number;
@@ -26,23 +28,29 @@ type FootSensitivityMap3DProps = {
 };
 
 const footRegions: FootRegion[] = [
-  { key: "hallux", label: "Halux", x: -1.05, y: 0.28, z: 0.2 },
-  { key: "toes", label: "Dedos", x: -1.15, y: 0.05, z: 0.15 },
-  { key: "plantar", label: "Planta do pe", x: -0.15, y: 0, z: -0.16 },
-  { key: "heel", label: "Calcanhar", x: 1.05, y: 0, z: -0.08 },
-  { key: "metatarsal", label: "Regiao metatarsal", x: -0.62, y: 0, z: 0.05 },
-  { key: "arch", label: "Arco plantar", x: 0.28, y: -0.18, z: -0.12 },
-  { key: "medial-border", label: "Borda medial", x: -0.05, y: -0.5, z: 0.02 },
-  { key: "lateral-border", label: "Borda lateral", x: -0.05, y: 0.5, z: 0.02 },
-  { key: "dorsum", label: "Dorso do pe", x: -0.12, y: 0, z: 0.34 },
-  { key: "nails", label: "Unhas", x: -1.28, y: 0.03, z: 0.31 },
-  { key: "ankle", label: "Tornozelo", x: 1.42, y: 0, z: 0.32 }
+  { key: "hallux", pointKey: "hallux-pulp", label: "Halux - polpa", region: "Halux", x: -1.18, y: -0.26, z: 0.18 },
+  { key: "hallux", pointKey: "hallux-nail", label: "Halux - unha", region: "Unhas", x: -1.32, y: -0.22, z: 0.34 },
+  { key: "toes", pointKey: "toe-2", label: "2o dedo", region: "Dedos", x: -1.24, y: -0.07, z: 0.22 },
+  { key: "toes", pointKey: "toe-3", label: "3o dedo", region: "Dedos", x: -1.26, y: 0.08, z: 0.22 },
+  { key: "toes", pointKey: "toe-4-5", label: "4o e 5o dedos", region: "Dedos", x: -1.18, y: 0.27, z: 0.2 },
+  { key: "plantar", pointKey: "plantar-center", label: "Planta central", region: "Planta do pe", x: -0.12, y: 0, z: -0.2 },
+  { key: "forefoot", pointKey: "forefoot-medial", label: "Ante pe medial", region: "Ante pe", x: -0.68, y: -0.28, z: 0.02 },
+  { key: "forefoot", pointKey: "forefoot-lateral", label: "Ante pe lateral", region: "Ante pe", x: -0.7, y: 0.28, z: 0.02 },
+  { key: "metatarsal", pointKey: "metatarsal-1", label: "1a cabeca metatarsal", region: "Regiao metatarsal", x: -0.52, y: -0.34, z: 0.04 },
+  { key: "metatarsal", pointKey: "metatarsal-5", label: "5a cabeca metatarsal", region: "Regiao metatarsal", x: -0.54, y: 0.36, z: 0.04 },
+  { key: "arch", pointKey: "arch-medial", label: "Arco plantar medial", region: "Arco plantar", x: 0.2, y: -0.38, z: -0.12 },
+  { key: "heel", pointKey: "heel-center", label: "Calcanhar central", region: "Calcanhar", x: 1.0, y: 0, z: -0.08 },
+  { key: "medial-border", pointKey: "medial-border", label: "Borda medial", region: "Borda medial", x: 0, y: -0.54, z: 0.02 },
+  { key: "lateral-border", pointKey: "lateral-border", label: "Borda lateral", region: "Borda lateral", x: 0, y: 0.54, z: 0.02 },
+  { key: "dorsum", pointKey: "dorsum-center", label: "Dorso do pe", region: "Dorso do pe", x: -0.12, y: 0, z: 0.38 },
+  { key: "ankle", pointKey: "ankle-front", label: "Tornozelo", region: "Tornozelo", x: 1.42, y: 0, z: 0.32 }
 ];
 
 const statusColor: Record<SensitivityStatus, string> = {
   present: "#22c55e",
   reduced: "#f59e0b",
-  absent: "#ef4444"
+  absent: "#ef4444",
+  not_tested: "#94a3b8"
 };
 
 export function FootSensitivityMap3D({
@@ -57,9 +65,9 @@ export function FootSensitivityMap3D({
   baNumber
 }: FootSensitivityMap3DProps) {
   const [footSide, setFootSide] = useState<FootSide>("right");
-  const [selectedKey, setSelectedKey] = useState("hallux");
+  const [selectedKey, setSelectedKey] = useState("hallux-pulp");
   const [sensitivityStatus, setSensitivityStatus] = useState<SensitivityStatus>("present");
-  const selected = useMemo(() => footRegions.find((region) => region.key === selectedKey) ?? footRegions[0], [selectedKey]);
+  const selected = useMemo(() => footRegions.find((region) => region.pointKey === selectedKey) ?? footRegions[0], [selectedKey]);
   const currentEntries = entries.filter((entry) => entry.footSide === footSide);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -75,6 +83,7 @@ export function FootSensitivityMap3D({
       baNumber,
       footSide,
       regionKey: selected.key,
+      pointKey: `${footSide}-${selected.pointKey}`,
       coordinates: { x: selected.x, y: selected.y, z: selected.z },
       sensitivityStatus,
       notes: String(data.get("notes") || ""),
@@ -117,12 +126,13 @@ export function FootSensitivityMap3D({
                 <meshStandardMaterial color="#d99b78" roughness={0.68} />
               </mesh>
               {footRegions.map((region) => {
-                const entry = currentEntries.find((item) => item.regionKey === region.key);
-                const color = entry ? statusColor[entry.sensitivityStatus] : selectedKey === region.key ? "#38bdf8" : "#f8fafc";
+                const pointKey = `${footSide}-${region.pointKey}`;
+                const entry = currentEntries.find((item) => item.pointKey === pointKey || (!item.pointKey && item.regionKey === region.key));
+                const color = entry ? statusColor[entry.sensitivityStatus] : selectedKey === region.pointKey ? "#38bdf8" : "#f8fafc";
                 return (
-                  <mesh key={region.key} position={[region.x, region.y, region.z]} onClick={() => setSelectedKey(region.key)}>
-                    <sphereGeometry args={[selectedKey === region.key ? 0.095 : 0.075, 18, 18]} />
-                    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={entry || selectedKey === region.key ? 0.22 : 0.05} />
+                  <mesh key={region.pointKey} position={[region.x, region.y, region.z]} onClick={() => setSelectedKey(region.pointKey)}>
+                    <sphereGeometry args={[selectedKey === region.pointKey ? 0.095 : 0.07, 18, 18]} />
+                    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={entry || selectedKey === region.pointKey ? 0.22 : 0.05} />
                   </mesh>
                 );
               })}
@@ -136,7 +146,7 @@ export function FootSensitivityMap3D({
         <div className="section-heading section-heading--compact">
           <div>
             <h2>Sensibilidade (Monofilamento)</h2>
-            <p>{footSide === "right" ? "Pe direito" : "Pe esquerdo"} · {selected.label}</p>
+            <p>{footSide === "right" ? "Pe direito" : "Pe esquerdo"} · {selected.region} · {selected.label}</p>
           </div>
         </div>
 
@@ -144,15 +154,15 @@ export function FootSensitivityMap3D({
           Regiao do pe
           <select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
             {footRegions.map((region) => (
-              <option key={region.key} value={region.key}>{region.label}</option>
+              <option key={region.pointKey} value={region.pointKey}>{region.region} · {region.label}</option>
             ))}
           </select>
         </label>
 
-        <div className="segmented segmented--status">
-          {(["present", "reduced", "absent"] as const).map((status) => (
+        <div className="segmented segmented--status segmented--status-four">
+          {(["present", "reduced", "absent", "not_tested"] as const).map((status) => (
             <button className={sensitivityStatus === status ? "is-active" : ""} key={status} onClick={() => setSensitivityStatus(status)} type="button">
-              {status === "present" ? "Presente" : status === "reduced" ? "Diminuida" : "Ausente"}
+              {sensitivityStatusLabel(status)}
             </button>
           ))}
         </div>
@@ -173,7 +183,7 @@ export function FootSensitivityMap3D({
             {currentEntries.length ? currentEntries.map((entry) => (
               <li key={entry.id}>
                 <strong>{regionLabel(entry.regionKey)}</strong>
-                <span>{entry.sensitivityStatus === "present" ? "Presente" : entry.sensitivityStatus === "reduced" ? "Diminuida" : "Ausente"}</span>
+                <span>{sensitivityStatusLabel(entry.sensitivityStatus)}</span>
               </li>
             )) : <li>Nenhum ponto salvo ainda.</li>}
           </ul>
@@ -184,5 +194,15 @@ export function FootSensitivityMap3D({
 }
 
 function regionLabel(key: string) {
-  return footRegions.find((region) => region.key === key)?.label ?? key;
+  return footRegions.find((region) => region.key === key)?.region ?? key;
+}
+
+function sensitivityStatusLabel(status: SensitivityStatus) {
+  const labels: Record<SensitivityStatus, string> = {
+    present: "Presente",
+    reduced: "Diminuida",
+    absent: "Ausente",
+    not_tested: "Nao testado"
+  };
+  return labels[status];
 }

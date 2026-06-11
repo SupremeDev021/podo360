@@ -3,7 +3,9 @@ import {
   Boxes,
   CalendarCheck,
   CalendarClock,
+  CheckCircle2,
   ClipboardEdit,
+  ClipboardPlus,
   CreditCard,
   Download,
   FileText,
@@ -11,6 +13,7 @@ import {
   Layers3,
   Palette,
   Plus,
+  PlayCircle,
   Printer,
   Receipt,
   Search,
@@ -18,7 +21,6 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
-  UserRoundPlus,
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -75,6 +77,13 @@ type DashboardSummary = {
   completed: Attendance[];
 };
 
+type AppNotice = {
+  id: number;
+  title: string;
+  message: string;
+  tone?: "success" | "info" | "warning" | "danger";
+};
+
 export function App() {
   const [company, setCompany] = useState<Company>(demoCompany);
   const [signedIn, setSignedIn] = useState(false);
@@ -91,7 +100,9 @@ export function App() {
   const [hciQuery, setHciQuery] = useState("");
   const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
   const [selectedPatientId, setSelectedPatientId] = useState(demoPatients[0].id);
+  const [activeAttendanceId, setActiveAttendanceId] = useState<string | null>(demoAttendances[2]?.id ?? null);
   const [aiReport, setAiReport] = useState("");
+  const [notice, setNotice] = useState<AppNotice | null>(null);
   const profile = demoProfiles[0];
 
   useEffect(() => {
@@ -115,6 +126,10 @@ export function App() {
         )
       )
     : [];
+
+  function notify(title: string, message: string, tone: AppNotice["tone"] = "success") {
+    setNotice({ id: Date.now(), title, message, tone });
+  }
 
   const dashboard = useMemo(() => {
     const completed = attendances.filter((attendance) => attendance.status === "completed");
@@ -164,6 +179,7 @@ export function App() {
       },
       ...current
     ]);
+    notify("Ponto salvo", "Sensibilidade do pe 3D registrada neste BA.", "success");
   }
 
   function handleSaveAnamnesis(record: AnamnesisRecord) {
@@ -172,10 +188,12 @@ export function App() {
       if (index < 0) return [record, ...current];
       return current.map((item) => (item.id === record.id ? record : item));
     });
+    notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
   }
 
-  function handleCreateAttendance(patient: Patient) {
+  function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
     const nextBaNumber = generateBaNumber(company.id, attendances);
+    const openedAt = new Date().toISOString();
     const attendance: Attendance = {
       id: `attendance-${attendances.length + 1}`,
       companyId: company.id,
@@ -183,38 +201,51 @@ export function App() {
       uniqueMedicalRecordId: patient.uniqueMedicalRecordId,
       uniqueRecordNumber: patient.uniqueRecordNumber,
       baNumber: nextBaNumber,
-      professionalId: profile.id,
-      scheduledAt: new Date().toISOString(),
-      attendanceDate: new Date().toISOString(),
-      type: "Atendimento",
-      procedure: "Atendimento em andamento",
-      complaint: patient.clinical.chiefComplaint,
+      professionalId: options?.professionalId,
+      openedAt,
+      openedBy: profile.id,
+      scheduledAt: openedAt,
+      attendanceDate: openedAt,
+      type: options?.type ?? "Atendimento podologico",
+      visitKind: options?.visitKind ?? "first_evaluation",
+      initialNotes: options?.initialNotes ?? "",
+      priority: options?.priority ?? "normal",
+      procedure: "BA aberto",
+      complaint: options?.complaint ?? patient.clinical.chiefComplaint,
       clinicalEvaluation: "",
       conduct: "",
       productsUsed: [],
-      notes: "BA gerado automaticamente.",
-      status: "in_progress",
+      notes: options?.notes ?? "BA aberto pela recepcao.",
+      status: "waiting",
       value: 0
     };
 
     setAttendances((current) => [attendance, ...current]);
-    setActiveView("patient-profile");
+    setSelectedPatientId(patient.id);
+    setActiveAttendanceId(attendance.id);
+    notify("BA aberto com sucesso", `${attendance.baNumber} entrou como Aguardando atendimento.`, "success");
+    setActiveView("patients");
   }
 
-  function handleAddPatient(event: FormEvent<HTMLFormElement>) {
+  function handleOpenBa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const fullName = String(form.get("fullName"));
     const cpf = String(form.get("cpf"));
     const birthDate = String(form.get("birthDate"));
-    const whatsapp = String(form.get("whatsapp"));
+    const phone = String(form.get("phone"));
+    const whatsapp = String(form.get("whatsapp") || phone);
     const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, demoHciMatches);
+    const existingPatient = patients.find((patient) =>
+      normalizeDigits(patient.cpf) === normalizeDigits(cpf) ||
+      (normalizeText(patient.fullName) === normalizeText(fullName) && patient.birthDate === birthDate)
+    );
 
     if (existingUniqueRecord) {
-      window.alert(`Paciente ja possui ProntuárioÚnico no Podo360: ${existingUniqueRecord.uniqueRecordNumber}. Um vinculo sera criado para esta clinica.`);
+      notify("Paciente ja possui ProntuárioÚnico", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
     }
 
-    const patient: Patient = {
+    const patient: Patient = existingPatient ?? {
       id: `patient-${patients.length + 1}`,
       companyId: company.id,
       uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
@@ -222,27 +253,30 @@ export function App() {
       fullName,
       cpf,
       birthDate,
-      phone: whatsapp,
+      phone,
       whatsapp,
+      email: String(form.get("email") || ""),
       address: String(form.get("address")),
       profession: String(form.get("profession") || ""),
       createdAt: new Date().toISOString(),
       clinical: {
         chiefComplaint: String(form.get("chiefComplaint")),
-        diseaseHistory: String(form.get("diseaseHistory") || ""),
-        diabetes: form.get("diabetes") === "on",
-        hypertension: form.get("hypertension") === "on",
-        medications: String(form.get("medications") || ""),
-        allergies: String(form.get("allergies") || ""),
+        diseaseHistory: "",
+        diabetes: false,
+        hypertension: false,
+        medications: "",
+        allergies: "",
         previousSurgeries: "",
         vascularProblems: "",
         dermatologicalProblems: "",
-        clinicalNotes: String(form.get("clinicalNotes") || "")
+        clinicalNotes: String(form.get("initialNotes") || "")
       }
     };
 
-    setPatients((current) => [patient, ...current]);
-    if (!existingUniqueRecord) {
+    if (!existingPatient) {
+      setPatients((current) => [patient, ...current]);
+    }
+    if (!existingUniqueRecord && !existingPatient) {
       setUniqueMedicalRecords((current) => [
         {
           id: patient.uniqueMedicalRecordId,
@@ -259,8 +293,51 @@ export function App() {
         ...current
       ]);
     }
-    setSelectedPatientId(patient.id);
+    handleCreateAttendance(patient, {
+      professionalId: String(form.get("professionalId") || "") || undefined,
+      type: String(form.get("attendanceType") || "Atendimento podologico"),
+      visitKind: String(form.get("visitKind")) === "return" ? "return" : "first_evaluation",
+      complaint: String(form.get("chiefComplaint") || ""),
+      initialNotes: String(form.get("initialNotes") || ""),
+      priority: String(form.get("priority") || "normal") as Attendance["priority"],
+      notes: `Clinica vinculada: ${company.displayName}. ${String(form.get("initialNotes") || "")}`.trim()
+    });
+    event.currentTarget.reset();
+  }
+
+  function handleStartAttendance(attendanceId: string) {
+    const now = new Date().toISOString();
+    let targetPatientId = selectedPatientId;
+    setAttendances((current) =>
+      current.map((attendance) => {
+        if (attendance.id !== attendanceId) return attendance;
+        targetPatientId = attendance.patientId;
+        return {
+          ...attendance,
+          status: "in_progress",
+          startedAt: attendance.startedAt ?? now,
+          startedBy: attendance.startedBy ?? profile.id,
+          professionalId: attendance.professionalId || profile.id,
+          updatedAt: now
+        };
+      })
+    );
+    setSelectedPatientId(targetPatientId);
+    setActiveAttendanceId(attendanceId);
+    notify("Atendimento iniciado", "Status alterado para Em atendimento e ficha modular carregada.", "success");
     setActiveView("patient-profile");
+  }
+
+  function handleFinishAttendance(attendanceId: string) {
+    const now = new Date().toISOString();
+    setAttendances((current) =>
+      current.map((attendance) =>
+        attendance.id === attendanceId
+          ? { ...attendance, status: "completed", finishedAt: attendance.finishedAt ?? now, finishedBy: profile.id, updatedAt: now }
+          : attendance
+      )
+    );
+    notify("Atendimento finalizado", "Data e hora de finalizacao foram registradas no BA.", "success");
   }
 
   if (!signedIn) {
@@ -269,18 +346,35 @@ export function App() {
 
   return (
     <Layout company={company} profile={profile} activeView={activeView} onViewChange={setActiveView}>
+      {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {activeView === "dashboard" && <Dashboard dashboard={dashboard} stock={stock} attendances={attendances} patients={patients} />}
-      {activeView === "patients" && <Patients patients={patients} onSelect={(id) => { setSelectedPatientId(id); setActiveView("patient-profile"); }} onAddPatient={handleAddPatient} />}
+      {activeView === "ba-opening" && <BaOpening company={company} profiles={demoProfiles} onOpenBa={handleOpenBa} />}
+      {activeView === "patients" && (
+        <Patients
+          patients={patients}
+          attendances={attendances}
+          profiles={demoProfiles}
+          onSelect={(id) => { setSelectedPatientId(id); setActiveView("patient-profile"); }}
+          onStartAttendance={handleStartAttendance}
+          onContinueAttendance={handleStartAttendance}
+          onExportBa={(attendance) => {
+            const patient = patients.find((item) => item.id === attendance.patientId);
+            if (patient) exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps);
+          }}
+        />
+      )}
       {activeView === "patient-profile" && (
         <PatientProfile
           patient={selectedPatient}
           attendances={selectedPatientAttendances}
+          activeAttendanceId={activeAttendanceId}
           uniqueMedicalRecord={selectedUniqueMedicalRecord}
           anamneses={selectedPatientAnamneses}
           footSensitivityMaps={selectedPatientFootMaps}
           attendanceImages={selectedPatientImages}
           onGenerateReport={handleGenerateAiReport}
           onCreateAttendance={handleCreateAttendance}
+          onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
           onSaveFootSensitivity={handleSaveFootSensitivity}
           company={company}
@@ -436,50 +530,161 @@ function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: Das
   );
 }
 
-function Patients({ patients, onSelect, onAddPatient }: { patients: Patient[]; onSelect: (id: string) => void; onAddPatient: (event: FormEvent<HTMLFormElement>) => void }) {
+function Toast({ notice, onClose }: { notice: AppNotice; onClose: () => void }) {
+  useEffect(() => {
+    const timeout = window.setTimeout(onClose, 4200);
+    return () => window.clearTimeout(timeout);
+  }, [notice.id, onClose]);
+
+  return (
+    <aside className={`toast toast--${notice.tone ?? "info"}`} role="status">
+      <CheckCircle2 size={19} />
+      <div>
+        <strong>{notice.title}</strong>
+        <span>{notice.message}</span>
+      </div>
+      <button onClick={onClose} type="button" aria-label="Fechar aviso">×</button>
+    </aside>
+  );
+}
+
+function BaOpening({ company, profiles, onOpenBa }: { company: Company; profiles: typeof demoProfiles; onOpenBa: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Gestao de pacientes</span>
+          <span className="eyebrow">Recepcao · ponto inicial do atendimento</span>
+          <h1>Abertura de BA</h1>
+          <p>Identifique ou crie o ProntuárioÚnico, gere o BA e coloque o paciente em Aguardando atendimento.</p>
+        </div>
+        <ClipboardPlus size={28} />
+      </div>
+
+      <form className="panel-form ba-form" onSubmit={onOpenBa}>
+        <section>
+          <h2>Identificacao</h2>
+          <div className="form-grid">
+            <label>Nome completo<input name="fullName" required /></label>
+            <label>CPF<input name="cpf" /></label>
+            <label>Data de nascimento<input name="birthDate" type="date" /></label>
+            <label>Idade<input name="age" type="number" min="0" /></label>
+            <label>Profissao<input name="profession" /></label>
+            <label>Telefone<input name="phone" /></label>
+            <label>WhatsApp<input name="whatsapp" /></label>
+            <label>E-mail<input name="email" type="email" /></label>
+          </div>
+          <label>Endereco<input name="address" /></label>
+        </section>
+
+        <section>
+          <h2>Dados do BA</h2>
+          <div className="form-grid">
+            <label>Tipo de atendimento<input name="attendanceType" defaultValue="Atendimento podologico" /></label>
+            <label>
+              Primeira avaliacao ou retorno
+              <select name="visitKind" defaultValue="first_evaluation">
+                <option value="first_evaluation">Primeira avaliacao</option>
+                <option value="return">Retorno</option>
+              </select>
+            </label>
+            <label>
+              Clinica/empresa vinculada
+              <input value={company.displayName} readOnly />
+            </label>
+            <label>
+              Profissional responsavel
+              <select name="professionalId" defaultValue="">
+                <option value="">Definir depois</option>
+                {profiles.filter((item) => item.role === "professional" || item.role === "company_admin").map((item) => (
+                  <option key={item.id} value={item.id}>{item.fullName}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Prioridade
+              <select name="priority" defaultValue="normal">
+                <option value="low">Baixa</option>
+                <option value="normal">Normal</option>
+                <option value="high">Alta</option>
+                <option value="urgent">Urgente</option>
+              </select>
+            </label>
+          </div>
+          <label>Queixa principal inicial<textarea name="chiefComplaint" /></label>
+          <label>Observacoes iniciais<textarea name="initialNotes" /></label>
+        </section>
+
+        <button className="primary-button" type="submit"><ClipboardPlus size={18} /> Abrir BA</button>
+      </form>
+    </div>
+  );
+}
+
+function Patients({
+  patients,
+  attendances,
+  profiles,
+  onSelect,
+  onStartAttendance,
+  onContinueAttendance,
+  onExportBa
+}: {
+  patients: Patient[];
+  attendances: Attendance[];
+  profiles: typeof demoProfiles;
+  onSelect: (id: string) => void;
+  onStartAttendance: (attendanceId: string) => void;
+  onContinueAttendance: (attendanceId: string) => void;
+  onExportBa: (attendance: Attendance) => void;
+}) {
+  const queue = patients.map((patient) => {
+    const patientAttendances = attendances
+      .filter((attendance) => attendance.patientId === patient.id)
+      .sort((a, b) => new Date(b.openedAt ?? b.scheduledAt).getTime() - new Date(a.openedAt ?? a.scheduledAt).getTime());
+    const lastBa = patientAttendances[0];
+    return { patient, lastBa, lastAttendance: patientAttendances.find((attendance) => attendance.status === "completed") };
+  });
+
+  return (
+    <div className="page-stack">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Fila hospitalar adaptada para podologia</span>
           <h1>Pacientes</h1>
-          <p>Cadastro, dados clinicos, historico, financeiro relacionado e relatorios.</p>
+          <p>Tela operacional com status de BA e acoes de atendimento. Historico completo fica no ProntuárioÚnico, historico do paciente ou HCI autorizado.</p>
         </div>
         <div className="search-box"><Search size={17} /><input placeholder="Buscar paciente, CPF ou telefone" /></div>
       </div>
 
-      <section className="split-grid split-grid--wide">
-        <div className="data-panel">
-          <Table
-            headers={["Nome", "WhatsApp", "Queixa principal", "Cadastro"]}
-            rows={patients.map((patient) => [
-              <button className="link-button" onClick={() => onSelect(patient.id)} type="button">{patient.fullName}</button>,
-              patient.whatsapp,
-              patient.clinical.chiefComplaint,
-              formatDate(patient.createdAt)
-            ])}
-          />
-        </div>
-
-        <form className="panel-form" onSubmit={onAddPatient}>
-          <h2>Novo paciente</h2>
-          <label>Nome completo<input name="fullName" required /></label>
-          <label>CPF<input name="cpf" required /></label>
-          <label>Data de nascimento<input name="birthDate" required type="date" /></label>
-          <label>WhatsApp<input name="whatsapp" required /></label>
-          <label>Endereco<input name="address" required /></label>
-          <label>Profissao<input name="profession" /></label>
-          <label>Queixa principal<textarea name="chiefComplaint" required /></label>
-          <label>Historico de doencas<textarea name="diseaseHistory" /></label>
-          <div className="checkbox-row">
-            <label><input name="diabetes" type="checkbox" /> Diabetes</label>
-            <label><input name="hypertension" type="checkbox" /> Hipertensao</label>
-          </div>
-          <label>Medicamentos<input name="medications" /></label>
-          <label>Alergias<input name="allergies" /></label>
-          <label>Observacoes clinicas<textarea name="clinicalNotes" /></label>
-          <button className="primary-button" type="submit"><UserRoundPlus size={18} /> Cadastrar paciente</button>
-        </form>
+      <section className="data-panel">
+        <Table
+          headers={["Paciente", "ProntuárioÚnico", "Contato", "Idade", "Status", "Ultimo BA", "Abertura", "Ultimo atendimento", "Profissional", "Acoes"]}
+          rows={queue.map(({ patient, lastBa, lastAttendance }) => [
+            <button className="link-button" onClick={() => onSelect(patient.id)} type="button">{patient.fullName}</button>,
+            patient.uniqueRecordNumber,
+            <span>{patient.cpf ? `CPF ${patient.cpf}` : "CPF oculto"}<br />{patient.whatsapp || patient.phone}</span>,
+            calculateAge(patient.birthDate),
+            <span className={`status-badge status-badge--${lastBa?.status ?? "ba_open"}`}>{statusLabel(lastBa?.status ?? "ba_open")}</span>,
+            lastBa?.baNumber ?? "Sem BA aberto",
+            lastBa ? formatDateTime(lastBa.openedAt ?? lastBa.scheduledAt) : "-",
+            lastAttendance ? formatDateTime(lastAttendance.finishedAt ?? lastAttendance.scheduledAt) : "-",
+            lastBa?.professionalId ? profiles.find((profile) => profile.id === lastBa.professionalId)?.fullName ?? "Profissional vinculado" : "A definir",
+            <div className="table-actions">
+              {lastBa?.status === "waiting" && (
+                <button className="primary-button" onClick={() => onStartAttendance(lastBa.id)} type="button"><PlayCircle size={17} /> Iniciar atendimento</button>
+              )}
+              {lastBa?.status === "in_progress" && (
+                <button className="primary-button" onClick={() => onContinueAttendance(lastBa.id)} type="button"><ClipboardEdit size={17} /> Continuar atendimento</button>
+              )}
+              {lastBa?.status === "completed" && (
+                <>
+                  <button className="ghost-action" onClick={() => onSelect(patient.id)} type="button"><FileText size={17} /> Ver resumo do BA</button>
+                  <button className="ghost-action" onClick={() => onExportBa(lastBa)} type="button"><Download size={17} /> Exportar BA</button>
+                </>
+              )}
+            </div>
+          ])}
+        />
       </section>
     </div>
   );
@@ -488,12 +693,14 @@ function Patients({ patients, onSelect, onAddPatient }: { patients: Patient[]; o
 function PatientProfile({
   patient,
   attendances,
+  activeAttendanceId,
   uniqueMedicalRecord,
   anamneses,
   footSensitivityMaps,
   attendanceImages,
   onGenerateReport,
   onCreateAttendance,
+  onFinishAttendance,
   onSaveAnamnesis,
   onSaveFootSensitivity,
   company,
@@ -501,18 +708,23 @@ function PatientProfile({
 }: {
   patient: Patient;
   attendances: Attendance[];
+  activeAttendanceId: string | null;
   uniqueMedicalRecord?: UniqueMedicalRecord;
   anamneses: AnamnesisRecord[];
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
   onGenerateReport: () => void;
   onCreateAttendance: (patient: Patient) => void;
+  onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
   onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
   company: Company;
   professionalId: string;
 }) {
-  const currentAttendance = attendances[0];
+  const currentAttendance =
+    attendances.find((attendance) => attendance.id === activeAttendanceId) ??
+    attendances.find((attendance) => attendance.status === "in_progress") ??
+    attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
   const currentFootMaps = currentAttendance ? footSensitivityMaps.filter((entry) => entry.attendanceId === currentAttendance.id) : [];
 
@@ -542,8 +754,16 @@ function PatientProfile({
           <div><span>Paciente</span><strong>{patient.fullName}</strong></div>
           <div><span>ProntuárioÚnico</span><strong>{patient.uniqueRecordNumber}</strong></div>
           <div><span>BA atual</span><strong>{currentAttendance.baNumber}</strong></div>
-          <div><span>Data</span><strong>{formatDateTime(currentAttendance.scheduledAt)}</strong></div>
-          <div><span>Profissional</span><strong>Dra. Marina Costa</strong></div>
+          <div><span>Status</span><strong>{statusLabel(currentAttendance.status)}</strong></div>
+          <div><span>Abertura</span><strong>{formatDateTime(currentAttendance.openedAt ?? currentAttendance.scheduledAt)}</strong></div>
+          <div><span>Inicio</span><strong>{currentAttendance.startedAt ? formatDateTime(currentAttendance.startedAt) : "Nao iniciado"}</strong></div>
+          <div><span>Profissional</span><strong>{currentAttendance.professionalId ? "Dra. Marina Costa" : "A definir"}</strong></div>
+          <div><span>Clinica</span><strong>{company.displayName}</strong></div>
+          {currentAttendance.status === "in_progress" && (
+            <button className="primary-button" onClick={() => onFinishAttendance(currentAttendance.id)} type="button">
+              <CheckCircle2 size={17} /> Finalizar atendimento
+            </button>
+          )}
         </section>
       )}
 
@@ -636,7 +856,7 @@ function Schedule({ attendances, patients }: { attendances: Attendance[]; patien
         rows={attendances.map((attendance) => [
           formatDateTime(attendance.scheduledAt),
           patientName(patients, attendance.patientId),
-          attendance.status === "scheduled" ? "Confirmar atendimento" : "Consultar evolucao",
+          attendance.status === "waiting" ? "Iniciar atendimento" : "Consultar evolucao",
           statusLabel(attendance.status)
         ])}
       />
@@ -973,13 +1193,26 @@ function formatDateTime(date: string) {
 
 function statusLabel(status: Attendance["status"]) {
   const labels: Record<Attendance["status"], string> = {
-    scheduled: "Agendado",
+    ba_open: "BA aberto",
+    waiting: "Aguardando atendimento",
     in_progress: "Em atendimento",
+    paused: "Atendimento pausado",
     completed: "Finalizado",
     cancelled: "Cancelado",
     no_show: "Faltou"
   };
   return labels[status];
+}
+
+function calculateAge(birthDate?: string) {
+  if (!birthDate) return "-";
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return "-";
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return `${age} anos`;
 }
 
 function paymentLabel(method: FinancialTransaction["paymentMethod"]) {

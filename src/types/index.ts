@@ -10,11 +10,20 @@ export type PaymentMethod = "pix" | "cash" | "credit_card" | "debit_card" | "ins
 
 export type BodySide = "right" | "left" | "bilateral" | "not_applicable";
 
-export type AttendanceStatus = "draft" | "in_progress" | "completed" | "cancelled";
+export type AttendanceStatus =
+  | "ba_open"
+  | "waiting"
+  | "in_progress"
+  | "paused"
+  | "completed"
+  | "cancelled"
+  | "no_show";
 
 export type FootSide = "right" | "left";
 
-export type SensitivityStatus = "present" | "reduced" | "absent";
+export type SensitivityStatus = "present" | "reduced" | "absent" | "not_tested";
+
+export type AnamnesisStepStatus = "not_started" | "in_progress" | "partially_filled" | "completed" | "skipped";
 
 export type ConsentStatus = "authorized" | "unauthorized" | "revoked" | "pending";
 
@@ -119,11 +128,20 @@ export type Attendance = {
   uniqueMedicalRecordId: string;
   uniqueRecordNumber: string;
   baNumber: string;
-  professionalId: string;
+  professionalId?: string;
   appointmentId?: string;
+  openedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  openedBy?: string;
+  startedBy?: string;
+  finishedBy?: string;
   scheduledAt: string;
   attendanceDate?: string;
   type: string;
+  visitKind?: "first_evaluation" | "return";
+  initialNotes?: string;
+  priority?: "low" | "normal" | "high" | "urgent";
   procedure: string;
   complaint: string;
   clinicalEvaluation: string;
@@ -131,8 +149,10 @@ export type Attendance = {
   productsUsed: string[];
   notes: string;
   recommendedReturn?: string;
-  status: AppointmentStatus;
+  status: AttendanceStatus;
   value: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AnamnesisFormData = Record<string, string | number | boolean | string[] | Record<string, unknown> | null | undefined>;
@@ -147,6 +167,7 @@ export type AnamnesisRecord = {
   baNumber: string;
   formData: AnamnesisFormData;
   currentStep: number;
+  stepStatuses: Record<string, AnamnesisStepStatus>;
   isCompleted: boolean;
   createdBy: string;
   createdAt: string;
@@ -163,6 +184,7 @@ export type FootSensitivityMap = {
   baNumber: string;
   footSide: FootSide;
   regionKey: string;
+  pointKey: string;
   coordinates: { x: number; y: number; z?: number };
   sensitivityStatus: SensitivityStatus;
   notes: string;
