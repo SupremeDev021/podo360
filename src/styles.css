@@ -601,6 +601,57 @@ th {
   font-size: 0.88rem;
 }
 
+.field-with-action span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.inline-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-weight: 700;
+}
+
+.search-results-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+  display: grid;
+  gap: 12px;
+}
+
+.search-result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.search-result-list button {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.search-result-list button:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface-strong);
+}
+
+.search-result-list span,
+.search-result-list small {
+  color: var(--color-muted);
+}
+
 input,
 textarea,
 select {
@@ -647,6 +698,10 @@ textarea {
   margin: 0;
   display: grid;
   gap: 12px;
+}
+
+.definition-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .definition-grid div {
@@ -751,6 +806,25 @@ textarea {
 
 .data-panel h3 {
   margin: 0 0 10px;
+}
+
+.empty-state {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 28px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-muted);
+}
+
+.empty-state h2,
+.empty-state p {
+  margin: 0;
 }
 
 .compact-list {
@@ -1375,6 +1449,10 @@ textarea {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .definition-grid--three {
     grid-template-columns: 1fr;
   }
 

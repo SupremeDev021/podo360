@@ -86,6 +86,17 @@ type AppNotice = {
   tone?: "success" | "info" | "warning" | "danger";
 };
 
+type PatientTabKey = "patient-data" | "unique-record" | "anamnesis" | "wound-images" | "image-evolution" | "reports";
+
+const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
+  { key: "patient-data", label: "Dados do paciente" },
+  { key: "unique-record", label: "ProntuárioÚnico" },
+  { key: "anamnesis", label: "Anamnese modular" },
+  { key: "wound-images", label: "Imagens da ferida" },
+  { key: "image-evolution", label: "Comparativo de evolução" },
+  { key: "reports", label: "Relatórios" }
+];
+
 export function App() {
   const [company, setCompany] = useState<Company>(demoCompany);
   const [signedIn, setSignedIn] = useState(false);
@@ -261,8 +272,10 @@ export function App() {
     const birthDate = String(form.get("birthDate"));
     const phone = String(form.get("phone"));
     const whatsapp = String(form.get("whatsapp") || phone);
+    const uniqueRecordNumber = String(form.get("uniqueRecordNumber") || "");
     const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, demoHciMatches);
     const existingPatient = patients.find((patient) =>
+      normalizeText(patient.uniqueRecordNumber) === normalizeText(uniqueRecordNumber) ||
       normalizeDigits(patient.cpf) === normalizeDigits(cpf) ||
       (normalizeText(patient.fullName) === normalizeText(fullName) && patient.birthDate === birthDate)
     );
@@ -326,7 +339,13 @@ export function App() {
       complaint: String(form.get("chiefComplaint") || ""),
       initialNotes: String(form.get("initialNotes") || ""),
       priority: String(form.get("priority") || "normal") as Attendance["priority"],
-      notes: `Clinica vinculada: ${company.displayName}. ${String(form.get("initialNotes") || "")}`.trim()
+      notes: [
+        `Clinica vinculada: ${company.displayName}.`,
+        String(form.get("attendanceOrigin") || "") ? `Origem: ${String(form.get("attendanceOrigin"))}.` : "",
+        String(form.get("payerType") || "") ? `Pagamento: ${String(form.get("payerType"))}.` : "",
+        String(form.get("openingReason") || "") ? `Motivo: ${String(form.get("openingReason"))}.` : "",
+        String(form.get("initialNotes") || "")
+      ].filter(Boolean).join(" ")
     });
     event.currentTarget.reset();
   }
@@ -374,7 +393,16 @@ export function App() {
     <Layout company={company} profile={profile} activeView={activeView} onViewChange={setActiveView}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {activeView === "dashboard" && <Dashboard dashboard={dashboard} stock={stock} attendances={attendances} patients={patients} />}
-      {activeView === "ba-opening" && <BaOpening company={company} profiles={demoProfiles} onOpenBa={handleOpenBa} />}
+      {activeView === "ba-opening" && (
+        <BaOpening
+          company={company}
+          profiles={demoProfiles}
+          patients={patients}
+          attendances={attendances}
+          onOpenBa={handleOpenBa}
+          onNotify={notify}
+        />
+      )}
       {activeView === "patients" && (
         <Patients
           patients={patients}
@@ -576,7 +604,122 @@ function Toast({ notice, onClose }: { notice: AppNotice; onClose: () => void }) 
   );
 }
 
-function BaOpening({ company, profiles, onOpenBa }: { company: Company; profiles: typeof demoProfiles; onOpenBa: (event: FormEvent<HTMLFormElement>) => void }) {
+type PatientSearchResult = {
+  patient: Patient;
+  lastBa?: Attendance;
+};
+
+function BaOpening({
+  company,
+  profiles,
+  patients,
+  attendances,
+  onOpenBa,
+  onNotify
+}: {
+  company: Company;
+  profiles: typeof demoProfiles;
+  patients: Patient[];
+  attendances: Attendance[];
+  onOpenBa: (event: FormEvent<HTMLFormElement>) => void;
+  onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
+}) {
+  const [patientData, setPatientData] = useState({
+    fullName: "",
+    cpf: "",
+    birthDate: "",
+    age: "",
+    profession: "",
+    phone: "",
+    whatsapp: "",
+    email: "",
+    address: "",
+    uniqueRecordNumber: ""
+  });
+  const [birthDateMessage, setBirthDateMessage] = useState("");
+  const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  function updatePatientField(key: keyof typeof patientData, value: string) {
+    if (key === "birthDate") {
+      const result = calculateAgeValue(value);
+      setBirthDateMessage(result.message);
+      setPatientData((current) => ({ ...current, birthDate: value, age: result.ageText }));
+      if (result.message) onNotify("Data de nascimento invalida", result.message, "warning");
+      return;
+    }
+    setPatientData((current) => ({ ...current, [key]: value }));
+  }
+
+  function searchPatients() {
+    const query = normalizeText(patientData.fullName);
+    const cpf = normalizeDigits(patientData.cpf);
+    const phone = normalizeDigits(patientData.whatsapp || patientData.phone);
+    const record = normalizeText(patientData.uniqueRecordNumber);
+
+    if (!query && !cpf && !phone && !record) {
+      onNotify("Informe um dado para busca", "Digite nome, CPF, telefone, WhatsApp ou ProntuárioÚnico.", "warning");
+      return;
+    }
+
+    const results = patients
+      .filter((patient) => {
+        const matchesName = query && normalizeText(patient.fullName).includes(query);
+        const matchesCpf = cpf && normalizeDigits(patient.cpf).includes(cpf);
+        const matchesPhone = phone && normalizeDigits(patient.whatsapp || patient.phone).includes(phone);
+        const matchesRecord = record && normalizeText(patient.uniqueRecordNumber).includes(record);
+        return matchesName || matchesCpf || matchesPhone || matchesRecord;
+      })
+      .map((patient) => ({
+        patient,
+        lastBa: attendances
+          .filter((attendance) => attendance.patientId === patient.id)
+          .sort((a, b) => new Date(b.openedAt ?? b.scheduledAt).getTime() - new Date(a.openedAt ?? a.scheduledAt).getTime())[0]
+      }));
+
+    setSearchResults(results);
+    setSearchOpen(true);
+    if (!results.length) {
+      onNotify("Nenhum paciente encontrado", "Continue o cadastro para criar um novo ProntuárioÚnico.", "info");
+    }
+  }
+
+  function selectPatient(patient: Patient) {
+    setPatientData({
+      fullName: patient.fullName,
+      cpf: patient.cpf,
+      birthDate: patient.birthDate,
+      age: calculateAge(patient.birthDate),
+      profession: patient.profession || "",
+      phone: patient.phone,
+      whatsapp: patient.whatsapp,
+      email: patient.email || "",
+      address: patient.address,
+      uniqueRecordNumber: patient.uniqueRecordNumber
+    });
+    setBirthDateMessage("");
+    setSearchOpen(false);
+    onNotify("Paciente encontrado", "Dados do paciente preenchidos automaticamente. Preencha os Dados do BA manualmente.", "success");
+  }
+
+  function handleBaSubmit(event: FormEvent<HTMLFormElement>) {
+    onOpenBa(event);
+    setPatientData({
+      fullName: "",
+      cpf: "",
+      birthDate: "",
+      age: "",
+      profession: "",
+      phone: "",
+      whatsapp: "",
+      email: "",
+      address: "",
+      uniqueRecordNumber: ""
+    });
+    setBirthDateMessage("");
+    setSearchOpen(false);
+  }
+
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -588,29 +731,58 @@ function BaOpening({ company, profiles, onOpenBa }: { company: Company; profiles
         <ClipboardPlus size={28} />
       </div>
 
-      <form className="panel-form ba-form" onSubmit={onOpenBa}>
+      <form className="panel-form ba-form" onSubmit={handleBaSubmit}>
         <section>
-          <h2>Identificacao</h2>
+          <h2>Dados do Paciente</h2>
           <div className="form-grid">
-            <label>Nome completo<input name="fullName" required /></label>
-            <label>CPF<input name="cpf" /></label>
-            <label>Data de nascimento<input name="birthDate" type="date" /></label>
-            <label>Idade<input name="age" type="number" min="0" /></label>
-            <label>Profissao<input name="profession" /></label>
-            <label>Telefone<input name="phone" /></label>
-            <label>WhatsApp<input name="whatsapp" /></label>
-            <label>E-mail<input name="email" type="email" /></label>
+            <label className="field-with-action">Nome completo
+              <span>
+                <input name="fullName" required value={patientData.fullName} onChange={(event) => updatePatientField("fullName", event.target.value)} />
+                <button className="icon-button" onClick={searchPatients} type="button" title="Pesquisar paciente existente"><Search size={18} /></button>
+              </span>
+            </label>
+            <label>CPF<input name="cpf" value={patientData.cpf} onChange={(event) => updatePatientField("cpf", event.target.value)} /></label>
+            <label>Data de nascimento<input name="birthDate" type="date" value={patientData.birthDate} onChange={(event) => updatePatientField("birthDate", event.target.value)} /></label>
+            <label>Idade<input name="age" min="0" readOnly value={patientData.age} /></label>
+            <label>Profissao<input name="profession" value={patientData.profession} onChange={(event) => updatePatientField("profession", event.target.value)} /></label>
+            <label>Telefone<input name="phone" value={patientData.phone} onChange={(event) => updatePatientField("phone", event.target.value)} /></label>
+            <label>WhatsApp<input name="whatsapp" value={patientData.whatsapp} onChange={(event) => updatePatientField("whatsapp", event.target.value)} /></label>
+            <label>E-mail<input name="email" type="email" value={patientData.email} onChange={(event) => updatePatientField("email", event.target.value)} /></label>
+            <label>ProntuárioÚnico<input name="uniqueRecordNumber" value={patientData.uniqueRecordNumber} onChange={(event) => updatePatientField("uniqueRecordNumber", event.target.value)} placeholder="Preenchido ao selecionar paciente existente" /></label>
           </div>
-          <label>Endereco<input name="address" /></label>
+          <label>Endereco<input name="address" value={patientData.address} onChange={(event) => updatePatientField("address", event.target.value)} /></label>
+          {birthDateMessage && <p className="inline-warning">{birthDateMessage}</p>}
+
+          {searchOpen && (
+            <div className="search-results-panel">
+              <div className="section-heading section-heading--compact">
+                <div>
+                  <h3>Resultados da busca</h3>
+                  <p>{searchResults.length ? "Selecione um paciente para preencher somente os Dados do Paciente." : "Nenhum paciente encontrado. Continue o cadastro para criar um novo ProntuárioÚnico."}</p>
+                </div>
+                <button className="ghost-action" onClick={() => setSearchOpen(false)} type="button">Fechar</button>
+              </div>
+              <div className="search-result-list">
+                {searchResults.map(({ patient, lastBa }) => (
+                  <button key={patient.id} onClick={() => selectPatient(patient)} type="button">
+                    <strong>{patient.fullName}</strong>
+                    <span>CPF {maskCpf(patient.cpf)} · {formatDate(patient.birthDate)} · {calculateAge(patient.birthDate)}</span>
+                    <small>{patient.whatsapp || patient.phone} · ProntuárioÚnico {patient.uniqueRecordNumber} · Ultimo BA {lastBa?.baNumber ?? "sem BA"}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section>
           <h2>Dados do BA</h2>
           <div className="form-grid">
-            <label>Tipo de atendimento<input name="attendanceType" defaultValue="Atendimento podologico" /></label>
+            <label>Tipo de atendimento<input name="attendanceType" placeholder="Ex.: avaliacao podologica" /></label>
             <label>
               Primeira avaliacao ou retorno
-              <select name="visitKind" defaultValue="first_evaluation">
+              <select name="visitKind" defaultValue="">
+                <option value="">Selecione</option>
                 <option value="first_evaluation">Primeira avaliacao</option>
                 <option value="return">Retorno</option>
               </select>
@@ -630,16 +802,21 @@ function BaOpening({ company, profiles, onOpenBa }: { company: Company; profiles
             </label>
             <label>
               Prioridade
-              <select name="priority" defaultValue="normal">
+              <select name="priority" defaultValue="">
+                <option value="">Selecione</option>
                 <option value="low">Baixa</option>
                 <option value="normal">Normal</option>
                 <option value="high">Alta</option>
                 <option value="urgent">Urgente</option>
               </select>
             </label>
+            <label>Origem do atendimento<input name="attendanceOrigin" placeholder="Ex.: recepcao, WhatsApp, encaminhamento" /></label>
+            <label>Convenio ou particular<input name="payerType" placeholder="Ex.: particular" /></label>
+            <label>Data/hora de abertura<input value={new Date().toLocaleString("pt-BR")} readOnly /></label>
           </div>
           <label>Queixa principal inicial<textarea name="chiefComplaint" /></label>
           <label>Observacoes iniciais<textarea name="initialNotes" /></label>
+          <label>Motivo da abertura do BA<textarea name="openingReason" /></label>
         </section>
 
         <button className="primary-button" type="submit"><ClipboardPlus size={18} /> Abrir BA</button>
@@ -753,11 +930,60 @@ function PatientProfile({
   company: Company;
   professionalId: string;
 }) {
+  const [activePatientTab, setActivePatientTab] = useState<PatientTabKey>("patient-data");
   const currentAttendance =
     attendances.find((attendance) => attendance.id === activeAttendanceId) ??
     attendances.find((attendance) => attendance.status === "in_progress") ??
     attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
+  const anamnesisNode = currentAttendance ? (
+    <AnamnesisWizard
+      patient={patient}
+      record={currentAnamnesis}
+      onSave={onSaveAnamnesis}
+      companyId={company.id}
+      attendanceId={currentAttendance.id}
+      uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+      uniqueRecordNumber={patient.uniqueRecordNumber}
+      baNumber={currentAttendance.baNumber}
+      createdBy={professionalId}
+      footSensitivitySlot={
+        <FootSensitivityMap3D
+          entries={footSensitivityMaps}
+          onSave={onSaveFootSensitivity}
+          patientId={patient.id}
+          companyId={company.id}
+          professionalId={professionalId}
+          attendanceId={currentAttendance.id}
+          uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+          uniqueRecordNumber={patient.uniqueRecordNumber}
+          baNumber={currentAttendance.baNumber}
+        />
+      }
+      woundImagesSlot={
+        <WoundImageModule
+          images={attendanceImages}
+          onSave={onSaveAttendanceImage}
+          patientId={patient.id}
+          companyId={company.id}
+          createdBy={professionalId}
+          attendanceId={currentAttendance.id}
+          uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+          uniqueRecordNumber={patient.uniqueRecordNumber}
+          baNumber={currentAttendance.baNumber}
+        />
+      }
+      imageEvolutionSlot={
+        <ImageEvolutionComparison
+          images={attendanceImages}
+          attendances={attendances}
+          patientId={patient.id}
+          uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
+          onComparativeNote={onSaveComparativeNote}
+        />
+      }
+    />
+  ) : <EmptyState title="Nenhum BA registrado" message="Abra um BA para iniciar a ficha modular de anamnese." />;
 
   return (
     <div className="page-stack">
@@ -775,8 +1001,8 @@ function PatientProfile({
       </section>
 
       <section className="tabs-bar">
-        {["Dados do paciente", "ProntuárioÚnico", "Anamnese modular", "Imagens da ferida", "Comparativo de evolucao", "Relatorios"].map((tab, index) => (
-          <button className={index === 1 ? "is-active" : ""} key={tab} type="button">{tab}</button>
+        {patientTabs.map((tab) => (
+          <button className={activePatientTab === tab.key ? "is-active" : ""} key={tab.key} onClick={() => setActivePatientTab(tab.key)} type="button">{tab.label}</button>
         ))}
       </section>
 
@@ -798,84 +1024,129 @@ function PatientProfile({
         </section>
       )}
 
-      <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} attendanceImages={attendanceImages} />
-
-      {currentAttendance ? (
-        <>
-          <AnamnesisWizard
-            patient={patient}
-            record={currentAnamnesis}
-            onSave={onSaveAnamnesis}
-            companyId={company.id}
-            attendanceId={currentAttendance.id}
-            uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
-            uniqueRecordNumber={patient.uniqueRecordNumber}
-            baNumber={currentAttendance.baNumber}
-            createdBy={professionalId}
-            footSensitivitySlot={
-              <FootSensitivityMap3D
-                entries={footSensitivityMaps}
-                onSave={onSaveFootSensitivity}
-                patientId={patient.id}
-                companyId={company.id}
-                professionalId={professionalId}
-                attendanceId={currentAttendance.id}
-                uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
-                uniqueRecordNumber={patient.uniqueRecordNumber}
-                baNumber={currentAttendance.baNumber}
-              />
-            }
-            woundImagesSlot={
-              <WoundImageModule
-                images={attendanceImages}
-                onSave={onSaveAttendanceImage}
-                patientId={patient.id}
-                companyId={company.id}
-                createdBy={professionalId}
-                attendanceId={currentAttendance.id}
-                uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
-                uniqueRecordNumber={patient.uniqueRecordNumber}
-                baNumber={currentAttendance.baNumber}
-              />
-            }
-            imageEvolutionSlot={
-              <ImageEvolutionComparison
-                images={attendanceImages}
-                attendances={attendances}
-                patientId={patient.id}
-                uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
-                onComparativeNote={onSaveComparativeNote}
-              />
-            }
-          />
-        </>
-      ) : (
+      {activePatientTab === "patient-data" && <PatientDataSection patient={patient} />}
+      {activePatientTab === "unique-record" && <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} attendanceImages={attendanceImages} />}
+      {activePatientTab === "anamnesis" && anamnesisNode}
+      {activePatientTab === "wound-images" && (currentAttendance ? (
+        <WoundImageModule
+          images={attendanceImages}
+          onSave={onSaveAttendanceImage}
+          patientId={patient.id}
+          companyId={company.id}
+          createdBy={professionalId}
+          attendanceId={currentAttendance.id}
+          uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+          uniqueRecordNumber={patient.uniqueRecordNumber}
+          baNumber={currentAttendance.baNumber}
+        />
+      ) : <EmptyState title="Nenhuma imagem cadastrada" message="Abra um BA para anexar imagens da ferida, lesao, unha ou curativo." />)}
+      {activePatientTab === "image-evolution" && (
         <div className="data-panel">
-          <h2>Nenhum BA registrado</h2>
-          <p className="muted">Crie um novo BA para abrir anamnese, sensibilidade, procedimentos, imagens e evolucao.</p>
+          <ImageEvolutionComparison
+            images={attendanceImages}
+            attendances={attendances}
+            patientId={patient.id}
+            uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
+            onComparativeNote={onSaveComparativeNote}
+          />
         </div>
       )}
-
-      <section className="split-grid">
-        <div className="data-panel">
-          <div className="section-heading section-heading--compact">
-            <div><h2>Imagens do atendimento</h2><p>Antes, durante e depois com estrutura para Supabase Storage</p></div>
-          </div>
-          <Table
-            headers={["BA", "Tipo", "Arquivo", "Observacoes"]}
-            rows={attendanceImages.map((image) => [image.baNumber, imageTypeLabel(image.imageType), image.fileUrl, image.notes || ""])}
-          />
-        </div>
-        <div className="data-panel">
-          <h2>Exportacoes</h2>
-          <div className="report-list">
-            <button onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
-            <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
-            <button type="button"><Layers3 size={18} /> Dados legados preservados fora da anamnese</button>
-          </div>
-        </div>
-      </section>
+      {activePatientTab === "reports" && (
+        <ReportsSection
+          patient={patient}
+          currentAttendance={currentAttendance}
+          company={company}
+          attendances={attendances}
+          anamneses={anamneses}
+          footSensitivityMaps={footSensitivityMaps}
+          attendanceImages={attendanceImages}
+          onGenerateReport={onGenerateReport}
+        />
+      )}
     </div>
+  );
+}
+
+function PatientDataSection({ patient }: { patient: Patient }) {
+  return (
+    <section className="data-panel">
+      <div className="section-heading section-heading--compact">
+        <div>
+          <h2>Dados do paciente</h2>
+          <p>Dados cadastrais operacionais. Historico clinico completo permanece no ProntuárioÚnico.</p>
+        </div>
+        <Users size={20} />
+      </div>
+      <dl className="definition-grid definition-grid--three">
+        <div><dt>Nome completo</dt><dd>{patient.fullName}</dd></div>
+        <div><dt>CPF</dt><dd>{patient.cpf || "Nao informado"}</dd></div>
+        <div><dt>Data de nascimento</dt><dd>{patient.birthDate ? formatDate(patient.birthDate) : "Nao informada"}</dd></div>
+        <div><dt>Idade</dt><dd>{calculateAge(patient.birthDate)}</dd></div>
+        <div><dt>Profissao</dt><dd>{patient.profession || "Nao informada"}</dd></div>
+        <div><dt>Telefone</dt><dd>{patient.phone || "Nao informado"}</dd></div>
+        <div><dt>WhatsApp</dt><dd>{patient.whatsapp || "Nao informado"}</dd></div>
+        <div><dt>E-mail</dt><dd>{patient.email || "Nao informado"}</dd></div>
+        <div><dt>Endereco</dt><dd>{patient.address || "Nao informado"}</dd></div>
+        <div><dt>ProntuárioÚnico</dt><dd>{patient.uniqueRecordNumber}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
+function EmptyState({ title, message }: { title: string; message: string }) {
+  return (
+    <section className="empty-state">
+      <FileText size={28} />
+      <h2>{title}</h2>
+      <p>{message}</p>
+    </section>
+  );
+}
+
+function ReportsSection({
+  patient,
+  currentAttendance,
+  company,
+  attendances,
+  anamneses,
+  footSensitivityMaps,
+  attendanceImages,
+  onGenerateReport
+}: {
+  patient: Patient;
+  currentAttendance?: Attendance;
+  company: Company;
+  attendances: Attendance[];
+  anamneses: AnamnesisRecord[];
+  footSensitivityMaps: FootSensitivityMap[];
+  attendanceImages: AttendanceImage[];
+  onGenerateReport: () => void;
+}) {
+  return (
+    <section className="split-grid">
+      <div className="data-panel">
+        <div className="section-heading section-heading--compact">
+          <div>
+            <h2>Relatórios</h2>
+            <p>Exportacoes e relatorio medico com IA respeitando ProntuárioÚnico, BA e HCI autorizado.</p>
+          </div>
+          <FileText size={20} />
+        </div>
+        <div className="report-list">
+          <button disabled={!currentAttendance} onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
+          <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico completo</button>
+          <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatório médico com IA</button>
+        </div>
+      </div>
+      <div className="data-panel">
+        {attendances.length ? (
+          <Table
+            headers={["BA", "Data", "Status"]}
+            rows={attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), statusLabel(attendance.status)])}
+          />
+        ) : <EmptyState title="Nenhum relatório gerado" message="Este paciente ainda não possui atendimentos para exportacao." />}
+      </div>
+    </section>
   );
 }
 
@@ -1259,14 +1530,26 @@ function statusLabel(status: Attendance["status"]) {
 }
 
 function calculateAge(birthDate?: string) {
-  if (!birthDate) return "-";
+  const result = calculateAgeValue(birthDate);
+  return result.ageText || "-";
+}
+
+function calculateAgeValue(birthDate?: string) {
+  if (!birthDate) return { ageText: "", message: "" };
   const birth = new Date(birthDate);
-  if (Number.isNaN(birth.getTime())) return "-";
+  if (Number.isNaN(birth.getTime())) return { ageText: "", message: "Data de nascimento invalida." };
   const today = new Date();
+  if (birth > today) return { ageText: "", message: "A data de nascimento nao pode ser futura." };
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
-  return `${age} anos`;
+  return { ageText: `${age} anos`, message: "" };
+}
+
+function maskCpf(cpf: string) {
+  const digits = normalizeDigits(cpf);
+  if (digits.length !== 11) return cpf || "Nao informado";
+  return `${digits.slice(0, 3)}.***.***-${digits.slice(9)}`;
 }
 
 function paymentLabel(method: FinancialTransaction["paymentMethod"]) {
