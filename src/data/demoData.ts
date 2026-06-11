@@ -4,6 +4,7 @@ import type {
   Attendance,
   AttendanceImage,
   BodyMapEntry,
+  ClinicalAppointment,
   Company,
   FinancialTransaction,
   FootSensitivityMap,
@@ -369,6 +370,50 @@ export const demoAttendanceImages: AttendanceImage[] = [
     notes: "Imagem pos-procedimento vinculada ao BA.",
     createdBy: "user-1",
     createdAt: "2026-06-09T10:22:00"
+  }
+];
+
+export const demoClinicalAppointments: ClinicalAppointment[] = [
+  {
+    id: "appointment-clinical-1",
+    companyId: demoCompany.id,
+    patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    appointmentDate: "2026-06-11",
+    startTime: "09:00",
+    endTime: "09:50",
+    professionalId: "user-1",
+    procedureType: "Retorno podologico",
+    appointmentType: "return",
+    initialComplaint: "Reavaliacao de halux direito",
+    notes: "Paciente ja possui ProntuárioÚnico.",
+    status: "confirmed",
+    origin: "WhatsApp",
+    createdBy: "user-2",
+    createdAt: "2026-06-10T15:30:00",
+    updatedAt: "2026-06-10T15:30:00"
+  },
+  {
+    id: "appointment-clinical-2",
+    companyId: demoCompany.id,
+    temporaryPatientName: "Marcos Vinicius Prado",
+    temporaryPatientPhone: "(11) 96666-4400",
+    temporaryPatientWhatsapp: "(11) 96666-4400",
+    temporaryPatientEmail: "marcos.prado@email.com",
+    temporaryPatientBirthDate: "1989-08-18",
+    appointmentDate: "2026-06-11",
+    startTime: "11:00",
+    endTime: "11:50",
+    professionalId: "user-1",
+    procedureType: "Primeira avaliacao",
+    appointmentType: "first_evaluation",
+    initialComplaint: "Dor plantar ao caminhar",
+    notes: "Pre-cadastro de agenda. Nao possui ProntuárioÚnico ate a Abertura de BA.",
+    status: "scheduled",
+    origin: "Telefone",
+    createdBy: "user-2",
+    createdAt: "2026-06-10T16:10:00",
+    updatedAt: "2026-06-10T16:10:00"
   }
 ];
 

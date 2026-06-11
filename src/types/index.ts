@@ -2,7 +2,7 @@ export type Role = "super_admin" | "company_admin" | "professional" | "reception
 
 export type PlanStatus = "trial" | "active" | "past_due" | "blocked" | "cancelled";
 
-export type AppointmentStatus = "scheduled" | "in_progress" | "completed" | "cancelled" | "no_show";
+export type AppointmentStatus = "scheduled" | "confirmed" | "waiting_arrival" | "arrived" | "converted_to_ba" | "cancelled" | "no_show" | "rescheduled";
 
 export type PaymentStatus = "paid" | "pending" | "overdue" | "cancelled";
 
@@ -130,6 +130,7 @@ export type Attendance = {
   baNumber: string;
   professionalId?: string;
   appointmentId?: string;
+  convertedFromAppointment?: boolean;
   openedAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -152,6 +153,34 @@ export type Attendance = {
   status: AttendanceStatus;
   value: number;
   createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ClinicalAppointment = {
+  id: string;
+  companyId: string;
+  patientId?: string;
+  uniqueMedicalRecordId?: string;
+  temporaryPatientName?: string;
+  temporaryPatientPhone?: string;
+  temporaryPatientWhatsapp?: string;
+  temporaryPatientEmail?: string;
+  temporaryPatientBirthDate?: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  professionalId?: string;
+  procedureType: string;
+  appointmentType: "first_evaluation" | "return" | "procedure" | "follow_up";
+  initialComplaint: string;
+  notes?: string;
+  status: AppointmentStatus;
+  origin?: string;
+  convertedAttendanceId?: string;
+  convertedAt?: string;
+  convertedBy?: string;
+  createdBy: string;
+  createdAt: string;
   updatedAt?: string;
 };
 

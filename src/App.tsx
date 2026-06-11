@@ -3,6 +3,8 @@ import {
   Boxes,
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
+  CalendarPlus,
   CheckCircle2,
   ClipboardEdit,
   ClipboardPlus,
@@ -37,6 +39,7 @@ import {
   demoAnamneses,
   demoAttendanceImages,
   demoAttendances,
+  demoClinicalAppointments,
   demoCompany,
   demoFinancial,
   demoFootSensitivityMaps,
@@ -54,6 +57,7 @@ import type {
   AnamnesisRecord,
   Attendance,
   AttendanceImage,
+  ClinicalAppointment,
   Company,
   FinancialTransaction,
   FootSensitivityMap,
@@ -88,6 +92,25 @@ type AppNotice = {
 
 type PatientTabKey = "patient-data" | "unique-record" | "anamnesis" | "wound-images" | "image-evolution" | "reports";
 
+type BaOpeningPrefill = {
+  appointmentId: string;
+  patientId?: string;
+  fullName: string;
+  cpf?: string;
+  birthDate?: string;
+  profession?: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  address?: string;
+  uniqueRecordNumber?: string;
+  attendanceType?: string;
+  visitKind?: Attendance["visitKind"];
+  chiefComplaint?: string;
+  origin?: string;
+  initialNotes?: string;
+};
+
 const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
   { key: "patient-data", label: "Dados do paciente" },
   { key: "unique-record", label: "ProntuárioÚnico" },
@@ -103,6 +126,7 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [patients, setPatients] = useState<Patient[]>(demoPatients);
   const [uniqueMedicalRecords, setUniqueMedicalRecords] = useState<UniqueMedicalRecord[]>(demoUniqueMedicalRecords);
+  const [appointments, setAppointments] = useState<ClinicalAppointment[]>(demoClinicalAppointments);
   const [attendances, setAttendances] = useState<Attendance[]>(demoAttendances);
   const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
   const [financial] = useState<FinancialTransaction[]>(demoFinancial);
@@ -114,6 +138,7 @@ export function App() {
   const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
   const [selectedPatientId, setSelectedPatientId] = useState(demoPatients[0].id);
   const [activeAttendanceId, setActiveAttendanceId] = useState<string | null>(demoAttendances[2]?.id ?? null);
+  const [baOpeningPrefill, setBaOpeningPrefill] = useState<BaOpeningPrefill | null>(null);
   const [aiReport, setAiReport] = useState("");
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const profile = demoProfiles[0];
@@ -239,6 +264,8 @@ export function App() {
       uniqueRecordNumber: patient.uniqueRecordNumber,
       baNumber: nextBaNumber,
       professionalId: options?.professionalId,
+      appointmentId: options?.appointmentId,
+      convertedFromAppointment: Boolean(options?.appointmentId),
       openedAt,
       openedBy: profile.id,
       scheduledAt: openedAt,
@@ -258,6 +285,23 @@ export function App() {
     };
 
     setAttendances((current) => [attendance, ...current]);
+    if (attendance.appointmentId) {
+      setAppointments((current) =>
+        current.map((appointment) =>
+          appointment.id === attendance.appointmentId
+            ? {
+                ...appointment,
+                status: "converted_to_ba",
+                convertedAttendanceId: attendance.id,
+                convertedAt: openedAt,
+                convertedBy: profile.id,
+                updatedAt: openedAt
+              }
+            : appointment
+        )
+      );
+      notify("Agendamento convertido em BA", `${attendance.baNumber} foi gerado pela Abertura de BA.`, "success");
+    }
     setSelectedPatientId(patient.id);
     setActiveAttendanceId(attendance.id);
     notify("BA aberto com sucesso", `${attendance.baNumber} entrou como Aguardando atendimento.`, "success");
@@ -339,6 +383,7 @@ export function App() {
       complaint: String(form.get("chiefComplaint") || ""),
       initialNotes: String(form.get("initialNotes") || ""),
       priority: String(form.get("priority") || "normal") as Attendance["priority"],
+      appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
       notes: [
         `Clinica vinculada: ${company.displayName}.`,
         String(form.get("attendanceOrigin") || "") ? `Origem: ${String(form.get("attendanceOrigin"))}.` : "",
@@ -348,6 +393,63 @@ export function App() {
       ].filter(Boolean).join(" ")
     });
     event.currentTarget.reset();
+    setBaOpeningPrefill(null);
+  }
+
+  function handleSaveAppointment(appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) {
+    const now = new Date().toISOString();
+    setAppointments((current) => [
+      {
+        ...appointment,
+        id: `clinical-appointment-${current.length + 1}`,
+        status: "scheduled",
+        createdBy: profile.id,
+        createdAt: now,
+        updatedAt: now
+      },
+      ...current
+    ]);
+    notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou ProntuárioÚnico.", "success");
+  }
+
+  function handleUpdateAppointmentStatus(appointmentId: string, status: ClinicalAppointment["status"]) {
+    const labels: Record<ClinicalAppointment["status"], string> = {
+      scheduled: "Agendamento criado com sucesso",
+      confirmed: "Agendamento confirmado",
+      waiting_arrival: "Aguardando chegada",
+      arrived: "Paciente marcado como chegou",
+      converted_to_ba: "Agendamento convertido em BA",
+      cancelled: "Agendamento cancelado",
+      no_show: "Paciente marcado como faltou",
+      rescheduled: "Agendamento reagendado"
+    };
+    setAppointments((current) => current.map((appointment) => appointment.id === appointmentId ? { ...appointment, status, updatedAt: new Date().toISOString() } : appointment));
+    notify(labels[status], status === "arrived" ? "Continue pela Abertura de BA para gerar BA e ProntuárioÚnico se necessario." : "Status atualizado na Agenda Clínica.", "success");
+  }
+
+  function handleOpenBaFromAppointment(appointment: ClinicalAppointment) {
+    const patient = appointment.patientId ? patients.find((item) => item.id === appointment.patientId) : undefined;
+    setBaOpeningPrefill({
+      appointmentId: appointment.id,
+      patientId: patient?.id,
+      fullName: patient?.fullName ?? appointment.temporaryPatientName ?? "",
+      cpf: patient?.cpf ?? "",
+      birthDate: patient?.birthDate ?? appointment.temporaryPatientBirthDate ?? "",
+      profession: patient?.profession ?? "",
+      phone: patient?.phone ?? appointment.temporaryPatientPhone ?? "",
+      whatsapp: patient?.whatsapp ?? appointment.temporaryPatientWhatsapp ?? "",
+      email: patient?.email ?? appointment.temporaryPatientEmail ?? "",
+      address: patient?.address ?? "",
+      uniqueRecordNumber: patient?.uniqueRecordNumber ?? "",
+      attendanceType: appointment.procedureType,
+      visitKind: appointment.appointmentType === "return" ? "return" : "first_evaluation",
+      chiefComplaint: appointment.initialComplaint,
+      origin: appointment.origin ?? "Agenda Clínica",
+      initialNotes: appointment.notes ?? ""
+    });
+    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, status: item.status === "converted_to_ba" ? item.status : "arrived", updatedAt: new Date().toISOString() } : item));
+    notify("Não é possível gerar BA diretamente pela Agenda", "Dados enviados para Abertura de BA. Confirme a entrada para criar BA.", "info");
+    setActiveView("ba-opening");
   }
 
   function handleStartAttendance(attendanceId: string) {
@@ -399,6 +501,7 @@ export function App() {
           profiles={demoProfiles}
           patients={patients}
           attendances={attendances}
+          prefill={baOpeningPrefill}
           onOpenBa={handleOpenBa}
           onNotify={notify}
         />
@@ -438,7 +541,17 @@ export function App() {
         />
       )}
       {activeView === "attendances" && <Attendances attendances={attendances} patients={patients} />}
-      {activeView === "schedule" && <Schedule attendances={attendances} patients={patients} />}
+      {activeView === "schedule" && (
+        <ClinicalAgendaPage
+          appointments={appointments}
+          patients={patients}
+          profiles={demoProfiles}
+          onSaveAppointment={handleSaveAppointment}
+          onUpdateStatus={handleUpdateAppointmentStatus}
+          onOpenBa={handleOpenBaFromAppointment}
+          onNotify={notify}
+        />
+      )}
       {activeView === "financial" && <Financial financial={financial} />}
       {activeView === "stock" && <Stock stock={stock} />}
       {activeView === "reports" && (
@@ -614,6 +727,7 @@ function BaOpening({
   profiles,
   patients,
   attendances,
+  prefill,
   onOpenBa,
   onNotify
 }: {
@@ -621,6 +735,7 @@ function BaOpening({
   profiles: typeof demoProfiles;
   patients: Patient[];
   attendances: Attendance[];
+  prefill: BaOpeningPrefill | null;
   onOpenBa: (event: FormEvent<HTMLFormElement>) => void;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
@@ -637,8 +752,42 @@ function BaOpening({
     uniqueRecordNumber: ""
   });
   const [birthDateMessage, setBirthDateMessage] = useState("");
+  const [baPrefill, setBaPrefill] = useState({
+    sourceAppointmentId: "",
+    attendanceType: "",
+    visitKind: "",
+    chiefComplaint: "",
+    origin: "",
+    initialNotes: ""
+  });
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!prefill) return;
+    const result = calculateAgeValue(prefill.birthDate);
+    setPatientData({
+      fullName: prefill.fullName,
+      cpf: prefill.cpf || "",
+      birthDate: prefill.birthDate || "",
+      age: result.ageText,
+      profession: prefill.profession || "",
+      phone: prefill.phone || "",
+      whatsapp: prefill.whatsapp || prefill.phone || "",
+      email: prefill.email || "",
+      address: prefill.address || "",
+      uniqueRecordNumber: prefill.uniqueRecordNumber || ""
+    });
+    setBaPrefill({
+      sourceAppointmentId: prefill.appointmentId,
+      attendanceType: prefill.attendanceType || "",
+      visitKind: prefill.visitKind || "",
+      chiefComplaint: prefill.chiefComplaint || "",
+      origin: prefill.origin || "Agenda Clínica",
+      initialNotes: prefill.initialNotes || ""
+    });
+    setBirthDateMessage(result.message);
+  }, [prefill]);
 
   function updatePatientField(key: keyof typeof patientData, value: string) {
     if (key === "birthDate") {
@@ -717,6 +866,7 @@ function BaOpening({
       uniqueRecordNumber: ""
     });
     setBirthDateMessage("");
+    setBaPrefill({ sourceAppointmentId: "", attendanceType: "", visitKind: "", chiefComplaint: "", origin: "", initialNotes: "" });
     setSearchOpen(false);
   }
 
@@ -731,9 +881,12 @@ function BaOpening({
         <ClipboardPlus size={28} />
       </div>
 
-      <form className="panel-form ba-form" onSubmit={handleBaSubmit}>
+      <form className="panel-form ba-form" key={baPrefill.sourceAppointmentId || "manual-ba"} onSubmit={handleBaSubmit}>
         <section>
           <h2>Dados do Paciente</h2>
+          {prefill && !prefill.uniqueRecordNumber && (
+            <p className="inline-info">Este paciente veio da Agenda Clínica e ainda não possui ProntuárioÚnico. Ele será criado somente ao confirmar a Abertura de BA.</p>
+          )}
           <div className="form-grid">
             <label className="field-with-action">Nome completo
               <span>
@@ -777,11 +930,12 @@ function BaOpening({
 
         <section>
           <h2>Dados do BA</h2>
+          <input name="sourceAppointmentId" type="hidden" value={baPrefill.sourceAppointmentId} />
           <div className="form-grid">
-            <label>Tipo de atendimento<input name="attendanceType" placeholder="Ex.: avaliacao podologica" /></label>
+            <label>Tipo de atendimento<input name="attendanceType" defaultValue={baPrefill.attendanceType} placeholder="Ex.: avaliacao podologica" /></label>
             <label>
               Primeira avaliacao ou retorno
-              <select name="visitKind" defaultValue="">
+              <select name="visitKind" defaultValue={baPrefill.visitKind}>
                 <option value="">Selecione</option>
                 <option value="first_evaluation">Primeira avaliacao</option>
                 <option value="return">Retorno</option>
@@ -810,12 +964,12 @@ function BaOpening({
                 <option value="urgent">Urgente</option>
               </select>
             </label>
-            <label>Origem do atendimento<input name="attendanceOrigin" placeholder="Ex.: recepcao, WhatsApp, encaminhamento" /></label>
+            <label>Origem do atendimento<input name="attendanceOrigin" defaultValue={baPrefill.origin} placeholder="Ex.: recepcao, WhatsApp, encaminhamento" /></label>
             <label>Convenio ou particular<input name="payerType" placeholder="Ex.: particular" /></label>
             <label>Data/hora de abertura<input value={new Date().toLocaleString("pt-BR")} readOnly /></label>
           </div>
-          <label>Queixa principal inicial<textarea name="chiefComplaint" /></label>
-          <label>Observacoes iniciais<textarea name="initialNotes" /></label>
+          <label>Queixa principal inicial<textarea name="chiefComplaint" defaultValue={baPrefill.chiefComplaint} /></label>
+          <label>Observacoes iniciais<textarea name="initialNotes" defaultValue={baPrefill.initialNotes} /></label>
           <label>Motivo da abertura do BA<textarea name="openingReason" /></label>
         </section>
 
@@ -1168,25 +1322,258 @@ function Attendances({ attendances, patients }: { attendances: Attendance[]; pat
   );
 }
 
-function Schedule({ attendances, patients }: { attendances: Attendance[]; patients: Patient[] }) {
-  return (
-    <ModulePage eyebrow="Agenda" title="Agenda clinica" description="Visualizacao diaria, semanal e mensal preparada para WhatsApp, Google Agenda e lembretes automaticos.">
-      <div className="filter-row">
-        {["Dia", "Semana", "Mes", "Profissional", "Status"].map((filter, index) => (
-          <button className={index === 1 ? "is-active" : ""} key={filter} type="button">{filter}</button>
-        ))}
-      </div>
-      <Table
-        headers={["Horario", "Paciente", "Acao esperada", "Status"]}
-        rows={attendances.map((attendance) => [
-          formatDateTime(attendance.scheduledAt),
-          patientName(patients, attendance.patientId),
-          attendance.status === "waiting" ? "Iniciar atendimento" : "Consultar evolucao",
-          statusLabel(attendance.status)
-        ])}
-      />
-    </ModulePage>
+function ClinicalAgendaPage({
+  appointments,
+  patients,
+  profiles,
+  onSaveAppointment,
+  onUpdateStatus,
+  onOpenBa,
+  onNotify
+}: {
+  appointments: ClinicalAppointment[];
+  patients: Patient[];
+  profiles: typeof demoProfiles;
+  onSaveAppointment: (appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) => void;
+  onUpdateStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
+  onOpenBa: (appointment: ClinicalAppointment) => void;
+  onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
+}) {
+  const [viewMode, setViewMode] = useState<"day" | "week" | "month" | "list" | "queue">("day");
+  const [patientMode, setPatientMode] = useState<"existing" | "temporary">("existing");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [patientSearch, setPatientSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [professionalFilter, setProfessionalFilter] = useState("all");
+  const [query, setQuery] = useState("");
+
+  const filteredPatients = patients.filter((patient) =>
+    [patient.fullName, patient.cpf, patient.phone, patient.whatsapp, patient.uniqueRecordNumber]
+      .some((value) => normalizeText(value || "").includes(normalizeText(patientSearch)))
   );
+
+  const filteredAppointments = appointments.filter((appointment) => {
+    const displayName = appointment.patientId
+      ? patients.find((patient) => patient.id === appointment.patientId)?.fullName ?? ""
+      : appointment.temporaryPatientName ?? "";
+    const phone = appointment.patientId
+      ? patients.find((patient) => patient.id === appointment.patientId)?.whatsapp ?? ""
+      : appointment.temporaryPatientWhatsapp ?? appointment.temporaryPatientPhone ?? "";
+    const matchesQuery = !query || normalizeText(`${displayName} ${phone}`).includes(normalizeText(query));
+    const matchesStatus = statusFilter === "all" || appointment.status === statusFilter;
+    const matchesProfessional = professionalFilter === "all" || appointment.professionalId === professionalFilter;
+    const matchesQueue = viewMode !== "queue" || ["confirmed", "waiting_arrival", "arrived"].includes(appointment.status);
+    return matchesQuery && matchesStatus && matchesProfessional && matchesQueue;
+  });
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const patient = selectedPatientId ? patients.find((item) => item.id === selectedPatientId) : undefined;
+
+    if (patientMode === "existing" && !patient) {
+      onNotify("Selecione um paciente", "Busque e selecione um paciente existente para vincular o agendamento.", "warning");
+      return;
+    }
+
+    if (patientMode === "temporary") {
+      onNotify("Este paciente ainda não possui ProntuárioÚnico", "Ele será criado somente na Abertura de BA.", "info");
+    } else {
+      onNotify("Paciente existente vinculado ao agendamento", "Nenhum BA foi criado pela Agenda.", "success");
+    }
+
+    onSaveAppointment({
+      companyId: demoCompany.id,
+      patientId: patient?.id,
+      uniqueMedicalRecordId: patient?.uniqueMedicalRecordId,
+      temporaryPatientName: patientMode === "temporary" ? String(form.get("temporaryPatientName") || "") : undefined,
+      temporaryPatientPhone: patientMode === "temporary" ? String(form.get("temporaryPatientPhone") || "") : undefined,
+      temporaryPatientWhatsapp: patientMode === "temporary" ? String(form.get("temporaryPatientWhatsapp") || "") : undefined,
+      temporaryPatientEmail: patientMode === "temporary" ? String(form.get("temporaryPatientEmail") || "") : undefined,
+      temporaryPatientBirthDate: patientMode === "temporary" ? String(form.get("temporaryPatientBirthDate") || "") : undefined,
+      appointmentDate: String(form.get("appointmentDate") || new Date().toISOString().slice(0, 10)),
+      startTime: String(form.get("startTime") || "09:00"),
+      endTime: String(form.get("endTime") || "09:50"),
+      professionalId: String(form.get("professionalId") || ""),
+      procedureType: String(form.get("procedureType") || "Atendimento podologico"),
+      appointmentType: String(form.get("appointmentType") || "first_evaluation") as ClinicalAppointment["appointmentType"],
+      initialComplaint: String(form.get("initialComplaint") || ""),
+      notes: String(form.get("notes") || ""),
+      origin: String(form.get("origin") || "Recepcao")
+    });
+    event.currentTarget.reset();
+    setSelectedPatientId("");
+    setPatientSearch("");
+  }
+
+  return (
+    <div className="page-stack">
+      <section className="hero-panel hero-panel--tech">
+        <div>
+          <span className="eyebrow">Agenda Clínica</span>
+          <h1>Agenda inteligente da clínica</h1>
+          <p>Reserve horários, acompanhe chegadas e envie dados para a Abertura de BA sem gerar BA ou ProntuárioÚnico antes da entrada clínica.</p>
+        </div>
+        <CalendarDays size={40} />
+      </section>
+
+      <section className="agenda-grid">
+        <form className="panel-form agenda-form" onSubmit={handleSubmit}>
+          <div className="section-heading section-heading--compact">
+            <div><h2>Novo agendamento</h2><p>Escolha paciente existente ou pré-cadastre um paciente novo.</p></div>
+            <CalendarPlus size={20} />
+          </div>
+
+          <div className="segmented segmented--light">
+            <button className={patientMode === "existing" ? "is-active" : ""} onClick={() => setPatientMode("existing")} type="button">Paciente existente</button>
+            <button className={patientMode === "temporary" ? "is-active" : ""} onClick={() => setPatientMode("temporary")} type="button">Novo paciente</button>
+          </div>
+
+          {patientMode === "existing" ? (
+            <div className="search-results-panel">
+              <label>Buscar paciente<input value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} placeholder="Nome, CPF, telefone ou ProntuárioÚnico" /></label>
+              <div className="search-result-list search-result-list--compact">
+                {filteredPatients.slice(0, 4).map((patient) => (
+                  <button className={selectedPatientId === patient.id ? "is-selected" : ""} key={patient.id} onClick={() => setSelectedPatientId(patient.id)} type="button">
+                    <strong>{patient.fullName}</strong>
+                    <small>{patient.uniqueRecordNumber} · {patient.whatsapp}</small>
+                  </button>
+                ))}
+                {!filteredPatients.length && <p className="muted">Nenhum paciente encontrado.</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="temporary-banner">
+              Este agendamento ainda não cria ProntuárioÚnico. O ProntuárioÚnico será criado somente na Abertura de BA.
+            </div>
+          )}
+
+          {patientMode === "temporary" && (
+            <div className="form-grid form-grid--two">
+              <label>Nome completo<input name="temporaryPatientName" /></label>
+              <label>Telefone<input name="temporaryPatientPhone" /></label>
+              <label>WhatsApp<input name="temporaryPatientWhatsapp" /></label>
+              <label>E-mail<input name="temporaryPatientEmail" type="email" /></label>
+              <label>Data de nascimento<input name="temporaryPatientBirthDate" type="date" /></label>
+            </div>
+          )}
+
+          <div className="form-grid form-grid--two">
+            <label>Data<input name="appointmentDate" defaultValue={new Date().toISOString().slice(0, 10)} type="date" /></label>
+            <label>Inicio<input name="startTime" defaultValue="09:00" type="time" /></label>
+            <label>Fim<input name="endTime" defaultValue="09:50" type="time" /></label>
+            <label>Profissional<select name="professionalId">{profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
+            <label>Tipo de atendimento<input name="procedureType" placeholder="Ex.: Avaliacao podologica" /></label>
+            <label>Agenda<select name="appointmentType" defaultValue="first_evaluation"><option value="first_evaluation">Primeira avaliacao</option><option value="return">Retorno</option><option value="procedure">Procedimento</option><option value="follow_up">Acompanhamento</option></select></label>
+          </div>
+          <label>Queixa/resumo inicial<textarea name="initialComplaint" /></label>
+          <label>Origem<input name="origin" placeholder="WhatsApp, telefone, recepcao" /></label>
+          <label>Observacoes<textarea name="notes" /></label>
+          <button className="primary-button" type="submit"><CalendarPlus size={18} /> Criar agendamento</button>
+        </form>
+
+        <section className="data-panel">
+          <div className="section-heading section-heading--compact">
+            <div><h2>Agenda Clínica</h2><p>Visualizacoes e filtros operacionais.</p></div>
+          </div>
+          <div className="filter-row">
+            {(["day", "week", "month", "list", "queue"] as const).map((mode) => (
+              <button className={viewMode === mode ? "is-active" : ""} key={mode} onClick={() => setViewMode(mode)} type="button">{agendaViewLabel(mode)}</button>
+            ))}
+          </div>
+          <div className="filter-row filter-row--dense agenda-filters">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou telefone" />
+            <select value={professionalFilter} onChange={(event) => setProfessionalFilter(event.target.value)}>
+              <option value="all">Todos os profissionais</option>
+              {profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
+            </select>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Todos os status</option>
+              {(["scheduled", "confirmed", "waiting_arrival", "arrived", "converted_to_ba", "cancelled", "no_show", "rescheduled"] as const).map((status) => <option key={status} value={status}>{appointmentStatusLabel(status)}</option>)}
+            </select>
+          </div>
+          <div className="appointment-list">
+            {filteredAppointments.length ? filteredAppointments.map((appointment) => (
+              <AppointmentCard
+                appointment={appointment}
+                key={appointment.id}
+                patient={appointment.patientId ? patients.find((patient) => patient.id === appointment.patientId) : undefined}
+                professionalName={profiles.find((item) => item.id === appointment.professionalId)?.fullName ?? "A definir"}
+                onStatus={onUpdateStatus}
+                onOpenBa={onOpenBa}
+              />
+            )) : <EmptyState title="Nenhum agendamento encontrado" message="Ajuste os filtros ou crie um novo agendamento." />}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function AppointmentCard({
+  appointment,
+  patient,
+  professionalName,
+  onStatus,
+  onOpenBa
+}: {
+  appointment: ClinicalAppointment;
+  patient?: Patient;
+  professionalName: string;
+  onStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
+  onOpenBa: (appointment: ClinicalAppointment) => void;
+}) {
+  const displayName = patient?.fullName ?? appointment.temporaryPatientName ?? "Paciente sem nome";
+  const phone = patient?.whatsapp ?? appointment.temporaryPatientWhatsapp ?? appointment.temporaryPatientPhone ?? "Sem telefone";
+
+  return (
+    <article className="appointment-card">
+      <div className="appointment-card__time">
+        <strong>{appointment.startTime}</strong>
+        <span>{appointment.endTime}</span>
+      </div>
+      <div>
+        <div className="appointment-card__title">
+          <h3>{displayName}</h3>
+          <span className={`status-badge status-badge--appointment-${appointment.status}`}>{appointmentStatusLabel(appointment.status)}</span>
+        </div>
+        <p>{appointment.procedureType} · {professionalName}</p>
+        <small>{appointment.appointmentDate} · {phone} · {patient?.uniqueRecordNumber ?? "Sem ProntuárioÚnico ate Abertura de BA"}</small>
+        {appointment.initialComplaint && <small>Queixa/resumo: {appointment.initialComplaint}</small>}
+      </div>
+      <div className="table-actions">
+        {appointment.status === "scheduled" && <button className="ghost-action" onClick={() => onStatus(appointment.id, "confirmed")} type="button">Confirmar</button>}
+        {["scheduled", "confirmed", "waiting_arrival"].includes(appointment.status) && <button className="ghost-action" onClick={() => onStatus(appointment.id, "arrived")} type="button">Paciente chegou</button>}
+        <button className="primary-button" disabled={appointment.status === "converted_to_ba"} onClick={() => onOpenBa(appointment)} type="button"><ClipboardPlus size={17} /> Abrir BA</button>
+        {appointment.status !== "converted_to_ba" && <button className="ghost-action" onClick={() => onStatus(appointment.id, "cancelled")} type="button">Cancelar</button>}
+      </div>
+    </article>
+  );
+}
+
+function agendaViewLabel(view: "day" | "week" | "month" | "list" | "queue") {
+  const labels = {
+    day: "Dia",
+    week: "Semana",
+    month: "Mes",
+    list: "Lista",
+    queue: "Fila do dia"
+  };
+  return labels[view];
+}
+
+function appointmentStatusLabel(status: ClinicalAppointment["status"]) {
+  const labels: Record<ClinicalAppointment["status"], string> = {
+    scheduled: "Agendado",
+    confirmed: "Confirmado",
+    waiting_arrival: "Aguardando chegada",
+    arrived: "Paciente chegou",
+    converted_to_ba: "Convertido em BA",
+    cancelled: "Cancelado",
+    no_show: "Faltou",
+    rescheduled: "Reagendado"
+  };
+  return labels[status];
 }
 
 function Financial({ financial }: { financial: FinancialTransaction[] }) {

@@ -147,6 +147,8 @@ export async function createAttendanceBa(attendance: Attendance) {
     .from("attendances")
     .insert({
       company_id: attendance.companyId,
+      appointment_id: attendance.appointmentId,
+      converted_from_appointment: attendance.convertedFromAppointment,
       patient_id: attendance.patientId,
       unique_medical_record_id: attendance.uniqueMedicalRecordId,
       unique_record_number: attendance.uniqueRecordNumber,
