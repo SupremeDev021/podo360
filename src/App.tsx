@@ -64,6 +64,7 @@ import type {
   FinancialTransaction,
   FootSensitivityMap,
   HciPatientMatch,
+  IntegratedClinicalHistory,
   Patient,
   StockProduct,
   UniqueMedicalRecord
@@ -92,7 +93,7 @@ type AppNotice = {
   tone?: "success" | "info" | "warning" | "danger";
 };
 
-type PatientTabKey = "patient-data" | "unique-record" | "anamnesis" | "wound-images" | "image-evolution" | "reports";
+type PatientTabKey = "patient-data" | "unique-record" | "history" | "bas" | "anamnesis" | "wound-images" | "image-evolution" | "reports" | "hci";
 
 type BaOpeningPrefill = {
   appointmentId: string;
@@ -116,10 +117,13 @@ type BaOpeningPrefill = {
 const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
   { key: "patient-data", label: "Dados do paciente" },
   { key: "unique-record", label: "ProntuárioÚnico" },
-  { key: "anamnesis", label: "Anamnese modular" },
+  { key: "history", label: "Histórico de atendimentos" },
+  { key: "bas", label: "BAs" },
+  { key: "anamnesis", label: "Anamnese" },
   { key: "wound-images", label: "Imagens da ferida" },
   { key: "image-evolution", label: "Comparativo de evolução" },
-  { key: "reports", label: "Relatórios" }
+  { key: "reports", label: "Relatórios" },
+  { key: "hci", label: "HCI" }
 ];
 
 export function App() {
@@ -157,15 +161,13 @@ export function App() {
   const selectedPatientAnamneses = anamneses.filter((record) => record.patientId === selectedPatient.id);
   const selectedPatientFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === selectedPatient.id);
   const selectedPatientImages = attendanceImages.filter((image) => image.patientId === selectedPatient.id);
-  const authorizedHciHistories = includeHciInReport
-    ? demoIntegratedHistories.filter((history) =>
-        demoHciConsents.some((consent) =>
-          consent.uniqueMedicalRecordId === selectedPatient.uniqueMedicalRecordId &&
-          consent.sourceCompanyId === history.sourceCompany.id &&
-          consent.consentStatus === "authorized"
-        )
+  const authorizedHciHistories = demoIntegratedHistories.filter((history) =>
+    demoHciConsents.some((consent) =>
+      consent.uniqueMedicalRecordId === selectedPatient.uniqueMedicalRecordId &&
+      consent.sourceCompanyId === history.sourceCompany.id &&
+      consent.consentStatus === "authorized"
       )
-    : [];
+  );
 
   function notify(title: string, message: string, tone: AppNotice["tone"] = "success") {
     setNotice({ id: Date.now(), title, message, tone });
@@ -203,7 +205,7 @@ export function App() {
       anamneses: selectedPatientAnamneses,
       footSensitivityMaps: selectedPatientFootMaps,
       attendanceImages: selectedPatientImages,
-      integratedHistories: authorizedHciHistories,
+      integratedHistories: includeHciInReport ? authorizedHciHistories : [],
       includeHci: includeHciInReport,
       professionalName: profile.fullName,
       reason
@@ -556,16 +558,11 @@ export function App() {
       )}
       {activeView === "patients" && (
         <Patients
+          companyId={company.id}
           patients={patients}
           attendances={attendances}
-          profiles={demoProfiles}
           onSelect={(id) => { setSelectedPatientId(id); setActiveView("patient-profile"); }}
-          onStartAttendance={handleStartAttendance}
-          onContinueAttendance={handleStartAttendance}
-          onExportBa={(attendance) => {
-            const patient = patients.find((item) => item.id === attendance.patientId);
-            if (patient) exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps, attendanceImages);
-          }}
+          onOpenNewPatient={() => setActiveView("ba-opening")}
         />
       )}
       {activeView === "patient-profile" && (
@@ -586,6 +583,11 @@ export function App() {
           onSaveComparativeNote={handleSaveComparativeNote}
           company={company}
           professionalId={profile.id}
+          profiles={demoProfiles}
+          hciHistories={authorizedHciHistories}
+          onBack={() => setActiveView("patients")}
+          onSchedule={() => setActiveView("schedule")}
+          onSelectAttendance={setActiveAttendanceId}
         />
       )}
       {activeView === "attendances" && (
@@ -991,71 +993,116 @@ function BaOpening({
 }
 
 function Patients({
+  companyId,
   patients,
   attendances,
-  profiles,
   onSelect,
-  onStartAttendance,
-  onContinueAttendance,
-  onExportBa
+  onOpenNewPatient
 }: {
+  companyId: string;
   patients: Patient[];
   attendances: Attendance[];
-  profiles: typeof demoProfiles;
   onSelect: (id: string) => void;
-  onStartAttendance: (attendanceId: string) => void;
-  onContinueAttendance: (attendanceId: string) => void;
-  onExportBa: (attendance: Attendance) => void;
+  onOpenNewPatient: () => void;
 }) {
-  const queue = patients.map((patient) => {
-    const patientAttendances = attendances
-      .filter((attendance) => attendance.patientId === patient.id)
-      .sort((a, b) => new Date(b.openedAt ?? b.scheduledAt).getTime() - new Date(a.openedAt ?? a.scheduledAt).getTime());
-    const lastBa = patientAttendances[0];
-    return { patient, lastBa, lastAttendance: patientAttendances.find((attendance) => attendance.status === "completed") };
-  });
+  const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [withOpenBa, setWithOpenBa] = useState(false);
+  const [withClinicalHistory, setWithClinicalHistory] = useState(false);
+  const [lastAttendancePeriod, setLastAttendancePeriod] = useState("all");
+
+  const results = patients
+    .filter((patient) => patient.companyId === companyId)
+    .map((patient) => {
+      const patientAttendances = attendances
+        .filter((attendance) => attendance.companyId === companyId && attendance.patientId === patient.id)
+        .sort((a, b) => new Date(b.openedAt ?? b.scheduledAt).getTime() - new Date(a.openedAt ?? a.scheduledAt).getTime());
+      return { patient, patientAttendances, lastBa: patientAttendances[0], lastCompleted: patientAttendances.find((attendance) => attendance.status === "completed") };
+    })
+    .filter(({ patient, patientAttendances, lastBa }) => {
+      const baNumbers = patientAttendances.map((attendance) => attendance.baNumber).join(" ");
+      const searchable = normalizeText(`${patient.fullName} ${patient.cpf} ${patient.phone} ${patient.whatsapp} ${patient.uniqueRecordNumber} ${baNumbers}`);
+      return searchable.includes(normalizeText(submittedQuery)) &&
+        (!withOpenBa || patientAttendances.some((attendance) => ["ba_open", "waiting", "in_progress", "paused"].includes(attendance.status))) &&
+        (!withClinicalHistory || patientAttendances.length > 0 || Boolean(patient.clinical.diseaseHistory)) &&
+        (lastAttendancePeriod === "all" || Boolean(lastBa && matchesPeriod(lastBa.openedAt ?? lastBa.scheduledAt, lastAttendancePeriod)));
+    });
+
+  function searchPatients(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    window.setTimeout(() => {
+      setSubmittedQuery(query.trim());
+      setSearched(true);
+      setLoading(false);
+    }, 250);
+  }
+
+  function clearSearch() {
+    setQuery("");
+    setSubmittedQuery("");
+    setSearched(false);
+    setWithOpenBa(false);
+    setWithClinicalHistory(false);
+    setLastAttendancePeriod("all");
+  }
 
   return (
-    <div className="page-stack">
-      <div className="section-heading">
+    <div className="patient-search-page">
+      <section className="patient-search-hero">
+        <div className="patient-search-hero__icon"><Search size={28} /></div>
         <div>
-          <span className="eyebrow">Fila hospitalar adaptada para podologia</span>
-          <h1>Pacientes</h1>
-          <p>Tela operacional com status de BA e acoes de atendimento. Historico completo fica no ProntuárioÚnico, historico do paciente ou HCI autorizado.</p>
+          <span className="eyebrow">Consulta histórica da clínica</span>
+          <h1>Pesquisar paciente</h1>
+          <p>Busque pelo nome, CPF, telefone, ProntuárioÚnico ou BA para acessar o histórico completo do paciente.</p>
         </div>
-        <div className="search-box"><Search size={17} /><input placeholder="Buscar paciente, CPF ou telefone" /></div>
-      </div>
-
-      <section className="data-panel">
-        <Table
-          headers={["Paciente", "ProntuárioÚnico", "Contato", "Idade", "Status", "Ultimo BA", "Abertura", "Ultimo atendimento", "Profissional", "Acoes"]}
-          rows={queue.map(({ patient, lastBa, lastAttendance }) => [
-            <button className="link-button" onClick={() => onSelect(patient.id)} type="button">{patient.fullName}</button>,
-            patient.uniqueRecordNumber,
-            <span>{patient.cpf ? `CPF ${patient.cpf}` : "CPF oculto"}<br />{patient.whatsapp || patient.phone}</span>,
-            calculateAge(patient.birthDate),
-            <span className={`status-badge status-badge--${lastBa?.status ?? "ba_open"}`}>{statusLabel(lastBa?.status ?? "ba_open")}</span>,
-            lastBa?.baNumber ?? "Sem BA aberto",
-            lastBa ? formatDateTime(lastBa.openedAt ?? lastBa.scheduledAt) : "-",
-            lastAttendance ? formatDateTime(lastAttendance.finishedAt ?? lastAttendance.scheduledAt) : "-",
-            lastBa?.professionalId ? profiles.find((profile) => profile.id === lastBa.professionalId)?.fullName ?? "Profissional vinculado" : "A definir",
-            <div className="table-actions">
-              {lastBa?.status === "waiting" && (
-                <button className="primary-button" onClick={() => onStartAttendance(lastBa.id)} type="button"><PlayCircle size={17} /> Iniciar atendimento</button>
-              )}
-              {lastBa?.status === "in_progress" && (
-                <button className="primary-button" onClick={() => onContinueAttendance(lastBa.id)} type="button"><ClipboardEdit size={17} /> Continuar atendimento</button>
-              )}
-              {lastBa?.status === "completed" && (
-                <>
-                  <button className="ghost-action" onClick={() => onSelect(patient.id)} type="button"><FileText size={17} /> Ver resumo do BA</button>
-                  <button className="ghost-action" onClick={() => onExportBa(lastBa)} type="button"><Download size={17} /> Exportar BA</button>
-                </>
-              )}
-            </div>
-          ])}
-        />
+        <form className="patient-search-form" onSubmit={searchPatients}>
+          <label className="patient-search-form__field">
+            <Search size={20} />
+            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, CPF, telefone, ProntuárioÚnico ou BA" />
+          </label>
+          <button className="primary-button" disabled={loading} type="submit">{loading ? "Pesquisando..." : "Pesquisar"}</button>
+        </form>
+        <div className="patient-quick-filters">
+          <label><input checked={withOpenBa} onChange={(event) => setWithOpenBa(event.target.checked)} type="checkbox" /> Com BA aberto</label>
+          <label><input checked={withClinicalHistory} onChange={(event) => setWithClinicalHistory(event.target.checked)} type="checkbox" /> Com histórico clínico</label>
+          <select aria-label="Período do último atendimento" value={lastAttendancePeriod} onChange={(event) => setLastAttendancePeriod(event.target.value)}>
+            <option value="all">Qualquer último atendimento</option><option value="today">Atendido hoje</option><option value="week">Atendido esta semana</option><option value="month">Atendido este mês</option>
+          </select>
+          {searched && <button className="ghost-action" onClick={clearSearch} type="button">Limpar pesquisa</button>}
+        </div>
       </section>
+
+      {!searched && !loading && (
+        <section className="patient-search-initial">
+          <Users size={30} />
+          <h2>Pesquise um paciente para visualizar os dados e histórico clínico.</h2>
+          <p>A consulta mostra somente pacientes e BAs vinculados à clínica atual. Histórico externo permanece protegido pelo HCI.</p>
+        </section>
+      )}
+
+      {loading && <section className="patient-search-loading"><span /><span /><span /></section>}
+
+      {searched && !loading && (
+        <section className="patient-results">
+          <div className="section-heading section-heading--compact"><div><h2>Pacientes encontrados</h2><p>{results.length} resultado(s) para a pesquisa realizada.</p></div></div>
+          {results.length ? results.map(({ patient, lastBa, lastCompleted }) => (
+            <button className="patient-result-card" key={patient.id} onClick={() => onSelect(patient.id)} type="button">
+              <span className="patient-result-card__avatar">{patient.fullName.slice(0, 2).toUpperCase()}</span>
+              <span className="patient-result-card__identity"><strong>{patient.fullName}</strong><small>CPF {maskCpf(patient.cpf)} · {patient.whatsapp || patient.phone}</small><small>ProntuárioÚnico {patient.uniqueRecordNumber}</small></span>
+              <span className="patient-result-card__meta"><small>Idade</small><strong>{calculateAge(patient.birthDate)}</strong></span>
+              <span className="patient-result-card__meta"><small>Último BA</small><strong>{lastBa?.baNumber ?? "Sem BA"}</strong></span>
+              <span className="patient-result-card__meta"><small>Último atendimento</small><strong>{lastCompleted ? formatDateTime(lastCompleted.finishedAt ?? lastCompleted.scheduledAt) : "-"}</strong></span>
+              <span className={`status-badge status-badge--${lastBa?.status ?? "ba_open"}`}>{lastBa ? statusLabel(lastBa.status) : "Sem BA aberto"}</span>
+              <span className="ghost-action">Ver paciente</span>
+            </button>
+          )) : (
+            <div className="patient-no-results"><EmptyState title="Nenhum paciente encontrado" message="Revise os dados pesquisados ou abra um BA para um novo paciente." /><button className="primary-button" onClick={onOpenNewPatient} type="button"><ClipboardPlus size={17} /> Abrir BA para novo paciente</button></div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -1076,7 +1123,12 @@ function PatientProfile({
   onSaveAttendanceImage,
   onSaveComparativeNote,
   company,
-  professionalId
+  professionalId,
+  profiles,
+  hciHistories,
+  onBack,
+  onSchedule,
+  onSelectAttendance
 }: {
   patient: Patient;
   attendances: Attendance[];
@@ -1094,6 +1146,11 @@ function PatientProfile({
   onSaveComparativeNote: (imageIds: string[], note: string) => void;
   company: Company;
   professionalId: string;
+  profiles: typeof demoProfiles;
+  hciHistories: IntegratedClinicalHistory[];
+  onBack: () => void;
+  onSchedule: () => void;
+  onSelectAttendance: (attendanceId: string) => void;
 }) {
   const [activePatientTab, setActivePatientTab] = useState<PatientTabKey>(() => {
     const selected = attendances.find((attendance) => attendance.id === activeAttendanceId);
@@ -1157,19 +1214,21 @@ function PatientProfile({
     <div className="page-stack">
       <section className="profile-header">
         <div>
+          <button className="profile-back" onClick={onBack} type="button">Voltar para pesquisa</button>
           <span className="eyebrow">ProntuárioÚnico: {patient.uniqueRecordNumber}</span>
           <h1>{patient.fullName}</h1>
           <p>{patient.whatsapp} · {patient.profession || "Profissao nao informada"} · CPF {patient.cpf}</p>
         </div>
         <div className="hero-panel__actions">
           <button className="ghost-action" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={18} /> Novo BA</button>
+          <button className="ghost-action" onClick={onSchedule} type="button"><CalendarPlus size={18} /> Agendar atendimento</button>
           <button className="ghost-action" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
           <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
         </div>
       </section>
 
       <section className="tabs-bar">
-        {patientTabs.map((tab) => (
+        {patientTabs.filter((tab) => tab.key !== "hci" || company.hciEnabled).map((tab) => (
           <button className={activePatientTab === tab.key ? "is-active" : ""} key={tab.key} onClick={() => setActivePatientTab(tab.key)} type="button">{tab.label}</button>
         ))}
       </section>
@@ -1194,7 +1253,9 @@ function PatientProfile({
 
       {activePatientTab === "patient-data" && <PatientDataSection patient={patient} />}
       {activePatientTab === "unique-record" && <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} attendanceImages={attendanceImages} />}
-      {activePatientTab === "anamnesis" && anamnesisNode}
+      {activePatientTab === "history" && <PatientAttendanceHistory attendances={attendances} patient={patient} profiles={profiles} company={company} anamneses={anamneses} footSensitivityMaps={footSensitivityMaps} attendanceImages={attendanceImages} />}
+      {activePatientTab === "bas" && <PatientBas attendances={attendances} patient={patient} company={company} anamneses={anamneses} footSensitivityMaps={footSensitivityMaps} attendanceImages={attendanceImages} onCreateAttendance={onCreateAttendance} onContinue={(attendanceId) => { onSelectAttendance(attendanceId); setActivePatientTab("anamnesis"); }} />}
+      {activePatientTab === "anamnesis" && <PatientAnamnesisHistory records={anamneses} profiles={profiles}>{anamnesisNode}</PatientAnamnesisHistory>}
       {activePatientTab === "wound-images" && (currentAttendance ? (
         <WoundImageModule
           images={attendanceImages}
@@ -1231,6 +1292,7 @@ function PatientProfile({
           onGenerateReport={onGenerateReport}
         />
       )}
+      {activePatientTab === "hci" && <PatientHci patient={patient} histories={hciHistories} />}
     </div>
   );
 }
@@ -1256,7 +1318,67 @@ function PatientDataSection({ patient }: { patient: Patient }) {
         <div><dt>E-mail</dt><dd>{patient.email || "Nao informado"}</dd></div>
         <div><dt>Endereco</dt><dd>{patient.address || "Nao informado"}</dd></div>
         <div><dt>ProntuárioÚnico</dt><dd>{patient.uniqueRecordNumber}</dd></div>
+        <div><dt>Data de cadastro</dt><dd>{formatDate(patient.createdAt)}</dd></div>
+        <div><dt>Status do paciente</dt><dd><span className="status-badge status-badge--completed">Ativo</span></dd></div>
       </dl>
+    </section>
+  );
+}
+
+function PatientAttendanceHistory({ attendances, patient, profiles, company, anamneses, footSensitivityMaps, attendanceImages }: { attendances: Attendance[]; patient: Patient; profiles: typeof demoProfiles; company: Company; anamneses: AnamnesisRecord[]; footSensitivityMaps: FootSensitivityMap[]; attendanceImages: AttendanceImage[] }) {
+  const [selected, setSelected] = useState<Attendance | null>(null);
+  return (
+    <section className="page-stack">
+      <div className="section-heading section-heading--compact"><div><h2>Histórico de atendimentos</h2><p>Atendimentos locais vinculados ao ProntuárioÚnico nesta clínica.</p></div></div>
+      {attendances.length ? <div className="patient-history-list">{attendances.map((attendance) => (
+        <article className="patient-history-card" key={attendance.id}>
+          <div><span className={`status-badge status-badge--${attendance.status}`}>{statusLabel(attendance.status)}</span><h3>{attendance.baNumber}</h3><p>{formatDateTime(attendance.openedAt)} · {profiles.find((item) => item.id === attendance.professionalId)?.fullName ?? "Profissional a definir"}</p></div>
+          <dl><div><dt>Tipo</dt><dd>{attendance.type}</dd></div><div><dt>Queixa principal</dt><dd>{attendance.complaint || "Nao informada"}</dd></div><div><dt>Resumo</dt><dd>{attendance.procedure || attendance.notes || "Sem resumo registrado"}</dd></div></dl>
+          <div className="table-actions"><button className="ghost-action" onClick={() => setSelected(attendance)} type="button">Ver detalhes</button><button className="ghost-action" onClick={() => exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={17} /> Exportar BA</button></div>
+        </article>
+      ))}</div> : <EmptyState title="Nenhum atendimento encontrado" message="Este paciente ainda nao possui atendimentos nesta clinica." />}
+      {selected && <div className="dialog-backdrop" onMouseDown={() => setSelected(null)}><section className="dialog-card dialog-card--wide" onMouseDown={(event) => event.stopPropagation()}><div><h2>Detalhe do BA {selected.baNumber}</h2><p>{formatDateTime(selected.openedAt)} · {statusLabel(selected.status)}</p></div><dl className="definition-grid"><div><dt>Queixa</dt><dd>{selected.complaint || "-"}</dd></div><div><dt>Procedimento</dt><dd>{selected.procedure || "-"}</dd></div><div><dt>Avaliacao clinica</dt><dd>{selected.clinicalEvaluation || "-"}</dd></div><div><dt>Conduta</dt><dd>{selected.conduct || "-"}</dd></div><div><dt>Produtos utilizados</dt><dd>{selected.productsUsed.join(", ") || "-"}</dd></div><div><dt>Imagens vinculadas</dt><dd>{attendanceImages.filter((image) => image.attendanceId === selected.id).length}</dd></div></dl><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setSelected(null)} type="button">Fechar</button><button className="primary-button" onClick={() => exportAttendanceBa(patient, company, selected, anamneses, footSensitivityMaps, attendanceImages)} type="button">Exportar BA</button></div></section></div>}
+    </section>
+  );
+}
+
+function PatientBas({ attendances, patient, company, anamneses, footSensitivityMaps, attendanceImages, onCreateAttendance, onContinue }: { attendances: Attendance[]; patient: Patient; company: Company; anamneses: AnamnesisRecord[]; footSensitivityMaps: FootSensitivityMap[]; attendanceImages: AttendanceImage[]; onCreateAttendance: (patient: Patient) => void; onContinue: (attendanceId: string) => void }) {
+  return (
+    <section className="page-stack">
+      <div className="section-heading section-heading--compact"><div><h2>Boletins de Atendimento</h2><p>BAs separados por status e vinculados somente a esta clínica.</p></div><button className="primary-button" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={17} /> Abrir novo BA</button></div>
+      <div className="ba-status-groups">
+        {(["waiting", "in_progress", "completed", "cancelled", "no_show"] as const).map((status) => {
+          const items = attendances.filter((attendance) => attendance.status === status);
+          return <section className="ba-status-group" key={status}><header><span className={`status-badge status-badge--${status}`}>{statusLabel(status)}</span><strong>{items.length}</strong></header>{items.length ? items.map((attendance) => <article key={attendance.id}><div><strong>{attendance.baNumber}</strong><small>{formatDateTime(attendance.openedAt)} · {attendance.type}</small></div><div className="table-actions">{attendance.status === "in_progress" && <button className="primary-button" onClick={() => onContinue(attendance.id)} type="button">Continuar atendimento</button>}<button className="ghost-action" onClick={() => exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps, attendanceImages)} type="button">Exportar BA</button></div></article>) : <p>Nenhum BA neste status.</p>}</section>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PatientAnamnesisHistory({ records, profiles, children }: { records: AnamnesisRecord[]; profiles: typeof demoProfiles; children: ReactNode }) {
+  const [professional, setProfessional] = useState("all");
+  const [date, setDate] = useState("");
+  const filtered = records.filter((record) =>
+    (professional === "all" || record.createdBy === professional) &&
+    (!date || record.createdAt.startsWith(date))
+  );
+  return (
+    <section className="page-stack">
+      <div className="section-heading section-heading--compact"><div><h2>Anamneses do paciente</h2><p>Consulte fichas anteriores por BA e continue a ficha vinculada ao atendimento atual.</p></div></div>
+      <div className="data-panel operational-filters"><div className="filter-grid"><select value={professional} onChange={(event) => setProfessional(event.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select><input aria-label="Data da anamnese" value={date} onChange={(event) => setDate(event.target.value)} type="date" /></div><button className="ghost-action" onClick={() => { setProfessional("all"); setDate(""); }} type="button">Limpar filtros</button></div>
+      {filtered.length ? <div className="anamnesis-history-list">{filtered.map((record) => <article key={record.id}><div><strong>{record.baNumber}</strong><small>{formatDateTime(record.createdAt)} · {profiles.find((item) => item.id === record.createdBy)?.fullName ?? "Profissional"}</small></div><span className={`status-badge status-badge--${record.isCompleted ? "completed" : "waiting"}`}>{record.isCompleted ? "Concluida" : "Em preenchimento"}</span><small>{Object.keys(record.formData).length} campo(s) registrados</small></article>)}</div> : <EmptyState title="Nenhuma anamnese encontrada" message="Este paciente ainda nao possui fichas para os filtros selecionados." />}
+      {children}
+    </section>
+  );
+}
+
+function PatientHci({ patient, histories }: { patient: Patient; histories: IntegratedClinicalHistory[] }) {
+  const [requested, setRequested] = useState(false);
+  return (
+    <section className="data-panel">
+      <div className="section-heading section-heading--compact"><div><h2>Histórico Clínico Integrado</h2><p>Dados externos aparecem somente quando existe consentimento HCI autorizado.</p></div><ShieldCheck size={22} /></div>
+      {histories.length ? histories.map((history) => <article className="hci-authorized-card" key={history.sourceCompany.id}><span className="status-badge status-badge--completed">Consentimento autorizado</span><h3>{history.sourceCompany.displayName}</h3><p>{history.attendances.length} atendimento(s) externo(s) autorizado(s) para consulta.</p><Table headers={["BA", "Data", "Procedimento"]} rows={history.attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), attendance.procedure])} /></article>) : <div className="consent-empty"><ShieldCheck size={30} /><h2>{requested ? "Solicitação de consentimento registrada" : "Consentimento HCI necessário"}</h2><p>{requested ? "Aguarde a autorização do paciente antes de consultar histórico externo." : `Nenhum histórico externo de ${patient.fullName} pode ser exibido sem autorização explícita.`}</p><button className="primary-button" disabled={requested} onClick={() => setRequested(true)} type="button">{requested ? "Consentimento pendente" : "Solicitar consentimento HCI"}</button></div>}
     </section>
   );
 }
