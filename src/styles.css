@@ -775,6 +775,209 @@ button {
   border-left-color: #ef4444;
 }
 
+.dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  padding: 20px;
+  background: rgba(7, 20, 30, 0.58);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+}
+
+.dialog-card {
+  width: min(100%, 440px);
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  display: grid;
+  gap: 18px;
+}
+
+.dialog-card--wide {
+  width: min(100%, 760px);
+}
+
+.dialog-card h2,
+.dialog-card p {
+  margin: 0;
+}
+
+.dialog-card p {
+  margin-top: 5px;
+  color: var(--color-muted);
+}
+
+.dialog-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.dialog-card__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  color: #b91c1c;
+  background: #fef2f2;
+  display: grid;
+  place-items: center;
+}
+
+.dialog-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.danger-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #b91c1c;
+  border-radius: 7px;
+  color: #fff;
+  background: #b91c1c;
+  font-weight: 800;
+}
+
+.inline-error {
+  padding: 10px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: 0.82rem;
+}
+
+.operational-filters {
+  display: grid;
+  gap: 14px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.filter-grid input,
+.filter-grid select {
+  min-width: 0;
+}
+
+.filter-checks {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.filter-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.queue-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.queue-summary button {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: #fff;
+  text-align: left;
+}
+
+.queue-summary button.is-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary), transparent 88%);
+}
+
+.queue-summary strong,
+.queue-summary span {
+  display: block;
+}
+
+.queue-summary strong {
+  font-size: 1.5rem;
+}
+
+.queue-summary span {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 0.74rem;
+}
+
+.attendance-queue {
+  display: grid;
+  gap: 10px;
+}
+
+.attendance-queue__item {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(360px, 1.3fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.attendance-queue__item h3,
+.attendance-queue__item p {
+  margin: 0;
+}
+
+.attendance-queue__item h3 {
+  margin-top: 8px;
+}
+
+.attendance-queue__item p {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.attendance-queue__item dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-queue__item dt,
+.attendance-queue__item dd {
+  margin: 0;
+}
+
+.attendance-queue__item dt {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.attendance-queue__item dd {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .page-stack {
   display: grid;
   gap: 22px;
@@ -2110,6 +2313,14 @@ textarea {
 }
 
 @media (max-width: 1180px) {
+  .filter-grid {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  }
+
+  .attendance-queue__item {
+    grid-template-columns: 1fr;
+  }
+
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2127,6 +2338,14 @@ textarea {
 }
 
 @media (max-width: 860px) {
+  .queue-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
   .login-screen {
     grid-template-columns: 1fr;
   }
