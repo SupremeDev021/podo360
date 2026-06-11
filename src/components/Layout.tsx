@@ -14,6 +14,7 @@ import {
   Stethoscope,
   Users
 } from "lucide-react";
+import { useState } from "react";
 import type { Company, Profile } from "../types";
 import { roleLabel } from "../services/rbac";
 
@@ -37,6 +38,7 @@ type LayoutProps = {
   profile: Profile;
   activeView: ViewKey;
   onViewChange: (view: ViewKey) => void;
+  onLogout: () => Promise<void>;
   children: React.ReactNode;
 };
 
@@ -55,7 +57,22 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "plans", label: "Planos", icon: <Building2 size={18} /> }
 ];
 
-export function Layout({ company, profile, activeView, onViewChange, children }: LayoutProps) {
+export function Layout({ company, profile, activeView, onViewChange, onLogout, children }: LayoutProps) {
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+
+  async function confirmLogout() {
+    setLoggingOut(true);
+    setLogoutError("");
+    try {
+      await onLogout();
+    } catch {
+      setLogoutError("Nao foi possivel sair da conta. Tente novamente.");
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -98,7 +115,7 @@ export function Layout({ company, profile, activeView, onViewChange, children }:
                 <small>{roleLabel(profile.role)}</small>
               </div>
             </div>
-            <button className="icon-button" type="button" title="Sair">
+            <button className="icon-button" onClick={() => setLogoutOpen(true)} type="button" title="Sair da conta">
               <LogOut size={18} />
             </button>
           </div>
@@ -106,6 +123,19 @@ export function Layout({ company, profile, activeView, onViewChange, children }:
 
         <main className="content">{children}</main>
       </div>
+      {logoutOpen && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={() => !loggingOut && setLogoutOpen(false)}>
+          <section aria-labelledby="logout-title" aria-modal="true" className="dialog-card" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+            <span className="dialog-card__icon"><LogOut size={22} /></span>
+            <div><h2 id="logout-title">Deseja realmente sair da conta?</h2><p>Sua sessao sera encerrada e voce voltara para a tela de login.</p></div>
+            {logoutError && <div className="inline-error">{logoutError}</div>}
+            <div className="dialog-card__actions">
+              <button className="ghost-action" disabled={loggingOut} onClick={() => setLogoutOpen(false)} type="button">Cancelar</button>
+              <button className="danger-button" disabled={loggingOut} onClick={confirmLogout} type="button">{loggingOut ? "Saindo..." : "Sair da conta"}</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

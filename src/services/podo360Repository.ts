@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, FinancialTransaction, FootSensitivityMap, Patient, StockProduct } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -189,6 +189,59 @@ export async function finishAttendanceBa(attendanceId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
 
   const { data, error } = await supabase.rpc("mark_attendance_finished", { target_attendance_id: attendanceId });
+  if (error) throw error;
+  return data;
+}
+
+export async function createStockProduct(product: StockProduct) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const basePayload = {
+    company_id: product.companyId,
+    name: product.name,
+    category: product.category,
+    internal_code: product.internalCode,
+    current_quantity: product.currentQuantity,
+    minimum_quantity: product.minimumQuantity,
+    unit: product.unit,
+    cost_value: product.costValue,
+    sale_value: product.saleValue,
+    supplier: product.supplier,
+    expires_at: product.expiresAt || null
+  };
+  let { data, error } = await supabase.from("stock_products").insert({ ...basePayload, notes: product.notes || null }).select().single();
+
+  if (error && ["42703", "PGRST204"].includes(error.code)) {
+    ({ data, error } = await supabase.from("stock_products").insert(basePayload).select().single());
+  }
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createFinancialTransaction(transaction: FinancialTransaction, createdBy: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const basePayload = {
+    company_id: transaction.companyId,
+    patient_id: transaction.patientId || null,
+    attendance_id: transaction.attendanceId || null,
+    description: transaction.description,
+    type: transaction.type,
+    amount: transaction.amount,
+    due_date: transaction.dueDate,
+    paid_at: transaction.paidAt || null,
+    payment_method: transaction.paymentMethod,
+    category: transaction.category,
+    status: transaction.status,
+    created_by: createdBy
+  };
+  let { data, error } = await supabase.from("financial_transactions").insert({ ...basePayload, notes: transaction.notes || null }).select().single();
+
+  if (error && ["42703", "PGRST204"].includes(error.code)) {
+    ({ data, error } = await supabase.from("financial_transactions").insert(basePayload).select().single());
+  }
+
   if (error) throw error;
   return data;
 }

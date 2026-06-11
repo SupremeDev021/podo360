@@ -256,6 +256,7 @@ export type FinancialTransaction = {
   paymentMethod: PaymentMethod;
   category: string;
   status: PaymentStatus;
+  notes?: string;
 };
 
 export type StockProduct = {
@@ -271,6 +272,7 @@ export type StockProduct = {
   saleValue: number;
   supplier: string;
   expiresAt?: string;
+  notes?: string;
 };
 
 export type BodyMapEntry = {

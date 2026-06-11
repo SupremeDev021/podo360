@@ -52,8 +52,9 @@ import {
   demoStock,
   demoUniqueMedicalRecords
 } from "./data/demoData";
-import { isSupabaseConfigured } from "./lib/supabase";
+import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
+import { createAttendanceBa, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa } from "./services/podo360Repository";
 import type {
   AnamnesisRecord,
   Attendance,
@@ -130,8 +131,8 @@ export function App() {
   const [appointments, setAppointments] = useState<ClinicalAppointment[]>(demoClinicalAppointments);
   const [attendances, setAttendances] = useState<Attendance[]>(demoAttendances);
   const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
-  const [financial] = useState<FinancialTransaction[]>(demoFinancial);
-  const [stock] = useState<StockProduct[]>(demoStock);
+  const [financial, setFinancial] = useState<FinancialTransaction[]>(demoFinancial);
+  const [stock, setStock] = useState<StockProduct[]>(demoStock);
   const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
   const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
@@ -286,6 +287,9 @@ export function App() {
     };
 
     setAttendances((current) => [attendance, ...current]);
+    void createAttendanceBa(attendance).catch(() => {
+      notify("BA salvo apenas localmente", "Nao foi possivel sincronizar o novo BA com o Supabase.", "warning");
+    });
     if (attendance.appointmentId) {
       setAppointments((current) =>
         current.map((appointment) =>
@@ -453,9 +457,15 @@ export function App() {
     setActiveView("ba-opening");
   }
 
-  function handleStartAttendance(attendanceId: string) {
+  async function handleStartAttendance(attendanceId: string) {
     const now = new Date().toISOString();
     let targetPatientId = selectedPatientId;
+    try {
+      await startAttendanceBa(attendanceId);
+    } catch {
+      notify("Erro ao iniciar atendimento", "Nao foi possivel atualizar o BA no Supabase. Tente novamente.", "danger");
+      return;
+    }
     setAttendances((current) =>
       current.map((attendance) => {
         if (attendance.id !== attendanceId) return attendance;
@@ -476,8 +486,14 @@ export function App() {
     setActiveView("patient-profile");
   }
 
-  function handleFinishAttendance(attendanceId: string) {
+  async function handleFinishAttendance(attendanceId: string) {
     const now = new Date().toISOString();
+    try {
+      await finishAttendanceBa(attendanceId);
+    } catch {
+      notify("Erro ao finalizar atendimento", "Nao foi possivel finalizar o BA no Supabase. Tente novamente.", "danger");
+      return;
+    }
     setAttendances((current) =>
       current.map((attendance) =>
         attendance.id === attendanceId
@@ -488,12 +504,43 @@ export function App() {
     notify("Atendimento finalizado", "Data e hora de finalizacao foram registradas no BA.", "success");
   }
 
+  async function handleCreateProduct(product: StockProduct) {
+    try {
+      await createStockProduct(product);
+      setStock((current) => [product, ...current]);
+      notify("Produto cadastrado com sucesso", `${product.name} ja aparece no estoque.`, "success");
+    } catch {
+      notify("Erro ao cadastrar produto", "Confira os dados e sua permissao de estoque.", "danger");
+      throw new Error("stock_create_failed");
+    }
+  }
+
+  async function handleCreateFinancial(transaction: FinancialTransaction) {
+    try {
+      await createFinancialTransaction(transaction, profile.id);
+      setFinancial((current) => [transaction, ...current]);
+      notify("Lancamento cadastrado com sucesso", `${transaction.description} foi incluido no financeiro.`, "success");
+    } catch {
+      notify("Erro ao cadastrar lancamento", "Confira os dados e sua permissao financeira.", "danger");
+      throw new Error("financial_create_failed");
+    }
+  }
+
+  async function handleLogout() {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    }
+    setSignedIn(false);
+    setActiveView("dashboard");
+  }
+
   if (!signedIn) {
     return <LoginScreen company={company} onDemoAccess={() => setSignedIn(true)} />;
   }
 
   return (
-    <Layout company={company} profile={profile} activeView={activeView} onViewChange={setActiveView}>
+    <Layout company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {activeView === "dashboard" && <Dashboard dashboard={dashboard} stock={stock} attendances={attendances} patients={patients} />}
       {activeView === "ba-opening" && (
@@ -541,7 +588,25 @@ export function App() {
           professionalId={profile.id}
         />
       )}
-      {activeView === "attendances" && <Attendances attendances={attendances} patients={patients} />}
+      {activeView === "attendances" && (
+        <Attendances
+          attendances={attendances}
+          attendanceImages={attendanceImages}
+          patients={patients}
+          profiles={demoProfiles}
+          onContinue={handleStartAttendance}
+          onExport={(attendance) => {
+            const patient = patients.find((item) => item.id === attendance.patientId);
+            if (patient) exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps, attendanceImages);
+          }}
+          onOpenPatient={(patientId, attendanceId) => {
+            setSelectedPatientId(patientId);
+            setActiveAttendanceId(attendanceId);
+            setActiveView("patient-profile");
+          }}
+          onStart={handleStartAttendance}
+        />
+      )}
       {activeView === "schedule" && (
         <ClinicalAgendaPage
           appointments={appointments}
@@ -553,8 +618,8 @@ export function App() {
           onNotify={notify}
         />
       )}
-      {activeView === "financial" && <Financial financial={financial} />}
-      {activeView === "stock" && <Stock stock={stock} />}
+      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} />}
+      {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} stock={stock} />}
       {activeView === "reports" && (
         <Reports
           patient={selectedPatient}
@@ -1030,7 +1095,10 @@ function PatientProfile({
   company: Company;
   professionalId: string;
 }) {
-  const [activePatientTab, setActivePatientTab] = useState<PatientTabKey>("patient-data");
+  const [activePatientTab, setActivePatientTab] = useState<PatientTabKey>(() => {
+    const selected = attendances.find((attendance) => attendance.id === activeAttendanceId);
+    return selected && ["waiting", "in_progress", "paused"].includes(selected.status) ? "anamnesis" : "patient-data";
+  });
   const currentAttendance =
     attendances.find((attendance) => attendance.id === activeAttendanceId) ??
     attendances.find((attendance) => attendance.status === "in_progress") ??
@@ -1250,21 +1318,104 @@ function ReportsSection({
   );
 }
 
-function Attendances({ attendances, patients }: { attendances: Attendance[]; patients: Patient[] }) {
+function Attendances({
+  attendances,
+  attendanceImages,
+  patients,
+  profiles,
+  onStart,
+  onContinue,
+  onOpenPatient,
+  onExport
+}: {
+  attendances: Attendance[];
+  attendanceImages: AttendanceImage[];
+  patients: Patient[];
+  profiles: typeof demoProfiles;
+  onStart: (attendanceId: string) => void;
+  onContinue: (attendanceId: string) => void;
+  onOpenPatient: (patientId: string, attendanceId: string) => void;
+  onExport: (attendance: Attendance) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [professional, setProfessional] = useState("all");
+  const [period, setPeriod] = useState("all");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [type, setType] = useState("all");
+  const [returnOnly, setReturnOnly] = useState(false);
+  const [imagesOnly, setImagesOnly] = useState(false);
+  const [dressingOnly, setDressingOnly] = useState(false);
+
+  const filtered = attendances
+    .filter((attendance) => attendance.companyId === demoCompany.id)
+    .filter((attendance) => {
+      const patient = patients.find((item) => item.id === attendance.patientId);
+      const text = normalizeText(`${patient?.fullName || ""} ${patient?.uniqueRecordNumber || ""} ${attendance.baNumber} ${attendance.complaint} ${attendance.procedure}`);
+      return (!query || text.includes(normalizeText(query))) &&
+        (status === "all" || attendance.status === status) &&
+        (professional === "all" || attendance.professionalId === professional) &&
+        (type === "all" || attendance.type === type) &&
+        matchesPeriod(attendance.openedAt || attendance.scheduledAt, period, periodStart, periodEnd) &&
+        (!returnOnly || attendance.visitKind === "return" || Boolean(attendance.recommendedReturn)) &&
+        (!imagesOnly || attendanceImages.some((image) => image.attendanceId === attendance.id)) &&
+        (!dressingOnly || normalizeText(`${attendance.procedure} ${attendance.conduct}`).includes("curativo"));
+    })
+    .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+
+  function clearFilters() {
+    setQuery(""); setStatus("all"); setProfessional("all"); setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setType("all");
+    setReturnOnly(false); setImagesOnly(false); setDressingOnly(false);
+  }
+
   return (
-    <ModulePage eyebrow="Atendimentos / Pacientes" title="Atendimentos" description="Registre queixa, avaliacao clinica, conduta, produtos usados, retorno, valor e status.">
-      <Table
-        headers={["Paciente", "Tipo", "Procedimento", "Data", "Valor", "Status"]}
-        rows={attendances.map((attendance) => [
-          patientName(patients, attendance.patientId),
-          attendance.type,
-          attendance.procedure,
-          formatDateTime(attendance.scheduledAt),
-          currency.format(attendance.value),
-          statusLabel(attendance.status)
-        ])}
-      />
-    </ModulePage>
+    <div className="page-stack">
+      <div className="section-heading">
+        <div><span className="eyebrow">Atendimentos / Pacientes</span><h1>Fila operacional</h1><p>Acompanhe BAs da clinica, inicie atendimentos e retome fichas modulares.</p></div>
+      </div>
+      <section className="queue-summary">
+        {(["waiting", "in_progress", "completed", "cancelled", "no_show"] as const).map((item) => (
+          <button className={status === item ? "is-active" : ""} key={item} onClick={() => setStatus(status === item ? "all" : item)} type="button">
+            <strong>{attendances.filter((attendance) => attendance.status === item).length}</strong><span>{statusLabel(item)}</span>
+          </button>
+        ))}
+      </section>
+      <section className="data-panel operational-filters">
+        <div className="filter-grid">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Paciente, ProntuárioÚnico, BA, queixa ou procedimento" />
+          <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos os status</option>{(["waiting", "in_progress", "completed", "cancelled", "no_show", "paused", "ba_open"] as const).map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</select>
+          <select value={professional} onChange={(event) => setProfessional(event.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select>
+          <select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">Todo o periodo</option><option value="today">Hoje</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="custom">Personalizado</option></select>
+          {period === "custom" && <><input aria-label="Periodo inicial" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} type="date" /><input aria-label="Periodo final" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} type="date" /></>}
+          <select value={type} onChange={(event) => setType(event.target.value)}><option value="all">Todos os tipos</option>{Array.from(new Set(attendances.map((item) => item.type))).map((item) => <option key={item}>{item}</option>)}</select>
+        </div>
+        <div className="filter-checks">
+          <label><input checked={returnOnly} onChange={(event) => setReturnOnly(event.target.checked)} type="checkbox" /> Retorno</label>
+          <label><input checked={imagesOnly} onChange={(event) => setImagesOnly(event.target.checked)} type="checkbox" /> Com imagens</label>
+          <label><input checked={dressingOnly} onChange={(event) => setDressingOnly(event.target.checked)} type="checkbox" /> Com curativo</label>
+          <button className="ghost-action" onClick={clearFilters} type="button">Limpar filtros</button>
+        </div>
+      </section>
+      <section className="attendance-queue">
+        {filtered.length ? filtered.map((attendance) => {
+          const patient = patients.find((item) => item.id === attendance.patientId);
+          const professionalName = profiles.find((item) => item.id === attendance.professionalId)?.fullName ?? "A definir";
+          return (
+            <article className="attendance-queue__item" key={attendance.id}>
+              <div><span className={`status-badge status-badge--${attendance.status}`}>{statusLabel(attendance.status)}</span><h3>{patient?.fullName ?? "Paciente nao localizado"}</h3><p>{patient?.uniqueRecordNumber} · {attendance.baNumber}</p></div>
+              <dl><div><dt>Abertura</dt><dd>{formatDateTime(attendance.openedAt)}</dd></div><div><dt>Inicio</dt><dd>{attendance.startedAt ? formatDateTime(attendance.startedAt) : "-"}</dd></div><div><dt>Profissional</dt><dd>{professionalName}</dd></div><div><dt>Tipo</dt><dd>{attendance.type}</dd></div></dl>
+              <div className="table-actions">
+                {attendance.status === "waiting" && <button className="primary-button" onClick={() => onStart(attendance.id)} type="button"><PlayCircle size={17} /> Iniciar atendimento</button>}
+                {["in_progress", "paused"].includes(attendance.status) && <button className="primary-button" onClick={() => onContinue(attendance.id)} type="button"><ClipboardEdit size={17} /> Continuar atendimento</button>}
+                {attendance.status === "completed" && <><button className="ghost-action" onClick={() => onOpenPatient(attendance.patientId, attendance.id)} type="button">Ver no ProntuárioÚnico</button><button className="ghost-action" onClick={() => onExport(attendance)} type="button"><Download size={17} /> Exportar BA</button></>}
+                {["cancelled", "no_show"].includes(attendance.status) && <button className="ghost-action" onClick={() => onOpenPatient(attendance.patientId, attendance.id)} type="button">Ver detalhes</button>}
+              </div>
+            </article>
+          );
+        }) : <EmptyState title="Nenhum atendimento encontrado para os filtros selecionados" message="Limpe ou ajuste os filtros para visualizar outros BAs." />}
+      </section>
+    </div>
   );
 }
 
@@ -1522,41 +1673,95 @@ function appointmentStatusLabel(status: ClinicalAppointment["status"]) {
   return labels[status];
 }
 
-function Financial({ financial }: { financial: FinancialTransaction[] }) {
-  const received = financial.filter((item) => item.type === "income" && item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
-  const pending = financial.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.amount, 0);
-  const expenses = financial.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+function Financial({ financial, patients, attendances, profiles, companyId, onCreate }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState("all");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [type, setType] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [method, setMethod] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [patientId, setPatientId] = useState("all");
+  const [ba, setBa] = useState("");
+  const [professional, setProfessional] = useState("all");
+  const [min, setMin] = useState("");
+  const [max, setMax] = useState("");
+
+  const filtered = financial.filter((item) => {
+    const attendance = attendances.find((entry) => entry.id === item.attendanceId);
+    return item.companyId === companyId &&
+      matchesPeriod(item.dueDate, period, periodStart, periodEnd) &&
+      (type === "all" || item.type === type) &&
+      (status === "all" || item.status === status) &&
+      (method === "all" || item.paymentMethod === method) &&
+      (category === "all" || item.category === category) &&
+      (patientId === "all" || item.patientId === patientId) &&
+      (!ba || normalizeText(attendance?.baNumber || "").includes(normalizeText(ba))) &&
+      (professional === "all" || attendance?.professionalId === professional) &&
+      (!min || item.amount >= Number(min)) && (!max || item.amount <= Number(max));
+  });
+  const received = filtered.filter((item) => item.type === "income" && item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
+  const pending = filtered.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.amount, 0);
+  const overdue = filtered.filter((item) => item.status === "overdue").reduce((sum, item) => sum + item.amount, 0);
+  const expenses = filtered.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      await onCreate({ id: `fin-${Date.now()}`, companyId, patientId: String(form.get("patientId") || "") || undefined, attendanceId: String(form.get("attendanceId") || "") || undefined, description: String(form.get("description")), type: String(form.get("type")) as FinancialTransaction["type"], amount: Number(form.get("amount")), dueDate: String(form.get("dueDate")), paidAt: String(form.get("paidAt") || "") || undefined, paymentMethod: String(form.get("paymentMethod")) as FinancialTransaction["paymentMethod"], category: String(form.get("category")), status: String(form.get("status")) as FinancialTransaction["status"], notes: String(form.get("notes") || "") || undefined });
+      setOpen(false);
+    } finally { setSaving(false); }
+  }
+
+  function clear() { setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setType("all"); setStatus("all"); setMethod("all"); setCategory("all"); setPatientId("all"); setBa(""); setProfessional("all"); setMin(""); setMax(""); }
 
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div><span className="eyebrow">Gestao financeiro</span><h1>Financeiro</h1><p>Receitas, despesas, pagamentos por paciente e relatorios financeiros.</p></div>
-        <button className="primary-button" type="button"><Plus size={18} /> Lancamento</button>
+        <button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Lancamento</button>
       </div>
       <section className="metrics-grid">
         <MetricCard icon={<CreditCard />} label="Recebido no mes" value={currency.format(received)} detail="Pagamentos confirmados" tone="success" />
         <MetricCard icon={<Receipt />} label="Pendente" value={currency.format(pending)} detail="A receber" tone="warning" />
-        <MetricCard icon={<AlertTriangle />} label="Atrasado" value={currency.format(0)} detail="Sem atraso no demo" />
+        <MetricCard icon={<AlertTriangle />} label="Atrasado" value={currency.format(overdue)} detail="Conforme filtros" />
         <MetricCard icon={<TrendingUp />} label="Lucro estimado" value={currency.format(received - expenses)} detail="Receita - despesas" tone="primary" />
       </section>
       <div className="dashboard-grid">
         <ChartCard title="Receita mensal" subtitle="Entradas confirmadas" format="currency" data={[{ label: "Mar", value: 4200 }, { label: "Abr", value: 5100 }, { label: "Mai", value: 6800 }, { label: "Jun", value: received }]} />
         <ChartCard title="Despesas por categoria" subtitle="Saidas agrupadas" format="currency" data={[{ label: "Estoque", value: expenses }, { label: "Aluguel", value: 1200 }, { label: "Marketing", value: 450 }]} />
       </div>
-      <Table headers={["Descricao", "Tipo", "Valor", "Vencimento", "Forma", "Status"]} rows={financial.map((item) => [item.description, item.type === "income" ? "Receita" : "Despesa", currency.format(item.amount), formatDate(item.dueDate), paymentLabel(item.paymentMethod), paymentStatusLabel(item.status)])} />
+      <section className="data-panel operational-filters">
+        <div className="filter-grid"><select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="all">Todo periodo</option><option value="today">Hoje</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="custom">Personalizado</option></select>{period === "custom" && <><input aria-label="Periodo inicial" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} type="date" /><input aria-label="Periodo final" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} type="date" /></>}<select value={type} onChange={(e) => setType(e.target.value)}><option value="all">Receitas e despesas</option><option value="income">Receita</option><option value="expense">Despesa</option></select><select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Todos os status</option><option value="paid">Pago</option><option value="pending">Pendente</option><option value="overdue">Atrasado</option><option value="cancelled">Cancelado</option></select><select value={method} onChange={(e) => setMethod(e.target.value)}><option value="all">Todas as formas</option>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="all">Todas as categorias</option>{Array.from(new Set(financial.map((item) => item.category))).map((item) => <option key={item}>{item}</option>)}</select><select value={patientId} onChange={(e) => setPatientId(e.target.value)}><option value="all">Todos os pacientes</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select><input value={ba} onChange={(e) => setBa(e.target.value)} placeholder="Numero do BA" /><select value={professional} onChange={(e) => setProfessional(e.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select><input value={min} onChange={(e) => setMin(e.target.value)} type="number" placeholder="Valor minimo" /><input value={max} onChange={(e) => setMax(e.target.value)} type="number" placeholder="Valor maximo" /></div>
+        <button className="ghost-action" onClick={clear} type="button">Limpar filtros</button>
+      </section>
+      {filtered.length ? <Table headers={["Descricao", "Tipo", "Valor", "Vencimento", "Forma", "Status"]} rows={filtered.map((item) => [item.description, item.type === "income" ? "Receita" : "Despesa", currency.format(item.amount), formatDate(item.dueDate), paymentLabel(item.paymentMethod), paymentStatusLabel(item.status)])} /> : <EmptyState title="Nenhum lancamento encontrado para os filtros selecionados" message="Limpe ou ajuste os filtros financeiros." />}
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={submit}><div><h2>Novo lancamento</h2><p>Cadastre uma receita ou despesa vinculada a clinica.</p></div><div className="form-grid form-grid--two"><label>Tipo<select name="type"><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Descricao<input name="description" required /></label><label>Valor<input min="0.01" name="amount" required step="0.01" type="number" /></label><label>Categoria<input name="category" required /></label><label>Vencimento<input name="dueDate" required type="date" /></label><label>Data de pagamento<input name="paidAt" type="date" /></label><label>Forma de pagamento<select name="paymentMethod">{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select name="status"><option value="paid">Pago</option><option value="pending">Pendente</option><option value="overdue">Atrasado</option><option value="cancelled">Cancelado</option></select></label><label>Paciente<select name="patientId"><option value="">Sem paciente</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>BA / Atendimento<select name="attendanceId"><option value="">Sem BA</option>{attendances.map((item) => <option key={item.id} value={item.id}>{item.baNumber} · {patientName(patients, item.patientId)}</option>)}</select></label></div><label>Observacoes<textarea name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar lancamento"}</button></div></form></div>}
     </div>
   );
 }
 
-function Stock({ stock }: { stock: StockProduct[] }) {
+function Stock({ stock, companyId, onCreate }: { stock: StockProduct[]; companyId: string; onCreate: (product: StockProduct) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const totalValue = stock.reduce((sum, product) => sum + product.currentQuantity * product.costValue, 0);
   const low = stock.filter((product) => product.currentQuantity <= product.minimumQuantity);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); const form = new FormData(event.currentTarget);
+    try {
+      await onCreate({ id: `stock-${Date.now()}`, companyId, name: String(form.get("name")), category: String(form.get("category")), internalCode: String(form.get("internalCode")), currentQuantity: Number(form.get("currentQuantity")), minimumQuantity: Number(form.get("minimumQuantity")), unit: String(form.get("unit")), costValue: Number(form.get("costValue")), saleValue: Number(form.get("saleValue")), supplier: String(form.get("supplier")), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined });
+      setOpen(false);
+    } finally { setSaving(false); }
+  }
 
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div><span className="eyebrow">Estoque</span><h1>Dashboard de estoque</h1><p>Produtos, movimentacoes, validade, valor em estoque e alerta de minimo.</p></div>
-        <button className="primary-button" type="button"><Plus size={18} /> Novo produto</button>
+        <button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Novo produto</button>
       </div>
       <section className="metrics-grid">
         <MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" />
@@ -1564,7 +1769,8 @@ function Stock({ stock }: { stock: StockProduct[] }) {
         <MetricCard icon={<CalendarClock />} label="Prox. validade" value="1" detail="Vence em ate 90 dias" tone="warning" />
         <MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" />
       </section>
-      <Table headers={["Produto", "Categoria", "Codigo", "Atual", "Minimo", "Fornecedor", "Validade"]} rows={stock.map((product) => [product.name, product.category, product.internalCode, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`, product.supplier, product.expiresAt ? formatDate(product.expiresAt) : "Sem validade"])} />
+      {stock.length ? <Table headers={["Produto", "Categoria", "Codigo", "Atual", "Minimo", "Fornecedor", "Validade"]} rows={stock.map((product) => [product.name, product.category, product.internalCode, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`, product.supplier, product.expiresAt ? formatDate(product.expiresAt) : "Sem validade"])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o controle de estoque." />}
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={submit}><div><h2>Novo produto</h2><p>Cadastre o item e seus limites de estoque.</p></div><div className="form-grid form-grid--two"><label>Nome do produto<input name="name" required /></label><label>Categoria<input name="category" required /></label><label>Codigo interno<input name="internalCode" required /></label><label>Unidade de medida<input defaultValue="un" name="unit" required /></label><label>Quantidade atual<input defaultValue="0" min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue="0" min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue="0" min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue="0" min="0" name="saleValue" step="0.01" type="number" /></label><label>Fornecedor<input name="supplier" /></label><label>Data de validade<input name="expiresAt" type="date" /></label></div><label>Observacoes<textarea name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar produto"}</button></div></form></div>}
     </div>
   );
 }
@@ -1847,6 +2053,26 @@ function formatDate(date: string) {
 
 function formatDateTime(date: string) {
   return new Date(date).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function matchesPeriod(date: string, period: string, customStart = "", customEnd = "") {
+  if (period === "all") return true;
+  const target = new Date(date);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") return target >= startToday;
+  if (period === "week") {
+    const startWeek = new Date(startToday);
+    startWeek.setDate(startToday.getDate() - startToday.getDay());
+    return target >= startWeek;
+  }
+  if (period === "month") return target.getFullYear() === now.getFullYear() && target.getMonth() === now.getMonth();
+  if (period === "custom") {
+    const start = customStart ? new Date(`${customStart}T00:00:00`) : null;
+    const end = customEnd ? new Date(`${customEnd}T23:59:59`) : null;
+    return (!start || target >= start) && (!end || target <= end);
+  }
+  return true;
 }
 
 function statusLabel(status: Attendance["status"]) {
