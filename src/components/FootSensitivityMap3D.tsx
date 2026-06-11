@@ -112,19 +112,45 @@ export function FootSensitivityMap3D({
           <Canvas camera={{ position: [0, -4.2, 2.4], fov: 42 }}>
             <ambientLight intensity={0.85} />
             <directionalLight position={[2, -3, 4]} intensity={1.15} />
-            <group scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.05, 0, -0.08]}>
-              <mesh position={[0, 0, 0]}>
-                <capsuleGeometry args={[0.55, 2.2, 10, 26]} />
-                <meshStandardMaterial color="#e5b18f" roughness={0.62} metalness={0.03} />
+            <group scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
+              <mesh position={[0.12, 0, 0.03]} scale={[1.45, 0.72, 0.34]}>
+                <sphereGeometry args={[0.82, 40, 22]} />
+                <meshStandardMaterial color="#c99063" roughness={0.72} metalness={0.04} />
               </mesh>
-              <mesh position={[-1.24, 0, 0.12]} scale={[0.5, 0.88, 0.34]}>
-                <sphereGeometry args={[0.6, 32, 18]} />
-                <meshStandardMaterial color="#efc0a2" roughness={0.6} />
+              <mesh position={[0.12, 0, 0.04]} scale={[1.47, 0.74, 0.35]}>
+                <sphereGeometry args={[0.825, 24, 14]} />
+                <meshStandardMaterial color="#24313a" wireframe transparent opacity={0.28} />
               </mesh>
-              <mesh position={[1.22, 0, 0.14]} scale={[0.42, 0.62, 0.5]}>
-                <sphereGeometry args={[0.62, 28, 18]} />
-                <meshStandardMaterial color="#d99b78" roughness={0.68} />
+              <mesh position={[0.72, 0, 0.12]} scale={[0.72, 0.66, 0.58]}>
+                <sphereGeometry args={[0.62, 32, 18]} />
+                <meshStandardMaterial color="#b87852" roughness={0.75} />
               </mesh>
+              <mesh position={[1.18, 0, 0.86]} rotation={[0, 0, 0]} scale={[0.58, 0.52, 1.35]}>
+                <cylinderGeometry args={[0.36, 0.5, 1.35, 34]} />
+                <meshStandardMaterial color="#b77b53" roughness={0.7} />
+              </mesh>
+              <mesh position={[1.18, 0, 0.86]} scale={[0.59, 0.53, 1.36]}>
+                <cylinderGeometry args={[0.36, 0.5, 1.35, 18]} />
+                <meshStandardMaterial color="#25313b" wireframe transparent opacity={0.24} />
+              </mesh>
+              {[-0.34, -0.17, 0.02, 0.2, 0.36].map((y, index) => (
+                <group key={y} position={[-1.08 - index * 0.02, y, 0.05]} rotation={[0, 0.1, 1.48]}>
+                  <mesh scale={[0.52 - index * 0.035, 0.16 - index * 0.012, 0.15 - index * 0.01]}>
+                    <capsuleGeometry args={[0.38, 0.54, 10, 18]} />
+                    <meshStandardMaterial color={index === 0 ? "#d7a277" : "#d19a70"} roughness={0.66} />
+                  </mesh>
+                  <mesh position={[0.38, 0, 0.08]} scale={[0.16, 0.1, 0.035]}>
+                    <sphereGeometry args={[0.42, 20, 10]} />
+                    <meshStandardMaterial color="#e8c2a2" roughness={0.55} />
+                  </mesh>
+                </group>
+              ))}
+              {[-0.28, -0.12, 0.04, 0.2].map((y, index) => (
+                <mesh key={`tendon-${y}`} position={[-0.38 - index * 0.08, y, 0.39]} rotation={[0.18, 0.1, -0.2]} scale={[0.035, 0.035, 0.78]}>
+                  <capsuleGeometry args={[0.34, 0.9, 8, 10]} />
+                  <meshStandardMaterial color="#7b563d" roughness={0.8} transparent opacity={0.74} />
+                </mesh>
+              ))}
               {footRegions.map((region) => {
                 const pointKey = `${footSide}-${region.pointKey}`;
                 const entry = currentEntries.find((item) => item.pointKey === pointKey || (!item.pointKey && item.regionKey === region.key));
@@ -178,11 +204,11 @@ export function FootSensitivityMap3D({
         </button>
 
         <div className="data-panel data-panel--flat">
-          <h3>Marcacoes deste BA</h3>
+          <h3>Marcacoes do paciente</h3>
           <ul className="compact-list">
             {currentEntries.length ? currentEntries.map((entry) => (
               <li key={entry.id}>
-                <strong>{regionLabel(entry.regionKey)}</strong>
+                <strong>{entry.baNumber} · {regionLabel(entry.regionKey)}</strong>
                 <span>{sensitivityStatusLabel(entry.sensitivityStatus)}</span>
               </li>
             )) : <li>Nenhum ponto salvo ainda.</li>}

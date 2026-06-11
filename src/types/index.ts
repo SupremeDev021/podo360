@@ -201,11 +201,17 @@ export type AttendanceImage = {
   attendanceId: string;
   uniqueRecordNumber: string;
   baNumber: string;
-  imageType: "before" | "during" | "after";
+  imageType: "before" | "during" | "after" | "current_state" | "return" | "evolution";
+  footSide?: FootSide | "not_applicable";
+  footRegion?: string;
   fileUrl: string;
+  description?: string;
+  clinicalNotes?: string;
+  comparativeNotes?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type FinancialTransaction = {

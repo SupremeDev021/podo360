@@ -28,9 +28,11 @@ import type { FormEvent, ReactNode } from "react";
 import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
 import { FootSensitivityMap3D } from "./components/FootSensitivityMap3D";
+import { ImageEvolutionComparison } from "./components/ImageEvolutionComparison";
 import { Layout, type ViewKey } from "./components/Layout";
 import { MetricCard } from "./components/MetricCard";
 import { UniqueMedicalRecordView } from "./components/UniqueMedicalRecord";
+import { WoundImageModule } from "./components/WoundImageModule";
 import {
   demoAnamneses,
   demoAttendanceImages,
@@ -95,7 +97,7 @@ export function App() {
   const [financial] = useState<FinancialTransaction[]>(demoFinancial);
   const [stock] = useState<StockProduct[]>(demoStock);
   const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
-  const [attendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
+  const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
   const [hciQuery, setHciQuery] = useState("");
   const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
@@ -162,6 +164,7 @@ export function App() {
       attendances: selectedPatientAttendances,
       anamneses: selectedPatientAnamneses,
       footSensitivityMaps: selectedPatientFootMaps,
+      attendanceImages: selectedPatientImages,
       integratedHistories: authorizedHciHistories,
       includeHci: includeHciInReport,
       professionalName: profile.fullName,
@@ -189,6 +192,29 @@ export function App() {
       return current.map((item) => (item.id === record.id ? record : item));
     });
     notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
+  }
+
+  function handleSaveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+    setAttendanceImages((current) => [
+      {
+        ...image,
+        id: `attendance-image-${current.length + 1}`,
+        createdAt: new Date().toISOString()
+      },
+      ...current
+    ]);
+    notify("Imagem da ferida salva", "Registro visual vinculado ao BA e ao ProntuárioÚnico.", "success");
+  }
+
+  function handleSaveComparativeNote(imageIds: string[], note: string) {
+    setAttendanceImages((current) =>
+      current.map((image) =>
+        imageIds.includes(image.id)
+          ? { ...image, comparativeNotes: note, updatedAt: new Date().toISOString() }
+          : image
+      )
+    );
+    notify("Comparativo salvo", "Observacao comparativa aplicada as imagens selecionadas.", "success");
   }
 
   function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
@@ -359,7 +385,7 @@ export function App() {
           onContinueAttendance={handleStartAttendance}
           onExportBa={(attendance) => {
             const patient = patients.find((item) => item.id === attendance.patientId);
-            if (patient) exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps);
+            if (patient) exportAttendanceBa(patient, company, attendance, anamneses, footSensitivityMaps, attendanceImages);
           }}
         />
       )}
@@ -377,6 +403,8 @@ export function App() {
           onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
           onSaveFootSensitivity={handleSaveFootSensitivity}
+          onSaveAttendanceImage={handleSaveAttendanceImage}
+          onSaveComparativeNote={handleSaveComparativeNote}
           company={company}
           professionalId={profile.id}
         />
@@ -703,6 +731,8 @@ function PatientProfile({
   onFinishAttendance,
   onSaveAnamnesis,
   onSaveFootSensitivity,
+  onSaveAttendanceImage,
+  onSaveComparativeNote,
   company,
   professionalId
 }: {
@@ -718,6 +748,8 @@ function PatientProfile({
   onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
   onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
+  onSaveAttendanceImage: (image: Omit<AttendanceImage, "id" | "createdAt">) => void;
+  onSaveComparativeNote: (imageIds: string[], note: string) => void;
   company: Company;
   professionalId: string;
 }) {
@@ -726,7 +758,6 @@ function PatientProfile({
     attendances.find((attendance) => attendance.status === "in_progress") ??
     attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
-  const currentFootMaps = currentAttendance ? footSensitivityMaps.filter((entry) => entry.attendanceId === currentAttendance.id) : [];
 
   return (
     <div className="page-stack">
@@ -744,7 +775,7 @@ function PatientProfile({
       </section>
 
       <section className="tabs-bar">
-        {["Dados do paciente", "ProntuárioÚnico", "Anamnese", "Pe 3D / Sensibilidade", "Procedimentos", "Curativo", "Imagens", "Evolucao", "Relatorios"].map((tab, index) => (
+        {["Dados do paciente", "ProntuárioÚnico", "Anamnese modular", "Imagens da ferida", "Comparativo de evolucao", "Relatorios"].map((tab, index) => (
           <button className={index === 1 ? "is-active" : ""} key={tab} type="button">{tab}</button>
         ))}
       </section>
@@ -767,7 +798,7 @@ function PatientProfile({
         </section>
       )}
 
-      <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} />
+      <UniqueMedicalRecordView patient={patient} uniqueMedicalRecord={uniqueMedicalRecord} attendances={attendances} attendanceImages={attendanceImages} />
 
       {currentAttendance ? (
         <>
@@ -781,18 +812,41 @@ function PatientProfile({
             uniqueRecordNumber={patient.uniqueRecordNumber}
             baNumber={currentAttendance.baNumber}
             createdBy={professionalId}
-          />
-
-          <FootSensitivityMap3D
-            entries={currentFootMaps}
-            onSave={onSaveFootSensitivity}
-            patientId={patient.id}
-            companyId={company.id}
-            professionalId={professionalId}
-            attendanceId={currentAttendance.id}
-            uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
-            uniqueRecordNumber={patient.uniqueRecordNumber}
-            baNumber={currentAttendance.baNumber}
+            footSensitivitySlot={
+              <FootSensitivityMap3D
+                entries={footSensitivityMaps}
+                onSave={onSaveFootSensitivity}
+                patientId={patient.id}
+                companyId={company.id}
+                professionalId={professionalId}
+                attendanceId={currentAttendance.id}
+                uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+                uniqueRecordNumber={patient.uniqueRecordNumber}
+                baNumber={currentAttendance.baNumber}
+              />
+            }
+            woundImagesSlot={
+              <WoundImageModule
+                images={attendanceImages}
+                onSave={onSaveAttendanceImage}
+                patientId={patient.id}
+                companyId={company.id}
+                createdBy={professionalId}
+                attendanceId={currentAttendance.id}
+                uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
+                uniqueRecordNumber={patient.uniqueRecordNumber}
+                baNumber={currentAttendance.baNumber}
+              />
+            }
+            imageEvolutionSlot={
+              <ImageEvolutionComparison
+                images={attendanceImages}
+                attendances={attendances}
+                patientId={patient.id}
+                uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
+                onComparativeNote={onSaveComparativeNote}
+              />
+            }
           />
         </>
       ) : (
@@ -815,7 +869,7 @@ function PatientProfile({
         <div className="data-panel">
           <h2>Exportacoes</h2>
           <div className="report-list">
-            <button onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps)} type="button"><FileText size={18} /> Exportar BA atual</button>
+            <button onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
             <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
             <button type="button"><Layers3 size={18} /> Dados legados preservados fora da anamnese</button>
           </div>
@@ -1294,7 +1348,10 @@ function imageTypeLabel(type: AttendanceImage["imageType"]) {
   const labels: Record<AttendanceImage["imageType"], string> = {
     before: "Antes",
     during: "Durante",
-    after: "Depois"
+    after: "Depois",
+    current_state: "Estado atual",
+    return: "Retorno",
+    evolution: "Evolucao"
   };
   return labels[type];
 }
@@ -1309,9 +1366,10 @@ function consentLabel(status: HciPatientMatch["consentStatus"]) {
   return labels[status];
 }
 
-function exportAttendanceBa(patient: Patient, company: Company, attendance: Attendance, anamneses: AnamnesisRecord[], footMaps: FootSensitivityMap[]) {
+function exportAttendanceBa(patient: Patient, company: Company, attendance: Attendance, anamneses: AnamnesisRecord[], footMaps: FootSensitivityMap[], images: AttendanceImage[]) {
   const relatedAnamnesis = anamneses.find((record) => record.attendanceId === attendance.id);
   const relatedFootMaps = footMaps.filter((entry) => entry.attendanceId === attendance.id);
+  const relatedImages = images.filter((image) => image.attendanceId === attendance.id);
   openPrintDocument(
     `BA ${attendance.baNumber}`,
     [
@@ -1319,7 +1377,8 @@ function exportAttendanceBa(patient: Patient, company: Company, attendance: Atte
       `<h2>Paciente</h2><p>${patient.fullName}<br>ProntuárioÚnico: ${patient.uniqueRecordNumber}<br>CPF: ${patient.cpf}</p>`,
       `<h2>Atendimento</h2><p>Data: ${formatDateTime(attendance.scheduledAt)}<br>Queixa: ${attendance.complaint}<br>Procedimento: ${attendance.procedure}<br>Conduta: ${attendance.conduct || "Nao informada"}</p>`,
       `<h2>Anamnese</h2><pre>${JSON.stringify(relatedAnamnesis?.formData ?? {}, null, 2)}</pre>`,
-      `<h2>Sensibilidade / Pe 3D</h2><ul>${relatedFootMaps.map((entry) => `<li>${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus} · ${entry.notes}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`
+      `<h2>Sensibilidade / Pe 3D</h2><ul>${relatedFootMaps.map((entry) => `<li>${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus} · ${entry.notes}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
+      `<h2>Imagens da ferida</h2>${renderImagesForPrint(relatedImages)}`
     ].join(""),
     company.primaryColor
   );
@@ -1342,7 +1401,7 @@ function exportMedicalRecord(
       `<h2>BAs</h2><ul>${attendances.map((attendance) => `<li>${attendance.baNumber} — ${formatDateTime(attendance.scheduledAt)} — ${attendance.procedure}</li>`).join("")}</ul>`,
       `<h2>Anamneses</h2>${anamneses.map((record) => `<h3>${record.baNumber}</h3><pre>${JSON.stringify(record.formData, null, 2)}</pre>`).join("") || "<p>Sem anamneses registradas.</p>"}`,
       `<h2>Sensibilidade / Pe 3D</h2><ul>${footMaps.map((entry) => `<li>${entry.baNumber} · ${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
-      `<h2>Imagens</h2><ul>${images.map((image) => `<li>${image.baNumber} · ${imageTypeLabel(image.imageType)} · ${image.fileUrl}</li>`).join("") || "<li>Sem imagens anexadas</li>"}</ul>`,
+      `<h2>Evolucao por imagens</h2>${renderImagesForPrint(images)}`,
       `<p><strong>Data da emissao:</strong> ${new Date().toLocaleString("pt-BR")}</p>`
     ].join(""),
     company.primaryColor
@@ -1356,6 +1415,32 @@ function documentHeader(company: Company, title: string) {
       <h1>${title}</h1>
       <p>${company.displayName}<br>${company.contactPhone} · ${company.contactEmail}<br>${company.document}</p>
     </header>
+  `;
+}
+
+function renderImagesForPrint(images: AttendanceImage[]) {
+  if (!images.length) return "<p>Sem imagens de ferida registradas.</p>";
+
+  return `
+    <div class="image-print-grid">
+      ${images
+        .slice()
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((image) => `
+          <article>
+            ${image.fileUrl.startsWith("http") || image.fileUrl.startsWith("data:") || image.fileUrl.startsWith("blob:")
+              ? `<img src="${image.fileUrl}" alt="${image.description || imageTypeLabel(image.imageType)}" />`
+              : `<div class="image-placeholder">Arquivo: ${image.fileUrl}</div>`}
+            <h3>${image.baNumber} — ${imageTypeLabel(image.imageType)}</h3>
+            <p><strong>Regiao:</strong> ${image.footRegion || "Nao informada"}<br>
+            <strong>Data/hora:</strong> ${formatDateTime(image.createdAt)}<br>
+            <strong>Profissional:</strong> ${image.createdBy}</p>
+            <p>${image.description || ""}</p>
+            ${image.clinicalNotes ? `<p><strong>Observacao clinica:</strong> ${image.clinicalNotes}</p>` : ""}
+            ${image.comparativeNotes ? `<p><strong>Comparativo:</strong> ${image.comparativeNotes}</p>` : ""}
+          </article>
+        `).join("")}
+    </div>
   `;
 }
 
@@ -1374,6 +1459,9 @@ function openPrintDocument(title: string, body: string, primaryColor: string) {
           h1, h2, h3 { margin-bottom: 8px; }
           h2 { border-bottom: 1px solid #dce5ea; padding-bottom: 4px; }
           pre { white-space: pre-wrap; background: #f8fafc; padding: 12px; border: 1px solid #dce5ea; }
+          .image-print-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+          .image-print-grid article { border: 1px solid #dce5ea; padding: 12px; break-inside: avoid; }
+          .image-print-grid img, .image-placeholder { width: 100%; min-height: 160px; object-fit: cover; background: #f8fafc; display: grid; place-items: center; color: #667085; }
           @media print { button { display: none; } }
         </style>
       </head>

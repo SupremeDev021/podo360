@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Save, SkipForward } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient } from "../types";
 
 type Field =
@@ -24,6 +24,9 @@ type AnamnesisWizardProps = {
   uniqueRecordNumber: string;
   baNumber: string;
   createdBy: string;
+  footSensitivitySlot?: ReactNode;
+  woundImagesSlot?: ReactNode;
+  imageEvolutionSlot?: ReactNode;
 };
 
 const modules: Module[] = [
@@ -54,7 +57,7 @@ const modules: Module[] = [
   { key: "edema", title: "Edema", description: "Grau de edema.", fields: [
     { name: "edema", label: "Edema", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
   ] },
-  { key: "monofilament_3d", title: "Sensibilidade Monofilamento com pe 3D", description: "Preencha no pe 3D abaixo.", fields: [
+  { key: "monofilament_3d", title: "Sensibilidade Monofilamento", description: "Mapa tecnico do pe para pontos de monofilamento.", fields: [
     { name: "monofilament_notes", label: "Observacoes de sensibilidade", type: "textarea" }
   ] },
   { key: "vibration_thermal", title: "Sensibilidade vibratoria e termica", description: "Diapasao e temperatura.", fields: [
@@ -102,14 +105,17 @@ const modules: Module[] = [
     { name: "dressing_products", label: "Produtos utilizados", type: "textarea" },
     { name: "dressing_notes", label: "Observacoes", type: "textarea" }
   ] },
+  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para Supabase Storage.", fields: [
+    { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
+  ] },
+  { key: "image_evolution", title: "Comparativo de evolucao", description: "Compare imagens por BA, regiao e momento do tratamento.", fields: [
+    { name: "image_evolution_notes", label: "Observacao comparativa geral", type: "textarea" }
+  ] },
   { key: "return", title: "Retorno", description: "Retorno sugerido.", fields: [
     { name: "return_date", label: "Data sugerida de retorno", type: "date" },
     { name: "return_needed", label: "Necessita retorno?", type: "radio", options: ["Sim", "Nao"] },
     { name: "return_priority", label: "Prioridade do retorno", type: "radio", options: ["Baixa", "Media", "Alta"] },
     { name: "return_notes", label: "Observacoes", type: "textarea" }
-  ] },
-  { key: "images", title: "Imagens", description: "Anexos ficam preparados para Supabase Storage.", fields: [
-    { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
   ] },
   { key: "evolution", title: "Evolucao e observacoes finais", description: "Evolucao, orientacoes e fechamento do atendimento.", fields: [
     { name: "evolution_notes", label: "Evolucao e observacoes finais", type: "textarea" },
@@ -126,7 +132,10 @@ export function AnamnesisWizard({
   uniqueMedicalRecordId,
   uniqueRecordNumber,
   baNumber,
-  createdBy
+  createdBy,
+  footSensitivitySlot,
+  woundImagesSlot,
+  imageEvolutionSlot
 }: AnamnesisWizardProps) {
   const [step, setStep] = useState(record?.currentStep ?? 1);
   const [formData, setFormData] = useState<AnamnesisFormData>({
@@ -205,7 +214,9 @@ export function AnamnesisWizard({
       <div className="stepper">
         {modules.map((item, index) => (
           <button className={`${step === index + 1 ? "is-active" : ""} stepper__${stepStatuses[item.key] ?? "not_started"}`} key={item.title} onClick={() => setStep(index + 1)} title={`${item.title}: ${stepStatusLabel(stepStatuses[item.key] ?? "not_started")}`} type="button">
-            {index + 1}
+            <small>{index + 1}</small>
+            <span>{item.title}</span>
+            <em>{stepStatusLabel(stepStatuses[item.key] ?? "not_started")}</em>
           </button>
         ))}
       </div>
@@ -215,7 +226,9 @@ export function AnamnesisWizard({
           <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
         ))}
 
-        {step === 8 && <p className="muted">O registro de pontos de sensibilidade e status fica no componente Pe 3D / Sensibilidade.</p>}
+        {currentModule.key === "monofilament_3d" && footSensitivitySlot}
+        {currentModule.key === "wound_images" && woundImagesSlot}
+        {currentModule.key === "image_evolution" && imageEvolutionSlot}
 
         <div className="wizard-actions">
           <button className="ghost-action" disabled={step === 1} onClick={() => setStep((current) => Math.max(1, current - 1))} type="button">

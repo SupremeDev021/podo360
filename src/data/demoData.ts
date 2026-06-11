@@ -280,7 +280,8 @@ export const demoAnamneses: AnamnesisRecord[] = [
       procedure: "completed",
       dressing: "completed",
       return: "completed",
-      images: "partially_filled",
+      wound_images: "partially_filled",
+      image_evolution: "completed",
       evolution: "completed"
     },
     isCompleted: true,
@@ -340,10 +341,34 @@ export const demoAttendanceImages: AttendanceImage[] = [
     uniqueRecordNumber: "PU-2026-000001",
     baNumber: "BA-2026-000001",
     imageType: "before",
+    footSide: "right",
+    footRegion: "Halux",
     fileUrl: "supabase://attendance-images/patient-1/attendance-1/before-1.jpg",
+    description: "Imagem inicial do halux direito antes do alivio local.",
+    clinicalNotes: "Eritema discreto em borda lateral.",
+    comparativeNotes: "Registro base para comparacao dos retornos.",
     notes: "Estrutura preparada para Supabase Storage.",
     createdBy: "user-1",
     createdAt: "2026-06-09T09:55:00"
+  },
+  {
+    id: "image-2",
+    companyId: demoCompany.id,
+    patientId: "patient-1",
+    uniqueMedicalRecordId: "unique-record-1",
+    attendanceId: "attendance-1",
+    uniqueRecordNumber: "PU-2026-000001",
+    baNumber: "BA-2026-000001",
+    imageType: "after",
+    footSide: "right",
+    footRegion: "Halux",
+    fileUrl: "supabase://attendance-images/patient-1/attendance-1/after-1.jpg",
+    description: "Aspecto apos curativo protetor.",
+    clinicalNotes: "Sem secrecao aparente no fim do atendimento.",
+    comparativeNotes: "Comparar com retorno para confirmar estabilidade.",
+    notes: "Imagem pos-procedimento vinculada ao BA.",
+    createdBy: "user-1",
+    createdAt: "2026-06-09T10:22:00"
   }
 ];
 

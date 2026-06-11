@@ -1,4 +1,4 @@
-import type { AnamnesisRecord, Attendance, Company, FootSensitivityMap, IntegratedClinicalHistory, Patient } from "../types";
+import type { AnamnesisRecord, Attendance, AttendanceImage, Company, FootSensitivityMap, IntegratedClinicalHistory, Patient } from "../types";
 
 export type ReferralInput = {
   company: Company;
@@ -6,6 +6,7 @@ export type ReferralInput = {
   attendances: Attendance[];
   anamneses?: AnamnesisRecord[];
   footSensitivityMaps?: FootSensitivityMap[];
+  attendanceImages?: AttendanceImage[];
   integratedHistories?: IntegratedClinicalHistory[];
   includeHci?: boolean;
   professionalName: string;
@@ -35,6 +36,16 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
         .map((mark) => `${mark.baNumber} ${mark.footSide === "right" ? "pe direito" : "pe esquerdo"} ${mark.regionKey}: ${sensitivityLabel(mark.sensitivityStatus)}.`)
         .join(" ")
     : "Sem mapeamento de sensibilidade por pe registrado.";
+  const imageEvolutionSummary = input.attendanceImages?.length
+    ? input.attendanceImages
+        .slice()
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((image) => {
+          const notes = [image.description, image.clinicalNotes, image.comparativeNotes].filter(Boolean).join("; ");
+          return `${image.baNumber} em ${new Date(image.createdAt).toLocaleDateString("pt-BR")}: ${imageTypeLabel(image.imageType)} em ${image.footRegion || "regiao nao informada"}${notes ? `; ${notes}` : ""}.`;
+        })
+        .join(" ")
+    : "Sem imagens evolutivas registradas no ProntuárioÚnico local.";
   const hciSummary =
     input.includeHci && input.integratedHistories?.length
       ? input.integratedHistories
@@ -81,6 +92,10 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
     procedures || "Sem procedimentos registrados.",
     products ? `Produtos utilizados: ${products}.` : `Produtos utilizados: nao informado.`,
     ``,
+    `Evolucao por imagens registradas`,
+    imageEvolutionSummary,
+    `A evolucao acima reflete apenas descricoes e observacoes registradas por profissional; nao ha inferencia visual automatica ou conclusao inventada pela IA.`,
+    ``,
     `Motivo do encaminhamento`,
     input.reason,
     ``,
@@ -94,6 +109,18 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
     `Assinatura do profissional`,
     input.professionalName
   ].join("\n");
+}
+
+function imageTypeLabel(type: AttendanceImage["imageType"]) {
+  const labels: Record<AttendanceImage["imageType"], string> = {
+    before: "antes",
+    during: "durante",
+    after: "depois",
+    current_state: "estado atual",
+    return: "retorno",
+    evolution: "evolucao"
+  };
+  return labels[type];
 }
 
 function sensitivityLabel(status: FootSensitivityMap["sensitivityStatus"]) {

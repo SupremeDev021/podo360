@@ -589,6 +589,10 @@ th {
   gap: 13px;
 }
 
+.form-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .panel-form label {
   display: grid;
   gap: 6px;
@@ -805,26 +809,57 @@ textarea {
 }
 
 .stepper {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 7px;
   margin: 18px 0;
 }
 
 .stepper button {
-  width: 34px;
-  height: 34px;
+  min-height: 68px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
   background: #fff;
   color: var(--color-muted);
   font-weight: 800;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  grid-template-rows: auto auto;
+  gap: 3px 8px;
+  align-items: center;
+  text-align: left;
+  padding: 10px;
 }
 
 .stepper button.is-active {
   color: #fff;
   border-color: var(--color-primary);
   background: var(--color-primary);
+}
+
+.stepper button small {
+  grid-row: span 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 118, 110, 0.1);
+}
+
+.stepper button span {
+  color: var(--color-text);
+}
+
+.stepper button em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+
+.stepper button.is-active span,
+.stepper button.is-active em {
+  color: #fff;
 }
 
 .stepper button.stepper__completed {
@@ -846,6 +881,107 @@ textarea {
 .wizard-form {
   display: grid;
   gap: 14px;
+}
+
+.wound-module-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.65fr);
+  gap: 16px;
+}
+
+.wound-preview,
+.image-card img,
+.comparison-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: #f8fafc;
+}
+
+.image-card-grid,
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.image-card,
+.comparison-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+}
+
+.image-card span,
+.image-card p,
+.comparison-card p,
+.comparison-card small {
+  color: var(--color-muted);
+}
+
+.image-card__placeholder {
+  min-height: 150px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f8fafc, #eef8f7);
+  color: var(--color-primary);
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-border);
+}
+
+.evolution-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.filter-row--dense {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.timeline-panel {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.timeline-panel > div {
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.timeline-item.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-surface-strong);
+}
+
+.timeline-item span {
+  color: var(--color-muted);
+}
+
+.comparison-note {
+  display: grid;
+  gap: 10px;
 }
 
 .wizard-form label,
@@ -1183,6 +1319,7 @@ textarea {
   .split-grid,
   .split-grid--wide,
   .body-map-grid,
+  .wound-module-grid,
   .foot-map-grid,
   .attendance-topline {
     grid-template-columns: 1fr;
@@ -1238,6 +1375,10 @@ textarea {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-row--dense {
     grid-template-columns: 1fr;
   }
 }

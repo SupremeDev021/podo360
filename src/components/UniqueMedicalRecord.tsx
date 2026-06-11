@@ -1,43 +1,56 @@
 import { CheckCircle2, ClipboardEdit } from "lucide-react";
-import type { Attendance, Patient, UniqueMedicalRecord } from "../types";
+import type { Attendance, AttendanceImage, Patient, UniqueMedicalRecord } from "../types";
+import { ImageEvolutionComparison } from "./ImageEvolutionComparison";
 
 type UniqueMedicalRecordViewProps = {
   patient: Patient;
   uniqueMedicalRecord?: UniqueMedicalRecord;
   attendances: Attendance[];
+  attendanceImages: AttendanceImage[];
 };
 
-export function UniqueMedicalRecordView({ patient, uniqueMedicalRecord, attendances }: UniqueMedicalRecordViewProps) {
+export function UniqueMedicalRecordView({ patient, uniqueMedicalRecord, attendances, attendanceImages }: UniqueMedicalRecordViewProps) {
   return (
-    <section className="split-grid">
-      <div className="data-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Dados do ProntuárioÚnico</h2>
-            <p>Identificador unico do paciente no Podo360; dados clinicos seguem separados por clinica.</p>
+    <section className="page-stack">
+      <div className="split-grid">
+        <div className="data-panel">
+          <div className="section-heading">
+            <div>
+              <h2>Dados do ProntuárioÚnico</h2>
+              <p>Identificador unico do paciente no Podo360; dados clinicos seguem separados por clinica.</p>
+            </div>
+            <ClipboardEdit size={20} />
           </div>
-          <ClipboardEdit size={20} />
+          <dl className="definition-grid">
+            <div><dt>Numero do ProntuárioÚnico</dt><dd>{uniqueMedicalRecord?.uniqueRecordNumber ?? patient.uniqueRecordNumber}</dd></div>
+            <div><dt>Queixa principal local</dt><dd>{patient.clinical.chiefComplaint}</dd></div>
+            <div><dt>Historico local</dt><dd>{patient.clinical.diseaseHistory}</dd></div>
+            <div><dt>Diabetes</dt><dd>{patient.clinical.diabetes ? "Sim" : "Nao"}</dd></div>
+            <div><dt>Hipertensao</dt><dd>{patient.clinical.hypertension ? "Sim" : "Nao"}</dd></div>
+            <div><dt>Medicamentos</dt><dd>{patient.clinical.medications || "Nao informado"}</dd></div>
+            <div><dt>Alergias</dt><dd>{patient.clinical.allergies || "Nao informado"}</dd></div>
+          </dl>
         </div>
-        <dl className="definition-grid">
-          <div><dt>Numero do ProntuárioÚnico</dt><dd>{uniqueMedicalRecord?.uniqueRecordNumber ?? patient.uniqueRecordNumber}</dd></div>
-          <div><dt>Queixa principal local</dt><dd>{patient.clinical.chiefComplaint}</dd></div>
-          <div><dt>Historico local</dt><dd>{patient.clinical.diseaseHistory}</dd></div>
-          <div><dt>Diabetes</dt><dd>{patient.clinical.diabetes ? "Sim" : "Nao"}</dd></div>
-          <div><dt>Hipertensao</dt><dd>{patient.clinical.hypertension ? "Sim" : "Nao"}</dd></div>
-          <div><dt>Medicamentos</dt><dd>{patient.clinical.medications || "Nao informado"}</dd></div>
-          <div><dt>Alergias</dt><dd>{patient.clinical.allergies || "Nao informado"}</dd></div>
-        </dl>
+
+        <div className="data-panel">
+          <div className="section-heading">
+            <div>
+              <h2>Linha do tempo de BAs</h2>
+              <p>Atendimentos da clinica atual vinculados ao ProntuárioÚnico.</p>
+            </div>
+            <CheckCircle2 size={20} />
+          </div>
+          <UniqueMedicalRecordTimeline attendances={attendances} />
+        </div>
       </div>
 
       <div className="data-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Linha do tempo de BAs</h2>
-            <p>Atendimentos da clinica atual vinculados ao ProntuárioÚnico.</p>
-          </div>
-          <CheckCircle2 size={20} />
-        </div>
-        <UniqueMedicalRecordTimeline attendances={attendances} />
+        <ImageEvolutionComparison
+          images={attendanceImages}
+          attendances={attendances}
+          patientId={patient.id}
+          uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
+        />
       </div>
     </section>
   );

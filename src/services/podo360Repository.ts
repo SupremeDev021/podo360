@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, FootSensitivityMap, Patient } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -103,6 +103,35 @@ export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id
       sensitivity_status: entry.sensitivityStatus,
       notes: entry.notes,
       created_by: entry.createdBy
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("attendance_images")
+    .insert({
+      company_id: image.companyId,
+      patient_id: image.patientId,
+      unique_medical_record_id: image.uniqueMedicalRecordId,
+      attendance_id: image.attendanceId,
+      unique_record_number: image.uniqueRecordNumber,
+      ba_number: image.baNumber,
+      image_type: image.imageType,
+      foot_side: image.footSide,
+      foot_region: image.footRegion,
+      file_url: image.fileUrl,
+      description: image.description,
+      clinical_notes: image.clinicalNotes,
+      comparative_notes: image.comparativeNotes,
+      notes: image.notes,
+      created_by: image.createdBy
     })
     .select()
     .single();
