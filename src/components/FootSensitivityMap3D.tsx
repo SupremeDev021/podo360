@@ -1,5 +1,5 @@
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { RefreshCw, Rotate3D, Save } from "lucide-react";
 import { Component, Suspense, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -19,6 +19,12 @@ type SideAwareFootRegion = FootRegion & {
   pointKey: string;
   sideLabel: "D" | "E";
   displayLabel: string;
+};
+
+type FootCoordinate = [number, number, number];
+type RaycastPoint = ThreeEvent<PointerEvent>["point"];
+type RaycastGroup = {
+  worldToLocal: (point: RaycastPoint) => RaycastPoint;
 };
 
 type FootSensitivityMap3DProps = {
@@ -127,6 +133,24 @@ const statusColor: Record<SensitivityStatus, string> = {
   not_tested: "#94a3b8"
 };
 
+const meshNameRegionMap: Record<string, string> = {
+  hallux: "hallux",
+  big_toe: "hallux",
+  second_toe: "second_toe",
+  third_toe: "third_toe",
+  fourth_toe: "fourth_toe",
+  fifth_toe: "fifth_toe",
+  metatarsal: "metatarsal_region",
+  arch: "medial_arch",
+  heel: "plantar_heel",
+  calcaneus: "calcaneus",
+  dorsal: "dorsal_midfoot",
+  plantar: "metatarsal_region",
+  medial_border: "medial_plantar_border",
+  lateral_border: "lateral_plantar_border",
+  ankle: "medial_ankle"
+};
+
 class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -139,13 +163,24 @@ class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: 
   }
 }
 
-function FootGlbModel() {
+function FootGlbModel({
+  onModelPointerDown,
+  onModelPointerMove,
+  onModelPointerOut
+}: {
+  onModelPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  onModelPointerMove: (event: ThreeEvent<PointerEvent>) => void;
+  onModelPointerOut: () => void;
+}) {
   const { scene } = useGLTF(FOOT_MODEL_URL);
   const model = useMemo(() => scene.clone(true), [scene]);
 
   return (
     <primitive
       object={model}
+      onPointerDown={onModelPointerDown}
+      onPointerMove={onModelPointerMove}
+      onPointerOut={onModelPointerOut}
       position={[0, 0, 0]}
       scale={1.05}
     />
@@ -191,11 +226,16 @@ export function FootSensitivityMap3D({
   baNumber
 }: FootSensitivityMap3DProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null);
+  const modelGroupRef = useRef<RaycastGroup | null>(null);
   const [footSide, setFootSide] = useState<FootSide>("right");
   const [selectedKey, setSelectedKey] = useState("hallux");
+  const [selectedCoordinates, setSelectedCoordinates] = useState<FootCoordinate | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [hoveredCoordinates, setHoveredCoordinates] = useState<FootCoordinate | null>(null);
   const [sensitivityStatus, setSensitivityStatus] = useState<SensitivityStatus>("present");
   const sideRegions = useMemo(() => footRegions.map((region) => withFootSide(region, footSide)), [footSide]);
   const selected = useMemo(() => sideRegions.find((region) => region.baseKey === selectedKey) ?? sideRegions[0], [selectedKey, sideRegions]);
+  const hovered = useMemo(() => sideRegions.find((region) => region.baseKey === hoveredKey) ?? null, [hoveredKey, sideRegions]);
   const entriesForSide = useMemo(() => entries.filter((entry) => entry.footSide === footSide), [entries, footSide]);
   const currentBaEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId === attendanceId), [attendanceId, entriesForSide]);
   const historicalEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId !== attendanceId), [attendanceId, entriesForSide]);
@@ -203,7 +243,7 @@ export function FootSensitivityMap3D({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const [x, y, z] = coordinatesForSide(selected, footSide);
+    const [x, y, z] = selectedCoordinates ?? selected.position;
 
     onSave({
       companyId,
@@ -229,13 +269,48 @@ export function FootSensitivityMap3D({
     controlsRef.current?.reset();
   }
 
+  function readLocalPoint(event: ThreeEvent<PointerEvent>) {
+    if (!modelGroupRef.current) return null;
+    const localPoint = modelGroupRef.current.worldToLocal(event.point.clone());
+    return [localPoint.x, localPoint.y, localPoint.z] as FootCoordinate;
+  }
+
+  function handleModelPointerMove(event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation();
+    const localPoint = readLocalPoint(event);
+    if (!localPoint) return;
+    const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
+    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
+    setHoveredKey(region.baseKey);
+    setHoveredCoordinates(localPoint);
+  }
+
+  function handleModelPointerDown(event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation();
+    const localPoint = readLocalPoint(event);
+    if (!localPoint) return;
+    const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
+    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
+    setSelectedKey(region.baseKey);
+    setSelectedCoordinates(localPoint);
+    setHoveredKey(region.baseKey);
+    setHoveredCoordinates(localPoint);
+  }
+
+  function handleSideChange(side: FootSide) {
+    setFootSide(side);
+    setSelectedCoordinates(null);
+    setHoveredKey(null);
+    setHoveredCoordinates(null);
+  }
+
   return (
     <div className="foot-map-grid">
       <section className="foot-map-panel">
         <div className="body-map__toolbar">
           <div className="segmented">
             {(["right", "left"] as const).map((side) => (
-              <button className={footSide === side ? "is-active" : ""} key={side} onClick={() => setFootSide(side)} type="button">
+              <button className={footSide === side ? "is-active" : ""} key={side} onClick={() => handleSideChange(side)} type="button">
                 {side === "right" ? "Pé direito" : "Pé esquerdo"}
               </button>
             ))}
@@ -254,38 +329,35 @@ export function FootSensitivityMap3D({
             <ambientLight intensity={0.95} />
             <directionalLight position={[2, -3, 4]} intensity={1.2} />
             <directionalLight position={[-4, 2, 2]} intensity={0.45} />
-            <group scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
+            <group ref={(node) => { modelGroupRef.current = node; }} scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
               <FootModelErrorBoundary fallback={<FallbackFootMesh />}>
                 <Suspense fallback={<FootLoading />}>
-                  <FootGlbModel />
+                  <FootGlbModel
+                    onModelPointerDown={handleModelPointerDown}
+                    onModelPointerMove={handleModelPointerMove}
+                    onModelPointerOut={() => {
+                      setHoveredKey(null);
+                      setHoveredCoordinates(null);
+                    }}
+                  />
                 </Suspense>
               </FootModelErrorBoundary>
-              {sideRegions.map((region) => {
-                const currentEntry = currentBaEntries.find((item) => matchesFootRegion(item, region));
-                const historyEntry = historicalEntries.find((item) => matchesFootRegion(item, region));
-                const color = currentEntry
-                  ? statusColor[currentEntry.sensitivityStatus]
-                  : historyEntry
-                    ? "#38bdf8"
-                    : selectedKey === region.baseKey
-                      ? "#f8fafc"
-                      : "#dbeafe";
-                const isSelected = selectedKey === region.baseKey;
-
-                return (
-                  <group key={region.pointKey} position={region.position}>
-                    <mesh onClick={() => setSelectedKey(region.baseKey)}>
-                      <sphereGeometry args={[isSelected ? 0.105 : 0.072, 18, 18]} />
-                      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={currentEntry || historyEntry || isSelected ? 0.28 : 0.08} />
-                    </mesh>
-                    {isSelected ? (
-                      <Html center distanceFactor={8} position={[0, 0, 0.22]}>
-                        <span className="foot-hotspot-label">{region.displayLabel}</span>
-                      </Html>
-                    ) : null}
-                  </group>
-                );
-              })}
+              {renderSavedMarkers(currentBaEntries, sideRegions, true)}
+              {renderSavedMarkers(historicalEntries, sideRegions, false)}
+              <RegionFocusMarker
+                color="#67e8f9"
+                label={selected.displayLabel}
+                position={selectedCoordinates ?? selected.position}
+                visible
+              />
+              {hovered && hovered.baseKey !== selected.baseKey ? (
+                <RegionFocusMarker
+                  color="#bae6fd"
+                  label={hovered.displayLabel}
+                  position={hoveredCoordinates ?? hovered.position}
+                  visible
+                />
+              ) : null}
             </group>
             <OrbitControls ref={(node) => { controlsRef.current = node; }} enableDamping enablePan minDistance={2.6} maxDistance={7} />
           </Canvas>
@@ -311,7 +383,7 @@ export function FootSensitivityMap3D({
 
         <label>
           Região do pé
-          <select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
+          <select value={selectedKey} onChange={(event) => { setSelectedKey(event.target.value); setSelectedCoordinates(null); }}>
             {sideRegions.map((region) => (
               <option key={region.pointKey} value={region.baseKey}>{region.clinicalGroup} · {region.displayLabel}</option>
             ))}
@@ -375,6 +447,44 @@ function FootLoading() {
   );
 }
 
+function RegionFocusMarker({ color, label, position, visible }: { color: string; label?: string; position: FootCoordinate; visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <group position={position}>
+      <mesh>
+        <sphereGeometry args={[0.13, 24, 24]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.36} opacity={0.28} transparent />
+      </mesh>
+      <mesh>
+        <ringGeometry args={[0.15, 0.2, 32]} />
+        <meshBasicMaterial color={color} opacity={0.72} transparent />
+      </mesh>
+      {label ? (
+        <Html center distanceFactor={8} position={[0, 0, 0.26]}>
+          <span className="foot-hotspot-label">{label}</span>
+        </Html>
+      ) : null}
+    </group>
+  );
+}
+
+function renderSavedMarkers(entries: FootSensitivityMap[], sideRegions: SideAwareFootRegion[], currentAttendance: boolean) {
+  return entries.map((entry) => {
+    const region = sideRegions.find((item) => matchesFootRegion(entry, item));
+    const coordinates = coordinatesFromEntry(entry) ?? region?.position;
+    if (!coordinates) return null;
+    const color = currentAttendance ? statusColor[entry.sensitivityStatus] : "#38bdf8";
+    return (
+      <RegionFocusMarker
+        color={color}
+        key={entry.id}
+        position={coordinates}
+        visible
+      />
+    );
+  });
+}
+
 function withFootSide(region: FootRegion, footSide: FootSide): SideAwareFootRegion {
   const prefix = footSide === "right" ? "right" : "left";
   const sideLabel = footSide === "right" ? "D" : "E";
@@ -387,9 +497,27 @@ function withFootSide(region: FootRegion, footSide: FootSide): SideAwareFootRegi
   };
 }
 
-function coordinatesForSide(region: SideAwareFootRegion, footSide: FootSide): [number, number, number] {
-  const [x, y, z] = region.position;
-  return footSide === "left" ? [-x, y, z] : [x, y, z];
+function getFootRegionFromMeshName(meshName: string, footSide: FootSide) {
+  const normalized = meshName.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
+  if (!normalized) return null;
+  const baseKey = Object.entries(meshNameRegionMap).find(([meshKey]) => normalized.includes(meshKey))?.[1];
+  if (!baseKey) return null;
+  const region = footRegions.find((item) => item.baseKey === baseKey);
+  return region ? withFootSide(region, footSide) : null;
+}
+
+function getFootRegionFromPoint(point: FootCoordinate, footSide: FootSide) {
+  const [x, y, z] = point;
+  const nearest = footRegions.reduce<{ region: FootRegion; score: number }>((best, region) => {
+    const [rx, ry, rz] = region.position;
+    const dx = (x - rx) * 1.06;
+    const dy = (y - ry) * 1.22;
+    const dz = (z - rz) * 1.38;
+    const score = (dx * dx) + (dy * dy) + (dz * dz);
+    return score < best.score ? { region, score } : best;
+  }, { region: footRegions[0], score: Number.POSITIVE_INFINITY });
+
+  return withFootSide(nearest.region, footSide);
 }
 
 function matchesFootRegion(entry: FootSensitivityMap, region: SideAwareFootRegion) {
@@ -410,6 +538,15 @@ function normalizeFootKey(key: string, footSide: FootSide) {
     .replace(/^_+/, "");
   const baseKey = legacyPointMap[withoutSide] ?? withoutSide;
   return `${sidePrefix}_${baseKey}`;
+}
+
+function coordinatesFromEntry(entry: FootSensitivityMap): FootCoordinate | null {
+  const value = entry.coordinates as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  const z = Number(value?.z);
+  if ([x, y, z].some((coordinate) => Number.isNaN(coordinate))) return null;
+  return [x, y, z];
 }
 
 function regionLabel(key: string) {
