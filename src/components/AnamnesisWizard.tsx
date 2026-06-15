@@ -148,6 +148,7 @@ export function AnamnesisWizard({
   const [stepStatuses, setStepStatuses] = useState<Record<string, AnamnesisStepStatus>>(
     () => modules.reduce<Record<string, AnamnesisStepStatus>>((acc, module) => ({ ...acc, [module.key]: record?.stepStatuses?.[module.key] ?? "not_started" }), {})
   );
+  const [otherProduct, setOtherProduct] = useState(false);
   const currentModule = modules[step - 1];
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
 
@@ -227,8 +228,8 @@ export function AnamnesisWizard({
         {currentModule.fields.map((field) => (
           field.name === "dressing_products" ? (
             <div className="product-picker" key={field.name}>
-              <label>Produto cadastrado<select onChange={(event) => event.target.value && updateField("dressing_products", event.target.value)} value={products.some((item) => item.name === formData.dressing_products) ? String(formData.dressing_products) : ""}><option value="">Selecione um produto</option>{products.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
-              <label>Outro produto<textarea onChange={(event) => updateField("dressing_products", event.target.value)} placeholder="Digite quando o produto nao estiver cadastrado" value={products.some((item) => item.name === formData.dressing_products) ? "" : String(formData.dressing_products || "")} /></label>
+              <label>Selecionar produto<select onChange={(event) => { const value = event.target.value; setOtherProduct(value === "__other__"); if (value !== "__other__") updateField("dressing_products", value); }} value={otherProduct ? "__other__" : products.some((item) => item.name === formData.dressing_products) ? String(formData.dressing_products) : ""}><option value="">Selecione um produto</option>{products.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}<option value="__other__">Outro produto</option></select></label>
+              {otherProduct && <label>Nome do outro produto<input onChange={(event) => updateField("dressing_products", event.target.value)} placeholder="Digite o produto utilizado" value={String(formData.dressing_products || "")} /></label>}
             </div>
           ) : <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
         ))}

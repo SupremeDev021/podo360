@@ -3,7 +3,6 @@ import {
   Boxes,
   CalendarCheck,
   CalendarClock,
-  CalendarDays,
   CalendarPlus,
   CheckCircle2,
   ClipboardEdit,
@@ -52,10 +51,10 @@ import {
   demoStock,
   demoUniqueMedicalRecords
 } from "./data/demoData";
-import { podologyProductCatalog } from "./data/productCatalog";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
-import { createAttendanceBa, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa, updateClinicalAppointment } from "./services/podo360Repository";
+import { roleLabel } from "./services/rbac";
+import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, startAttendanceBa, updateClinicalAppointment, updateStockProduct } from "./services/podo360Repository";
 import type {
   AnamnesisRecord,
   Attendance,
@@ -99,6 +98,8 @@ type BaOpeningPrefill = {
   chiefComplaint?: string;
   origin?: string;
   initialNotes?: string;
+  payerType?: ClinicalAppointment["payerType"];
+  insuranceName?: string;
 };
 
 const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
@@ -116,7 +117,7 @@ const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
 const modulePermissionOptions: Array<[ViewKey, string]> = [
   ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos / Pacientes"],
   ["schedule", "Agenda Clinica"], ["patient-profile", "ProntuárioÚnico / Anamnese / Imagens"], ["reports", "Relatorios"],
-  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Usuarios / Empresas / Super Admin"], ["plans", "Planos"]
+  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Usuarios / Empresas / Super Admin"]
 ];
 
 function allowedViewsForProfile(profile: Profile): ViewKey[] {
@@ -124,7 +125,7 @@ function allowedViewsForProfile(profile: Profile): ViewKey[] {
   if (profile.modulePermissions?.length) return profile.modulePermissions.filter((key): key is ViewKey => modulePermissionOptions.some(([view]) => view === key));
   const defaults: Record<Profile["role"], ViewKey[]> = {
     super_admin: modulePermissionOptions.map(([key]) => key),
-    company_admin: modulePermissionOptions.map(([key]) => key),
+    company_admin: modulePermissionOptions.map(([key]) => key).filter((key) => key !== "super-admin"),
     professional: ["dashboard", "patients", "patient-profile", "attendances", "schedule", "reports", "hci"],
     reception: ["dashboard", "ba-opening", "patients", "patient-profile", "attendances", "schedule"],
     financial: ["dashboard", "financial", "reports"],
@@ -157,6 +158,7 @@ export function App() {
   const [baOpeningPrefill, setBaOpeningPrefill] = useState<BaOpeningPrefill | null>(null);
   const [aiReport, setAiReport] = useState("");
   const [notice, setNotice] = useState<AppNotice | null>(null);
+  const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const profile = demoProfiles[0];
 
   useEffect(() => {
@@ -217,6 +219,8 @@ export function App() {
       if (index < 0) return [record, ...current];
       return current.map((item) => (item.id === record.id ? record : item));
     });
+    const usedProduct = String(record.formData.dressing_products || "").trim();
+    if (usedProduct) setAttendances((current) => current.map((item) => item.id === record.attendanceId ? { ...item, productsUsed: Array.from(new Set([...item.productsUsed, usedProduct])) } : item));
     notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
   }
 
@@ -376,6 +380,8 @@ export function App() {
       complaint: String(form.get("chiefComplaint") || ""),
       initialNotes: String(form.get("initialNotes") || ""),
       priority: String(form.get("priority") || "normal") as Attendance["priority"],
+      payerType: String(form.get("payerType") || "private") as Attendance["payerType"],
+      insuranceName: String(form.get("insuranceName") || "") || undefined,
       appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
       notes: [
         `Clinica vinculada: ${company.displayName}.`,
@@ -391,17 +397,16 @@ export function App() {
 
   function handleSaveAppointment(appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) {
     const now = new Date().toISOString();
-    setAppointments((current) => [
-      {
+    const created: ClinicalAppointment = {
         ...appointment,
-        id: `clinical-appointment-${current.length + 1}`,
+        id: `clinical-appointment-${appointments.length + 1}`,
         status: "scheduled",
         createdBy: profile.id,
         createdAt: now,
         updatedAt: now
-      },
-      ...current
-    ]);
+      };
+    setAppointments((current) => [created, ...current]);
+    void createClinicalAppointment(created).catch(() => notify("Agendamento salvo apenas localmente", "Nao foi possivel sincronizar com o Supabase.", "warning"));
     notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou ProntuárioÚnico.", "success");
   }
 
@@ -450,6 +455,8 @@ export function App() {
       chiefComplaint: appointment.initialComplaint,
       origin: appointment.origin ?? "Agenda Clínica",
       initialNotes: appointment.notes ?? ""
+      , payerType: appointment.payerType
+      , insuranceName: appointment.insuranceName
     });
     setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, status: item.status === "converted_to_ba" ? item.status : "arrived", updatedAt: new Date().toISOString() } : item));
     notify("Não é possível gerar BA diretamente pela Agenda", "Dados enviados para Abertura de BA. Confirme a entrada para criar BA.", "info");
@@ -501,6 +508,8 @@ export function App() {
       )
     );
     notify("Atendimento finalizado", "Data e hora de finalizacao foram registradas no BA.", "success");
+    const finished = attendances.find((item) => item.id === attendanceId);
+    if (finished) setBillingAttendance({ ...finished, status: "completed", finishedAt: now });
   }
 
   async function handleCreateProduct(product: StockProduct) {
@@ -515,6 +524,16 @@ export function App() {
     } catch {
       notify("Erro ao cadastrar produto", "Confira os dados e sua permissao de estoque.", "danger");
       throw new Error("stock_create_failed");
+    }
+  }
+
+  async function handleUpdateProduct(product: StockProduct) {
+    try {
+      await updateStockProduct(product);
+      setStock((current) => current.map((item) => item.id === product.id ? product : item));
+      notify("Produto atualizado com sucesso.", `${product.name} foi atualizado.`, "success");
+    } catch {
+      notify("Erro ao atualizar produto", "Confira os dados e sua permissao de estoque.", "danger");
     }
   }
 
@@ -545,6 +564,7 @@ export function App() {
   return (
     <Layout allowedViews={allowedViewsForProfile(profile)} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
+      {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
       {activeView === "dashboard" && <Dashboard appointments={appointments} companyId={company.id} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
       {activeView === "ba-opening" && (
         <BaOpening
@@ -623,8 +643,8 @@ export function App() {
           onNotify={notify}
         />
       )}
-      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} stock={stock} onCreateProduct={handleCreateProduct} />}
-      {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} stock={stock} />}
+      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} stock={stock} onCreateProduct={handleCreateProduct} onUpdateProduct={handleUpdateProduct} />}
+      {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} onUpdate={handleUpdateProduct} stock={stock} />}
       {activeView === "reports" && (
         <Reports
           patient={selectedPatient}
@@ -646,8 +666,7 @@ export function App() {
         />
       )}
       {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} />}
-      {activeView === "super-admin" && <SuperAdmin company={company} />}
-      {activeView === "plans" && <Plans />}
+      {activeView === "super-admin" && <SuperAdmin company={company} onNotify={notify} />}
     </Layout>
   );
 }
@@ -802,6 +821,7 @@ function BaOpening({
   });
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [payerType, setPayerType] = useState<"private" | "insurance">("private");
 
   useEffect(() => {
     if (!prefill) return;
@@ -826,6 +846,7 @@ function BaOpening({
       initialNotes: prefill.initialNotes || ""
     });
     setBirthDateMessage(result.message);
+    setPayerType(prefill.payerType ?? "private");
   }, [prefill]);
 
   function updatePatientField(key: keyof typeof patientData, value: string) {
@@ -1003,7 +1024,8 @@ function BaOpening({
               </select>
             </label>
             <label>Origem do atendimento<input name="attendanceOrigin" defaultValue={baPrefill.origin} placeholder="Ex.: recepcao, WhatsApp, encaminhamento" /></label>
-            <label>Convenio ou particular<input name="payerType" placeholder="Ex.: particular" /></label>
+            <label>Convênio ou particular<select name="payerType" onChange={(event) => setPayerType(event.target.value as "private" | "insurance")} value={payerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>
+            {payerType === "insurance" && <label>Nome do convênio<input defaultValue={prefill?.insuranceName} name="insuranceName" required placeholder="Informe o convênio" /></label>}
             <label>Data/hora de abertura<input value={new Date().toLocaleString("pt-BR")} readOnly /></label>
           </div>
           <label>Queixa principal inicial<textarea name="chiefComplaint" defaultValue={baPrefill.chiefComplaint} /></label>
@@ -1597,6 +1619,8 @@ function ClinicalAgendaPage({
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<ClinicalAppointment | null>(null);
   const [markingAbsent, setMarkingAbsent] = useState<ClinicalAppointment | null>(null);
+  const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
+  const [appointmentPayerType, setAppointmentPayerType] = useState<"private" | "insurance">("private");
 
   const filteredPatients = patients.filter((patient) =>
     [patient.fullName, patient.cpf, patient.phone, patient.whatsapp, patient.uniqueRecordNumber]
@@ -1651,10 +1675,13 @@ function ClinicalAgendaPage({
       initialComplaint: String(form.get("initialComplaint") || ""),
       notes: String(form.get("notes") || ""),
       origin: String(form.get("origin") || "Recepcao")
+      , payerType: String(form.get("payerType") || "private") as ClinicalAppointment["payerType"]
+      , insuranceName: String(form.get("insuranceName") || "") || undefined
     });
     event.currentTarget.reset();
     setSelectedPatientId("");
     setPatientSearch("");
+    setNewAppointmentOpen(false);
   }
 
   function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1698,11 +1725,38 @@ function ClinicalAgendaPage({
           <h1>Agenda inteligente da clínica</h1>
           <p>Reserve horários, acompanhe chegadas e envie dados para a Abertura de BA sem gerar BA ou ProntuárioÚnico antes da entrada clínica.</p>
         </div>
-        <CalendarDays size={40} />
+        <button className="primary-button" onClick={() => setNewAppointmentOpen(true)} type="button"><CalendarPlus size={18} /> Novo agendamento</button>
       </section>
 
-      <section className="agenda-grid">
-        <form className="panel-form agenda-form" onSubmit={handleSubmit}>
+      <section>
+        <section className="data-panel">
+          <div className="section-heading section-heading--compact">
+            <div><h2>Agenda Clínica</h2><p>Visualizacoes e filtros operacionais.</p></div>
+          </div>
+          <div className="filter-row">
+            {(["day", "week", "month", "list", "queue"] as const).map((mode) => (
+              <button className={viewMode === mode ? "is-active" : ""} key={mode} onClick={() => setViewMode(mode)} type="button">{agendaViewLabel(mode)}</button>
+            ))}
+          </div>
+          <div className="filter-row filter-row--dense agenda-filters">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou telefone" />
+            <select value={professionalFilter} onChange={(event) => setProfessionalFilter(event.target.value)}>
+              <option value="all">Todos os profissionais</option>
+              {profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
+            </select>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Todos os status</option>
+              {(["scheduled", "confirmed", "waiting_arrival", "arrived", "converted_to_ba", "cancelled", "no_show", "rescheduled"] as const).map((status) => <option key={status} value={status}>{appointmentStatusLabel(status)}</option>)}
+            </select>
+          </div>
+          <div className="appointment-list">
+            {filteredAppointments.length ? filteredAppointments.map((appointment) => (
+              <AppointmentCard appointment={appointment} key={appointment.id} patient={appointment.patientId ? patients.find((patient) => patient.id === appointment.patientId) : undefined} professionalName={profiles.find((item) => item.id === appointment.professionalId)?.fullName ?? "A definir"} onStatus={onUpdateStatus} onOpenBa={onOpenBa} onEdit={setEditing} onMarkAbsent={setMarkingAbsent} />
+            )) : <EmptyState title="Nenhum agendamento encontrado" message="Ajuste os filtros ou crie um novo agendamento." />}
+          </div>
+        </section>
+      </section>
+      {newAppointmentOpen && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large agenda-form" onSubmit={handleSubmit}>
           <div className="section-heading section-heading--compact">
             <div><h2>Novo agendamento</h2><p>Escolha paciente existente ou pré-cadastre um paciente novo.</p></div>
             <CalendarPlus size={20} />
@@ -1749,49 +1803,14 @@ function ClinicalAgendaPage({
             <label>Profissional<select name="professionalId">{profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
             <label>Tipo de atendimento<input name="procedureType" placeholder="Ex.: Avaliacao podologica" /></label>
             <label>Agenda<select name="appointmentType" defaultValue="first_evaluation"><option value="first_evaluation">Primeira avaliacao</option><option value="return">Retorno</option><option value="procedure">Procedimento</option><option value="follow_up">Acompanhamento</option></select></label>
+            <label>Convênio ou particular<select name="payerType" onChange={(event) => setAppointmentPayerType(event.target.value as "private" | "insurance")} value={appointmentPayerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>
+            {appointmentPayerType === "insurance" && <label>Nome do convênio<input name="insuranceName" required /></label>}
           </div>
           <label>Queixa/resumo inicial<textarea name="initialComplaint" /></label>
           <label>Origem<input name="origin" placeholder="WhatsApp, telefone, recepcao" /></label>
           <label>Observacoes<textarea name="notes" /></label>
-          <button className="primary-button" type="submit"><CalendarPlus size={18} /> Criar agendamento</button>
-        </form>
-
-        <section className="data-panel">
-          <div className="section-heading section-heading--compact">
-            <div><h2>Agenda Clínica</h2><p>Visualizacoes e filtros operacionais.</p></div>
-          </div>
-          <div className="filter-row">
-            {(["day", "week", "month", "list", "queue"] as const).map((mode) => (
-              <button className={viewMode === mode ? "is-active" : ""} key={mode} onClick={() => setViewMode(mode)} type="button">{agendaViewLabel(mode)}</button>
-            ))}
-          </div>
-          <div className="filter-row filter-row--dense agenda-filters">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou telefone" />
-            <select value={professionalFilter} onChange={(event) => setProfessionalFilter(event.target.value)}>
-              <option value="all">Todos os profissionais</option>
-              {profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
-            </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">Todos os status</option>
-              {(["scheduled", "confirmed", "waiting_arrival", "arrived", "converted_to_ba", "cancelled", "no_show", "rescheduled"] as const).map((status) => <option key={status} value={status}>{appointmentStatusLabel(status)}</option>)}
-            </select>
-          </div>
-          <div className="appointment-list">
-            {filteredAppointments.length ? filteredAppointments.map((appointment) => (
-              <AppointmentCard
-                appointment={appointment}
-                key={appointment.id}
-                patient={appointment.patientId ? patients.find((patient) => patient.id === appointment.patientId) : undefined}
-                professionalName={profiles.find((item) => item.id === appointment.professionalId)?.fullName ?? "A definir"}
-                onStatus={onUpdateStatus}
-                onOpenBa={onOpenBa}
-                onEdit={setEditing}
-                onMarkAbsent={setMarkingAbsent}
-              />
-            )) : <EmptyState title="Nenhum agendamento encontrado" message="Ajuste os filtros ou crie um novo agendamento." />}
-          </div>
-        </section>
-      </section>
+          <div className="dialog-card__actions"><button className="ghost-action" onClick={() => setNewAppointmentOpen(false)} type="button">Cancelar</button><button className="primary-button" type="submit"><CalendarPlus size={18} /> Criar agendamento</button></div>
+        </form></div>}
       {editing && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={handleEditSubmit}><div><h2>Editar agendamento</h2><p>Altere data, horarios, profissional, observacoes e status.</p></div><div className="form-grid form-grid--two"><label>Data<input defaultValue={editing.appointmentDate} name="appointmentDate" required type="date" /></label><label>Inicio<input defaultValue={editing.startTime} name="startTime" required type="time" /></label><label>Fim<input defaultValue={editing.endTime} name="endTime" required type="time" /></label><label>Profissional<select defaultValue={editing.professionalId} name="professionalId">{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>Status<select defaultValue={editing.status} name="status">{(["scheduled", "confirmed", "waiting_arrival", "arrived", "cancelled", "no_show", "rescheduled"] as const).map((item) => <option key={item} value={item}>{appointmentStatusLabel(item)}</option>)}</select></label></div><label>Observacoes<textarea defaultValue={editing.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setEditing(null)} type="button">Cancelar</button><button className="primary-button" type="submit">Salvar alteracoes</button></div></form></div>}
       {markingAbsent && <div className="dialog-backdrop"><form className="dialog-card" onSubmit={handleAbsentSubmit}><div><h2>Deseja marcar este paciente como falta?</h2><p>Esta acao apenas atualiza o agendamento. Nenhum BA ou ProntuárioÚnico sera criado.</p></div><label>Observacao da falta<textarea name="absenceNotes" placeholder="Opcional" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setMarkingAbsent(null)} type="button">Cancelar</button><button className="danger-button" type="submit">Marcar falta</button></div></form></div>}
     </div>
@@ -1870,10 +1889,27 @@ function appointmentStatusLabel(status: ClinicalAppointment["status"]) {
   return labels[status];
 }
 
-function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void> }) {
+function FinancialReviewDialog({ attendance, patient, products, onCancel, onConfirm }: { attendance: Attendance; patient?: Patient; products: StockProduct[]; onCancel: () => void; onConfirm: (transaction: FinancialTransaction) => Promise<void> }) {
+  const initialItems = [
+    ...(attendance.procedure ? [{ id: "procedure", label: attendance.procedure, value: attendance.value || 0 }] : []),
+    ...attendance.productsUsed.map((name, index) => ({ id: `product-${index}`, label: name, value: products.find((item) => normalizeText(item.name) === normalizeText(name))?.saleValue ?? 0 }))
+  ];
+  const [items, setItems] = useState(initialItems);
+  const [manualLabel, setManualLabel] = useState("");
+  const [manualValue, setManualValue] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<FinancialTransaction["paymentMethod"]>("pix");
+  const [status, setStatus] = useState<FinancialTransaction["status"]>("pending");
+  const [saving, setSaving] = useState(false);
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+
+  return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · ProntuárioÚnico {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Agora não</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
+}
+
+function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct, onUpdateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void>; onUpdateProduct: (product: StockProduct) => Promise<void> }) {
   const [section, setSection] = useState<"transactions" | "products">("transactions");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [financialPayerType, setFinancialPayerType] = useState<"private" | "insurance">("private");
   const [period, setPeriod] = useState("all");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
@@ -1909,7 +1945,8 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
     event.preventDefault(); setSaving(true);
     const form = new FormData(event.currentTarget);
     try {
-      await onCreate({ id: `fin-${Date.now()}`, companyId, patientId: String(form.get("patientId") || "") || undefined, attendanceId: String(form.get("attendanceId") || "") || undefined, description: String(form.get("description")), type: String(form.get("type")) as FinancialTransaction["type"], amount: Number(form.get("amount")), dueDate: String(form.get("dueDate")), paidAt: String(form.get("paidAt") || "") || undefined, paymentMethod: String(form.get("paymentMethod")) as FinancialTransaction["paymentMethod"], category: String(form.get("category")), status: String(form.get("status")) as FinancialTransaction["status"], notes: String(form.get("notes") || "") || undefined });
+      const attendance = attendances.find((item) => item.id === String(form.get("attendanceId") || ""));
+      await onCreate({ id: `fin-${Date.now()}`, companyId, patientId: String(form.get("patientId") || "") || attendance?.patientId || undefined, attendanceId: attendance?.id, baNumber: attendance?.baNumber, uniqueMedicalRecordId: attendance?.uniqueMedicalRecordId, description: String(form.get("description")), type: String(form.get("type")) as FinancialTransaction["type"], amount: Number(form.get("amount")), dueDate: String(form.get("dueDate")), paidAt: String(form.get("paidAt") || "") || undefined, paymentMethod: String(form.get("paymentMethod")) as FinancialTransaction["paymentMethod"], category: String(form.get("category")), status: String(form.get("status")) as FinancialTransaction["status"], notes: [String(form.get("notes") || ""), financialPayerType === "insurance" ? `Convênio: ${String(form.get("insuranceName") || "")}` : "Particular"].filter(Boolean).join(" · ") });
       setOpen(false);
     } finally { setSaving(false); }
   }
@@ -1917,7 +1954,7 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
   function clear() { setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setType("all"); setStatus("all"); setMethod("all"); setCategory("all"); setPatientId("all"); setBa(""); setProfessional("all"); setMin(""); setMax(""); }
 
   if (section === "products") {
-    return <div className="page-stack"><div className="filter-row"><button onClick={() => setSection("transactions")} type="button">Lancamentos</button><button className="is-active" type="button">Produtos</button></div><Stock companyId={companyId} onCreate={onCreateProduct} stock={stock} /></div>;
+    return <div className="page-stack"><div className="filter-row"><button onClick={() => setSection("transactions")} type="button">Lancamentos</button><button className="is-active" type="button">Produtos</button></div><Stock companyId={companyId} onCreate={onCreateProduct} onUpdate={onUpdateProduct} stock={stock} /></div>;
   }
 
   return (
@@ -1942,52 +1979,44 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
         <button className="ghost-action" onClick={clear} type="button">Limpar filtros</button>
       </section>
       {filtered.length ? <Table headers={["Descricao", "Tipo", "Valor", "Vencimento", "Forma", "Status"]} rows={filtered.map((item) => [item.description, item.type === "income" ? "Receita" : "Despesa", currency.format(item.amount), formatDate(item.dueDate), paymentLabel(item.paymentMethod), paymentStatusLabel(item.status)])} /> : <EmptyState title="Nenhum lancamento encontrado para os filtros selecionados" message="Limpe ou ajuste os filtros financeiros." />}
-      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={submit}><div><h2>Novo lancamento</h2><p>Cadastre uma receita ou despesa vinculada a clinica.</p></div><div className="form-grid form-grid--two"><label>Tipo<select name="type"><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Descricao<input name="description" required /></label><label>Valor<input min="0.01" name="amount" required step="0.01" type="number" /></label><label>Categoria<input name="category" required /></label><label>Vencimento<input name="dueDate" required type="date" /></label><label>Data de pagamento<input name="paidAt" type="date" /></label><label>Forma de pagamento<select name="paymentMethod">{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select name="status"><option value="paid">Pago</option><option value="pending">Pendente</option><option value="overdue">Atrasado</option><option value="cancelled">Cancelado</option></select></label><label>Paciente<select name="patientId"><option value="">Sem paciente</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>BA / Atendimento<select name="attendanceId"><option value="">Sem BA</option>{attendances.map((item) => <option key={item.id} value={item.id}>{item.baNumber} · {patientName(patients, item.patientId)}</option>)}</select></label></div><label>Observacoes<textarea name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar lancamento"}</button></div></form></div>}
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>Novo lancamento</h2><p>Cadastre uma receita ou despesa vinculada a clinica.</p></div><div className="form-grid form-grid--two"><label>Tipo<select name="type"><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Descricao<input name="description" required /></label><label>Valor<input min="0.01" name="amount" required step="0.01" type="number" /></label><label>Categoria<input name="category" required /></label><label>Vencimento<input name="dueDate" required type="date" /></label><label>Data de pagamento<input name="paidAt" type="date" /></label><label>Forma de pagamento<select name="paymentMethod">{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select name="status"><option value="paid">Pago</option><option value="pending">Pendente</option><option value="overdue">Atrasado</option><option value="cancelled">Cancelado</option></select></label><label>Convênio ou particular<select onChange={(event) => setFinancialPayerType(event.target.value as "private" | "insurance")} value={financialPayerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>{financialPayerType === "insurance" && <label>Nome do convênio<input name="insuranceName" required /></label>}<label>Paciente<select name="patientId"><option value="">Sem paciente</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>BA / Atendimento<select name="attendanceId"><option value="">Sem BA</option>{attendances.map((item) => <option key={item.id} value={item.id}>{item.baNumber} · {patientName(patients, item.patientId)}</option>)}</select></label></div><label>Observacoes<textarea name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar lancamento"}</button></div></form></div>}
     </div>
   );
 }
 
-function Stock({ stock, companyId, onCreate }: { stock: StockProduct[]; companyId: string; onCreate: (product: StockProduct) => Promise<void> }) {
+function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]; companyId: string; onCreate: (product: StockProduct) => Promise<void>; onUpdate: (product: StockProduct) => Promise<void> }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<StockProduct | null>(null);
   const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [otherFields, setOtherFields] = useState<Record<string, boolean>>({});
   const totalValue = stock.reduce((sum, product) => sum + product.currentQuantity * product.costValue, 0);
   const low = stock.filter((product) => product.currentQuantity <= product.minimumQuantity);
+  const categories = Array.from(new Set(stock.map((item) => item.category).filter(Boolean)));
+  const suppliers = Array.from(new Set(stock.map((item) => item.supplier).filter(Boolean)));
+  const units = [["un", "Unidade"], ["cx", "Caixa"], ["pct", "Pacote"], ["frasco", "Frasco"], ["tubo", "Tubo"], ["par", "Par"], ["kit", "Kit"], ["ml", "ml"], ["g", "g"]];
+
+  function fieldValue(form: FormData, key: string) {
+    return String(form.get(`${key}Other`) || form.get(key) || "");
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); const form = new FormData(event.currentTarget);
-    try {
-      await onCreate({ id: `stock-${Date.now()}`, companyId, name: String(form.get("name")), category: String(form.get("category")), internalCode: String(form.get("internalCode")), currentQuantity: Number(form.get("currentQuantity")), minimumQuantity: Number(form.get("minimumQuantity")), unit: String(form.get("unit")), costValue: Number(form.get("costValue")), saleValue: Number(form.get("saleValue")), supplier: String(form.get("supplier")), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined });
-      setOpen(false);
-    } finally { setSaving(false); }
+    const base: StockProduct = editing ?? { id: `stock-${Date.now()}`, companyId, name: "", category: "", internalCode: "", currentQuantity: 0, minimumQuantity: 0, unit: "un", costValue: 0, saleValue: 0, supplier: "", expiresAt: undefined, active: true };
+    const product: StockProduct = { ...base, companyId, name: fieldValue(form, "name"), category: fieldValue(form, "category"), internalCode: String(form.get("internalCode") || base.internalCode || `PROD-${Date.now()}`), currentQuantity: Number(form.get("currentQuantity") ?? base.currentQuantity), minimumQuantity: Number(form.get("minimumQuantity") ?? base.minimumQuantity), unit: fieldValue(form, "unit"), costValue: Number(form.get("costValue") || 0), saleValue: Number(form.get("saleValue") || 0), supplier: fieldValue(form, "supplier"), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined, active: form.get("active") === "on" };
+    try { if (editing) await onUpdate(product); else await onCreate(product); setOpen(false); setEditing(null); setOtherFields({}); } finally { setSaving(false); }
   }
 
-  async function importCatalog() {
-    setImporting(true);
-    const existing = new Set(stock.filter((item) => item.companyId === companyId).map((item) => normalizeText(item.name)));
-    for (const [category, name] of podologyProductCatalog) {
-      if (existing.has(normalizeText(name))) continue;
-      await onCreate({ id: `catalog-${Date.now()}-${existing.size}`, companyId, name, category, internalCode: `CAT-${String(existing.size + 1).padStart(3, "0")}`, currentQuantity: 0, minimumQuantity: 0, unit: "un", costValue: 0, saleValue: 0, supplier: "", notes: "Importado do Guia de Insumos: coluna A = categoria; coluna B = nome." });
-      existing.add(normalizeText(name));
-    }
-    setImporting(false);
+  function choiceField(name: string, label: string, options: Array<[string, string]>, current?: string) {
+    const other = otherFields[name] || (Boolean(current) && !options.some(([value]) => value === current));
+    return <label>{label}<select defaultValue={other ? "__other__" : current || ""} name={name} onChange={(event) => setOtherFields((state) => ({ ...state, [name]: event.target.value === "__other__" }))}><option value="">Selecione</option>{options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}<option value="__other__">Outro</option></select>{other && <input defaultValue={current} name={`${name}Other`} placeholder={`Informe ${label.toLowerCase()}`} required />}</label>;
   }
 
-  return (
-    <div className="page-stack">
-      <div className="section-heading">
-        <div><span className="eyebrow">Estoque</span><h1>Dashboard de estoque</h1><p>Produtos, movimentacoes, validade, valor em estoque e alerta de minimo.</p></div>
-        <div className="hero-panel__actions"><button className="ghost-action" disabled={importing} onClick={importCatalog} type="button">{importing ? "Importando..." : "Importar guia A/B"}</button><button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Novo produto</button></div>
-      </div>
-      <section className="metrics-grid">
-        <MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" />
-        <MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(low.length)} detail="Abaixo do minimo" tone="danger" />
-        <MetricCard icon={<CalendarClock />} label="Prox. validade" value="1" detail="Vence em ate 90 dias" tone="warning" />
-        <MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" />
-      </section>
-      {stock.length ? <Table headers={["Produto", "Categoria", "Codigo", "Atual", "Minimo", "Fornecedor", "Validade"]} rows={stock.map((product) => [product.name, product.category, product.internalCode, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`, product.supplier, product.expiresAt ? formatDate(product.expiresAt) : "Sem validade"])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o controle de estoque." />}
-      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={submit}><div><h2>Novo produto</h2><p>Cadastre o item e seus limites de estoque.</p></div><div className="form-grid form-grid--two"><label>Nome do produto<input name="name" required /></label><label>Categoria<input name="category" required /></label><label>Codigo interno<input name="internalCode" required /></label><label>Unidade de medida<input defaultValue="un" name="unit" required /></label><label>Quantidade atual<input defaultValue="0" min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue="0" min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue="0" min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue="0" min="0" name="saleValue" step="0.01" type="number" /></label><label>Fornecedor<input name="supplier" /></label><label>Data de validade<input name="expiresAt" type="date" /></label></div><label>Observacoes<textarea name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar produto"}</button></div></form></div>}
-    </div>
-  );
+  return <div className="page-stack">
+    <div className="section-heading"><div><span className="eyebrow">Estoque</span><h1>Produtos</h1><p>Cadastro, valores, fornecedores e disponibilidade dos produtos.</p></div><button className="primary-button" onClick={() => { setEditing(null); setOtherFields({}); setOpen(true); }} type="button"><Plus size={18} /> Novo produto</button></div>
+    <section className="metrics-grid"><MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" /><MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(low.length)} detail="Abaixo do minimo" tone="danger" /><MetricCard icon={<CalendarClock />} label="Ativos" value={String(stock.filter((item) => item.active !== false).length)} detail="Disponiveis para uso" tone="warning" /><MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" /></section>
+    {stock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={stock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), product.active === false ? "Inativo" : "Ativo", <button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setOpen(true); }} type="button">Editar</button>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
+    {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>{editing ? "Editar produto" : "Novo produto"}</h2><p>Use as opcoes existentes ou escolha Outro para informar um novo valor.</p></div><div className="form-grid form-grid--two">{choiceField("name", "Nome", stock.map((item): [string, string] => [item.name, item.name]), editing?.name)}{choiceField("category", "Categoria", categories.map((item): [string, string] => [item, item]), editing?.category)}{choiceField("unit", "Unidade de medida", units as Array<[string, string]>, editing?.unit)}{choiceField("supplier", "Fornecedor", suppliers.map((item): [string, string] => [item, item]), editing?.supplier)}<label>Codigo interno<input defaultValue={editing?.internalCode} name="internalCode" /></label><label>Quantidade atual<input defaultValue={editing?.currentQuantity ?? 0} min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue={editing?.minimumQuantity ?? 0} min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue={editing?.costValue ?? 0} min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue={editing?.saleValue ?? 0} min="0" name="saleValue" step="0.01" type="number" /></label><label className="toggle-row"><input defaultChecked={editing?.active !== false} name="active" type="checkbox" /> Produto ativo</label></div><label>Observacoes<textarea defaultValue={editing?.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : editing ? "Salvar alteracoes" : "Salvar produto"}</button></div></form></div>}
+  </div>;
 }
 
 function Reports({
@@ -2193,23 +2222,31 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
   );
 }
 
-function SuperAdmin({ company }: { company: Company }) {
+function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
   const [users, setUsers] = useState(demoProfiles.filter((item) => item.companyId === company.id));
   const [open, setOpen] = useState(false);
   const [selectedModules, setSelectedModules] = useState<string[]>(["dashboard", "patients", "schedule"]);
   const [savingUser, setSavingUser] = useState(false);
   const [userMessage, setUserMessage] = useState("");
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [actionUser, setActionUser] = useState<{ user: Profile; action: "reset_password" | "deactivate" | "reactivate" } | null>(null);
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const user = { id: `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
+    const user = { id: editingUser?.id ?? `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
     setSavingUser(true);
     setUserMessage("");
     try {
-      await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules });
-      setUsers((current) => [...current, user]);
+      if (editingUser) {
+        await manageCompanyUser({ action: "update", userId: user.id, companyId: company.id, fullName: user.fullName, role: user.role, active: user.active, modules: selectedModules });
+        setUsers((current) => current.map((item) => item.id === user.id ? user : item));
+      } else {
+        await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules });
+        setUsers((current) => [...current, user]);
+      }
       setOpen(false);
+      setEditingUser(null);
     } catch {
       setUserMessage("Nao foi possivel criar o usuario no Supabase. Verifique a Edge Function e suas permissoes.");
     } finally {
@@ -2217,39 +2254,29 @@ function SuperAdmin({ company }: { company: Company }) {
     }
   }
 
+  async function confirmUserAction() {
+    if (!actionUser) return;
+    await manageCompanyUser({ action: actionUser.action, userId: actionUser.user.id, companyId: company.id });
+    if (actionUser.action !== "reset_password") setUsers((current) => current.map((item) => item.id === actionUser.user.id ? { ...item, active: actionUser.action === "reactivate" } : item));
+    const message = actionUser.action === "reset_password" ? "Instrução de redefinição de senha enviada." : actionUser.action === "deactivate" ? "Usuario desativado com seguranca." : "Usuario reativado.";
+    setUserMessage(message);
+    onNotify(message, actionUser.action === "deactivate" ? "Historicos, BAs e auditoria foram preservados." : "Acao administrativa concluida.", "success");
+    setActionUser(null);
+  }
+
   return (
-    <ModulePage eyebrow="Gestao administrativa" title="Super Admin" description="Gerencie empresas, planos, bloqueios, usuarios e saude operacional da plataforma.">
-      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={17} /> Criar usuario</button></div>
+    <ModulePage eyebrow="Gestao administrativa" title="Super Admin" description="Gerencie empresas, usuarios, permissoes e saude operacional da plataforma.">
+      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
       <section className="metrics-grid">
         <MetricCard icon={<BuildingIcon />} label="Empresas" value="1" detail="Clinicas cadastradas" tone="primary" />
         <MetricCard icon={<Users />} label="Usuarios" value={String(users.length)} detail="Vinculados a empresa selecionada" />
-        <MetricCard icon={<CreditCard />} label="MRR previsto" value="R$ 349" detail="Plano ativo" tone="success" />
-        <MetricCard icon={<AlertTriangle />} label="Bloqueadas" value="0" detail="Sem restricoes" />
+        <MetricCard icon={<ShieldCheck />} label="Ativos" value={String(users.filter((item) => item.active).length)} detail="Com acesso liberado" tone="success" />
+        <MetricCard icon={<AlertTriangle />} label="Desativados" value={String(users.filter((item) => !item.active).length)} detail="Sem acesso ao sistema" />
       </section>
-      <Table headers={["Empresa", "Plano", "Status", "Contato"]} rows={[[company.displayName, company.planName, company.planStatus, company.contactEmail]]} />
-      <Table headers={["Nome", "E-mail", "Perfil", "Status", "Abas permitidas"]} rows={users.map((user) => [user.fullName, user.email, user.role, user.active ? "Ativo" : "Inativo", user.modulePermissions?.length ? user.modulePermissions.join(", ") : "Padrao do perfil"])} />
-      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={createUser}><div><h2>Criar usuario em {company.displayName}</h2><p>O usuario sera convidado, limitado a esta empresa e as abas selecionadas.</p></div><div className="form-grid form-grid--two"><label>Nome<input name="fullName" required /></label><label>E-mail<input name="email" required type="email" /></label><label>Perfil<select name="role">{(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{role}</option>)}</select></label><label className="toggle-row"><input defaultChecked name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset>{userMessage && <div className="inline-error">{userMessage}</div>}<div className="dialog-card__actions"><button className="ghost-action" disabled={savingUser} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Criando usuario..." : "Salvar usuario e permissoes"}</button></div></form></div>}
-    </ModulePage>
-  );
-}
-
-function Plans() {
-  return (
-    <ModulePage eyebrow="Planos e assinaturas" title="Planos" description="Estrutura pronta para trials, upgrade, bloqueio, cobranca e limites por plano.">
-      <div className="plans-grid">
-        {[
-          ["Start", "R$ 149", "Agenda, pacientes e atendimentos"],
-          ["Professional", "R$ 349", "Financeiro, estoque, relatorios e IA"],
-          ["Enterprise", "Sob consulta", "Personalizacao avancada, multiunidade e API"]
-        ].map(([name, price, description]) => (
-          <article className="plan-card" key={name}>
-            <span>{name}</span>
-            <strong>{price}</strong>
-            <p>{description}</p>
-            <button className="ghost-button" type="button">Configurar</button>
-          </article>
-        ))}
-      </div>
+      {userMessage && <div className="inline-info">{userMessage}</div>}
+      <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large user-management-dialog" onSubmit={createUser}><div><h2>{editingUser ? "Editar perfil e permissoes" : `Criar usuario em ${company.displayName}`}</h2><p>Dados, perfil, status e modulos ficam organizados em uma unica tela ampla.</p></div><div className="form-grid form-grid--two"><label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label><label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label><label>Empresa<input readOnly value={company.displayName} /></label><label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label><label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset>{userMessage && <div className="inline-error">{userMessage}</div>}<div className="dialog-card__actions"><button className="ghost-action" disabled={savingUser} onClick={() => { setOpen(false); setEditingUser(null); }} type="button">Cancelar</button><button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Salvando..." : "Salvar usuario e permissoes"}</button></div></form></div>}
+      {actionUser && <div className="dialog-backdrop"><section className="dialog-card"><div><h2>{actionUser.action === "reset_password" ? "Resetar senha" : actionUser.action === "deactivate" ? "Desativar usuario" : "Reativar usuario"}</h2><p>{actionUser.action === "reset_password" ? "Um link seguro de redefinicao sera enviado ao e-mail do usuario." : actionUser.action === "deactivate" ? "O acesso sera bloqueado, mas historicos, BAs e auditoria permanecerao preservados." : "O usuario voltara a acessar os modulos permitidos."}</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setActionUser(null)} type="button">Cancelar</button><button className={actionUser.action === "deactivate" ? "danger-button" : "primary-button"} onClick={confirmUserAction} type="button">Confirmar</button></div></section></div>}
     </ModulePage>
   );
 }

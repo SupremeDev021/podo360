@@ -162,6 +162,8 @@ export async function createAttendanceBa(attendance: Attendance) {
       visit_kind: attendance.visitKind,
       initial_notes: attendance.initialNotes,
       priority: attendance.priority,
+      payer_type: attendance.payerType || "private",
+      insurance_name: attendance.insuranceName || null,
       patient_complaint: attendance.complaint,
       procedure_performed: attendance.procedure,
       clinical_evaluation: attendance.clinicalEvaluation,
@@ -208,12 +210,66 @@ export async function updateClinicalAppointment(appointment: ClinicalAppointment
       marked_absent_at: appointment.markedAbsentAt || null,
       marked_absent_by: appointment.markedAbsentBy || null,
       absence_notes: appointment.absenceNotes || null
+      , payer_type: appointment.payerType || "private"
+      , insurance_name: appointment.insuranceName || null
     })
     .eq("id", appointment.id)
     .eq("company_id", appointment.companyId)
     .select()
     .single();
 
+  if (error) throw error;
+  return data;
+}
+
+export async function createClinicalAppointment(appointment: Omit<ClinicalAppointment, "id">) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.from("appointments").insert({
+    company_id: appointment.companyId,
+    patient_id: appointment.patientId || null,
+    unique_medical_record_id: appointment.uniqueMedicalRecordId || null,
+    temporary_patient_name: appointment.temporaryPatientName || null,
+    temporary_patient_phone: appointment.temporaryPatientPhone || null,
+    temporary_patient_whatsapp: appointment.temporaryPatientWhatsapp || null,
+    temporary_patient_email: appointment.temporaryPatientEmail || null,
+    temporary_patient_birth_date: appointment.temporaryPatientBirthDate || null,
+    appointment_date: appointment.appointmentDate,
+    start_time: appointment.startTime,
+    end_time: appointment.endTime,
+    professional_id: appointment.professionalId || null,
+    procedure_type: appointment.procedureType,
+    appointment_type: appointment.appointmentType,
+    initial_complaint: appointment.initialComplaint,
+    notes: appointment.notes || null,
+    status: appointment.status,
+    origin: appointment.origin || null,
+    payer_type: appointment.payerType || "private",
+    insurance_name: appointment.insuranceName || null,
+    created_by: appointment.createdBy
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateStockProduct(product: StockProduct) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.from("stock_products").update({
+    name: product.name,
+    category: product.category,
+    unit: product.unit,
+    supplier: product.supplier || null,
+    cost_value: product.costValue,
+    sale_value: product.saleValue,
+    notes: product.notes || null,
+    active: product.active ?? true
+  }).eq("id", product.id).eq("company_id", product.companyId).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function manageCompanyUser(input: { action: "update" | "reset_password" | "deactivate" | "reactivate"; userId: string; companyId: string; fullName?: string; role?: string; active?: boolean; modules?: string[] }) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.functions.invoke("admin-create-company-user", { body: input });
   if (error) throw error;
   return data;
 }
@@ -239,7 +295,8 @@ export async function createStockProduct(product: StockProduct) {
     cost_value: product.costValue,
     sale_value: product.saleValue,
     supplier: product.supplier,
-    expires_at: product.expiresAt || null
+    expires_at: product.expiresAt || null,
+    active: product.active ?? true
   };
   let { data, error } = await supabase.from("stock_products").insert({ ...basePayload, notes: product.notes || null }).select().single();
 
@@ -258,6 +315,8 @@ export async function createFinancialTransaction(transaction: FinancialTransacti
     company_id: transaction.companyId,
     patient_id: transaction.patientId || null,
     attendance_id: transaction.attendanceId || null,
+    ba_number: transaction.baNumber || null,
+    unique_medical_record_id: transaction.uniqueMedicalRecordId || null,
     description: transaction.description,
     type: transaction.type,
     amount: transaction.amount,
