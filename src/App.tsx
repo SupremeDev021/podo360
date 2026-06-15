@@ -52,9 +52,10 @@ import {
   demoStock,
   demoUniqueMedicalRecords
 } from "./data/demoData";
+import { podologyProductCatalog } from "./data/productCatalog";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
-import { createAttendanceBa, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa } from "./services/podo360Repository";
+import { createAttendanceBa, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa, updateClinicalAppointment } from "./services/podo360Repository";
 import type {
   AnamnesisRecord,
   Attendance,
@@ -66,25 +67,12 @@ import type {
   HciPatientMatch,
   IntegratedClinicalHistory,
   Patient,
+  Profile,
   StockProduct,
   UniqueMedicalRecord
 } from "./types";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-
-type DashboardSummary = {
-  monthPatients: number;
-  weekPatients: number;
-  dayPatients: number;
-  recurrence: number;
-  totalAttendances: number;
-  activePatients: number;
-  newPatients: number;
-  recurringPatients: number;
-  revenue: number;
-  lowStock: number;
-  completed: Attendance[];
-};
 
 type AppNotice = {
   id: number;
@@ -107,7 +95,6 @@ type BaOpeningPrefill = {
   email?: string;
   address?: string;
   uniqueRecordNumber?: string;
-  attendanceType?: string;
   visitKind?: Attendance["visitKind"];
   chiefComplaint?: string;
   origin?: string;
@@ -125,6 +112,29 @@ const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
   { key: "reports", label: "Relatórios" },
   { key: "hci", label: "HCI" }
 ];
+
+const modulePermissionOptions: Array<[ViewKey, string]> = [
+  ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos / Pacientes"],
+  ["schedule", "Agenda Clinica"], ["patient-profile", "ProntuárioÚnico / Anamnese / Imagens"], ["reports", "Relatorios"],
+  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Usuarios / Empresas / Super Admin"], ["plans", "Planos"]
+];
+
+function allowedViewsForProfile(profile: Profile): ViewKey[] {
+  if (profile.role === "super_admin") return modulePermissionOptions.map(([key]) => key);
+  if (profile.modulePermissions?.length) return profile.modulePermissions.filter((key): key is ViewKey => modulePermissionOptions.some(([view]) => view === key));
+  const defaults: Record<Profile["role"], ViewKey[]> = {
+    super_admin: modulePermissionOptions.map(([key]) => key),
+    company_admin: modulePermissionOptions.map(([key]) => key),
+    professional: ["dashboard", "patients", "patient-profile", "attendances", "schedule", "reports", "hci"],
+    reception: ["dashboard", "ba-opening", "patients", "patient-profile", "attendances", "schedule"],
+    financial: ["dashboard", "financial", "reports"],
+    stock: ["dashboard", "stock", "financial"],
+    schedule: ["dashboard", "patients", "schedule"],
+    reports: ["dashboard", "reports"],
+    custom: ["dashboard"]
+  };
+  return defaults[profile.role];
+}
 
 export function App() {
   const [company, setCompany] = useState<Company>(demoCompany);
@@ -172,30 +182,6 @@ export function App() {
   function notify(title: string, message: string, tone: AppNotice["tone"] = "success") {
     setNotice({ id: Date.now(), title, message, tone });
   }
-
-  const dashboard = useMemo(() => {
-    const completed = attendances.filter((attendance) => attendance.status === "completed");
-    const revenue = financial.filter((item) => item.type === "income" && item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
-    const recurringPatientIds = new Set(
-      patients
-        .filter((patient) => attendances.filter((attendance) => attendance.patientId === patient.id).length > 1)
-        .map((patient) => patient.id)
-    );
-
-    return {
-      monthPatients: patients.length,
-      weekPatients: 2,
-      dayPatients: 1,
-      recurrence: recurringPatientIds.size,
-      totalAttendances: attendances.length,
-      activePatients: patients.length,
-      newPatients: patients.filter((patient) => patient.createdAt.startsWith("2026-06")).length,
-      recurringPatients: recurringPatientIds.size,
-      revenue,
-      lowStock: stock.filter((product) => product.currentQuantity <= product.minimumQuantity).length,
-      completed
-    };
-  }, [attendances, financial, patients, stock]);
 
   async function handleGenerateAiReport(reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.") {
     const content = await generateReferralReport({
@@ -385,7 +371,7 @@ export function App() {
     }
     handleCreateAttendance(patient, {
       professionalId: String(form.get("professionalId") || "") || undefined,
-      type: String(form.get("attendanceType") || "Atendimento podologico"),
+      type: "Atendimento podologico",
       visitKind: String(form.get("visitKind")) === "return" ? "return" : "first_evaluation",
       complaint: String(form.get("chiefComplaint") || ""),
       initialNotes: String(form.get("initialNotes") || ""),
@@ -434,6 +420,18 @@ export function App() {
     notify(labels[status], status === "arrived" ? "Continue pela Abertura de BA para gerar BA e ProntuárioÚnico se necessario." : "Status atualizado na Agenda Clínica.", "success");
   }
 
+  function handleUpdateAppointment(appointment: ClinicalAppointment) {
+    setAppointments((current) => current.map((item) => item.id === appointment.id ? appointment : item));
+    void updateClinicalAppointment(appointment).catch(() => {
+      notify("Alteracao salva apenas localmente", "Nao foi possivel sincronizar o agendamento com o Supabase.", "warning");
+    });
+    notify(
+      appointment.status === "no_show" ? "Paciente marcado como falta." : "Agendamento atualizado com sucesso.",
+      appointment.status === "no_show" ? "A falta foi registrada sem criar BA ou ProntuárioÚnico." : "Data, horario e dados da agenda foram atualizados.",
+      "success"
+    );
+  }
+
   function handleOpenBaFromAppointment(appointment: ClinicalAppointment) {
     const patient = appointment.patientId ? patients.find((item) => item.id === appointment.patientId) : undefined;
     setBaOpeningPrefill({
@@ -448,7 +446,6 @@ export function App() {
       email: patient?.email ?? appointment.temporaryPatientEmail ?? "",
       address: patient?.address ?? "",
       uniqueRecordNumber: patient?.uniqueRecordNumber ?? "",
-      attendanceType: appointment.procedureType,
       visitKind: appointment.appointmentType === "return" ? "return" : "first_evaluation",
       chiefComplaint: appointment.initialComplaint,
       origin: appointment.origin ?? "Agenda Clínica",
@@ -507,6 +504,10 @@ export function App() {
   }
 
   async function handleCreateProduct(product: StockProduct) {
+    if (stock.some((item) => item.companyId === product.companyId && normalizeText(item.name) === normalizeText(product.name))) {
+      notify("Produto ja cadastrado", `${product.name} nao foi duplicado.`, "info");
+      return;
+    }
     try {
       await createStockProduct(product);
       setStock((current) => [product, ...current]);
@@ -542,9 +543,9 @@ export function App() {
   }
 
   return (
-    <Layout company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
+    <Layout allowedViews={allowedViewsForProfile(profile)} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
-      {activeView === "dashboard" && <Dashboard dashboard={dashboard} stock={stock} attendances={attendances} patients={patients} />}
+      {activeView === "dashboard" && <Dashboard appointments={appointments} companyId={company.id} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
       {activeView === "ba-opening" && (
         <BaOpening
           company={company}
@@ -574,6 +575,7 @@ export function App() {
           anamneses={selectedPatientAnamneses}
           footSensitivityMaps={selectedPatientFootMaps}
           attendanceImages={selectedPatientImages}
+          products={stock.filter((item) => item.companyId === company.id)}
           onGenerateReport={handleGenerateAiReport}
           onCreateAttendance={handleCreateAttendance}
           onFinishAttendance={handleFinishAttendance}
@@ -616,11 +618,12 @@ export function App() {
           profiles={demoProfiles}
           onSaveAppointment={handleSaveAppointment}
           onUpdateStatus={handleUpdateAppointmentStatus}
+          onUpdateAppointment={handleUpdateAppointment}
           onOpenBa={handleOpenBaFromAppointment}
           onNotify={notify}
         />
       )}
-      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} />}
+      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} stock={stock} onCreateProduct={handleCreateProduct} />}
       {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} stock={stock} />}
       {activeView === "reports" && (
         <Reports
@@ -649,7 +652,31 @@ export function App() {
   );
 }
 
-function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: DashboardSummary; stock: StockProduct[]; attendances: Attendance[]; patients: Patient[] }) {
+type DashboardPeriod = "today" | "week" | "month" | "custom";
+
+function Dashboard({ companyId, appointments, financial, stock, attendances, patients }: { companyId: string; appointments: ClinicalAppointment[]; financial: FinancialTransaction[]; stock: StockProduct[]; attendances: Attendance[]; patients: Patient[] }) {
+  const [period, setPeriod] = useState<DashboardPeriod>("month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const range = useMemo(() => dashboardDateRange(period, customStart, customEnd), [period, customStart, customEnd]);
+  const localPatients = patients.filter((item) => item.companyId === companyId);
+  const localAttendances = attendances.filter((item) => item.companyId === companyId && isDateInRange(item.openedAt ?? item.scheduledAt, range));
+  const localAppointments = appointments.filter((item) => item.companyId === companyId && isDateInRange(item.appointmentDate, range));
+  const localFinancial = financial.filter((item) => item.companyId === companyId && isDateInRange(item.paidAt ?? item.dueDate, range));
+  const periodPatients = localPatients.filter((item) => isDateInRange(item.createdAt, range));
+  const recurringPatientIds = new Set(localAttendances.filter((item) => localAttendances.filter((other) => other.patientId === item.patientId).length > 1).map((item) => item.patientId));
+  const revenue = localFinancial.filter((item) => item.type === "income" && item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
+  const expenses = localFinancial.filter((item) => item.type === "expense" && item.status !== "cancelled").reduce((sum, item) => sum + item.amount, 0);
+  const chartDays = Array.from({ length: Math.min(7, Math.max(1, Math.ceil((range.end.getTime() - range.start.getTime()) / 86400000) + 1)) }, (_, index) => {
+    const date = new Date(range.start);
+    date.setDate(date.getDate() + index);
+    return {
+      label: date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""),
+      value: localAttendances.filter((item) => sameLocalDay(new Date(item.openedAt ?? item.scheduledAt), date)).length
+    };
+  });
+  const periodLabel = period === "today" ? "Hoje" : period === "week" ? "Esta semana" : period === "month" ? "Este mes" : "Periodo personalizado";
+
   return (
     <div className="page-stack">
       <section className="hero-panel">
@@ -665,25 +692,26 @@ function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: Das
       </section>
 
       <div className="filter-row">
-        {["Hoje", "Esta semana", "Este mes", "Periodo personalizado"].map((filter, index) => (
-          <button className={index === 2 ? "is-active" : ""} key={filter} type="button">{filter}</button>
+        {([["today", "Hoje"], ["week", "Esta semana"], ["month", "Este mes"], ["custom", "Periodo personalizado"]] as const).map(([key, label]) => (
+          <button className={period === key ? "is-active" : ""} key={key} onClick={() => setPeriod(key)} type="button">{label}</button>
         ))}
+        {period === "custom" && <><input aria-label="Inicio do periodo" onChange={(event) => setCustomStart(event.target.value)} type="date" value={customStart} /><input aria-label="Fim do periodo" onChange={(event) => setCustomEnd(event.target.value)} type="date" value={customEnd} /></>}
       </div>
 
       <section className="metrics-grid">
-        <MetricCard icon={<Users />} label="Pacientes no mes" value={String(dashboard.monthPatients)} detail={`${dashboard.weekPatients} nesta semana`} tone="primary" />
-        <MetricCard icon={<CalendarCheck />} label="Pacientes no dia" value={String(dashboard.dayPatients)} detail="Filtro aplicado: este mes" tone="success" />
-        <MetricCard icon={<TrendingUp />} label="Reincidencia" value={String(dashboard.recurrence)} detail="Pacientes com mais de um retorno" tone="warning" />
-        <MetricCard icon={<ClipboardEdit />} label="Atendimentos" value={String(dashboard.totalAttendances)} detail={`${dashboard.activePatients} pacientes ativos`} />
-        <MetricCard icon={<Receipt />} label="Receita no periodo" value={currency.format(dashboard.revenue)} detail="Somente pagamentos recebidos" tone="success" />
-        <MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(dashboard.lowStock)} detail="Produtos abaixo do minimo" tone="danger" />
+        <MetricCard icon={<Users />} label="Novos pacientes" value={String(periodPatients.length)} detail={periodLabel} tone="primary" />
+        <MetricCard icon={<CalendarCheck />} label="Agendamentos" value={String(localAppointments.length)} detail={periodLabel} tone="success" />
+        <MetricCard icon={<TrendingUp />} label="Reincidencia" value={String(recurringPatientIds.size)} detail="Pacientes com mais de um atendimento" tone="warning" />
+        <MetricCard icon={<ClipboardEdit />} label="Atendimentos" value={String(localAttendances.length)} detail={`${localAttendances.filter((item) => item.status === "completed").length} finalizados`} />
+        <MetricCard icon={<Receipt />} label="Receita no periodo" value={currency.format(revenue)} detail={`${currency.format(expenses)} em despesas`} tone="success" />
+        <MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(stock.filter((product) => product.companyId === companyId && product.currentQuantity <= product.minimumQuantity).length)} detail="Produtos abaixo do minimo" tone="danger" />
       </section>
 
       <div className="dashboard-grid">
-        <ChartCard title="Atendimentos por dia" subtitle="Volume operacional da semana" data={[{ label: "Seg", value: 4 }, { label: "Ter", value: 7 }, { label: "Qua", value: 5 }, { label: "Qui", value: 8 }, { label: "Sex", value: 6 }]} />
-        <ChartCard title="Novos x recorrentes" subtitle="Comparativo de pacientes" data={[{ label: "Novos", value: dashboard.newPatients, secondary: 0 }, { label: "Recorr.", value: dashboard.recurringPatients, secondary: 0 }]} />
-        <ChartCard title="Receita mensal" subtitle="Ultimos meses" format="currency" data={[{ label: "Mar", value: 4200 }, { label: "Abr", value: 5100 }, { label: "Mai", value: 6800 }, { label: "Jun", value: dashboard.revenue }]} />
-        <ChartCard title="Reincidencia" subtitle="Pacientes que retornaram no periodo" data={[{ label: "Sem 1", value: 1 }, { label: "Sem 2", value: 2 }, { label: "Sem 3", value: dashboard.recurrence }]} />
+        <ChartCard title="Atendimentos por dia" subtitle={periodLabel} data={chartDays} />
+        <ChartCard title="Novos x recorrentes" subtitle={periodLabel} data={[{ label: "Novos", value: periodPatients.length, secondary: 0 }, { label: "Recorr.", value: recurringPatientIds.size, secondary: 0 }]} />
+        <ChartCard title="Receitas x despesas" subtitle={periodLabel} format="currency" data={[{ label: "Receitas", value: revenue }, { label: "Despesas", value: expenses }]} />
+        <ChartCard title="Status da agenda" subtitle={periodLabel} data={[{ label: "Agend.", value: localAppointments.length }, { label: "Faltou", value: localAppointments.filter((item) => item.status === "no_show").length }, { label: "Chegou", value: localAppointments.filter((item) => item.status === "arrived").length }]} />
       </div>
 
       <section className="split-grid">
@@ -694,7 +722,7 @@ function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: Das
           </div>
           <Table
             headers={["Paciente", "Data", "Status"]}
-            rows={attendances.map((attendance) => [patientName(patients, attendance.patientId), formatDateTime(attendance.scheduledAt), statusLabel(attendance.status)])}
+            rows={localAttendances.map((attendance) => [patientName(patients, attendance.patientId), formatDateTime(attendance.scheduledAt), statusLabel(attendance.status)])}
           />
         </div>
         <div className="data-panel">
@@ -704,7 +732,7 @@ function Dashboard({ dashboard, stock, attendances, patients }: { dashboard: Das
           </div>
           <Table
             headers={["Produto", "Atual", "Minimo"]}
-            rows={stock.filter((product) => product.currentQuantity <= product.minimumQuantity).map((product) => [product.name, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`])}
+            rows={stock.filter((product) => product.companyId === companyId && product.currentQuantity <= product.minimumQuantity).map((product) => [product.name, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`])}
           />
         </div>
       </section>
@@ -767,7 +795,6 @@ function BaOpening({
   const [birthDateMessage, setBirthDateMessage] = useState("");
   const [baPrefill, setBaPrefill] = useState({
     sourceAppointmentId: "",
-    attendanceType: "",
     visitKind: "",
     chiefComplaint: "",
     origin: "",
@@ -793,7 +820,6 @@ function BaOpening({
     });
     setBaPrefill({
       sourceAppointmentId: prefill.appointmentId,
-      attendanceType: prefill.attendanceType || "",
       visitKind: prefill.visitKind || "",
       chiefComplaint: prefill.chiefComplaint || "",
       origin: prefill.origin || "Agenda Clínica",
@@ -879,7 +905,7 @@ function BaOpening({
       uniqueRecordNumber: ""
     });
     setBirthDateMessage("");
-    setBaPrefill({ sourceAppointmentId: "", attendanceType: "", visitKind: "", chiefComplaint: "", origin: "", initialNotes: "" });
+    setBaPrefill({ sourceAppointmentId: "", visitKind: "", chiefComplaint: "", origin: "", initialNotes: "" });
     setSearchOpen(false);
   }
 
@@ -945,7 +971,6 @@ function BaOpening({
           <h2>Dados do BA</h2>
           <input name="sourceAppointmentId" type="hidden" value={baPrefill.sourceAppointmentId} />
           <div className="form-grid">
-            <label>Tipo de atendimento<input name="attendanceType" defaultValue={baPrefill.attendanceType} placeholder="Ex.: avaliacao podologica" /></label>
             <label>
               Primeira avaliacao ou retorno
               <select name="visitKind" defaultValue={baPrefill.visitKind}>
@@ -1115,6 +1140,7 @@ function PatientProfile({
   anamneses,
   footSensitivityMaps,
   attendanceImages,
+  products,
   onGenerateReport,
   onCreateAttendance,
   onFinishAttendance,
@@ -1137,6 +1163,7 @@ function PatientProfile({
   anamneses: AnamnesisRecord[];
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
+  products: StockProduct[];
   onGenerateReport: () => void;
   onCreateAttendance: (patient: Patient) => void;
   onFinishAttendance: (attendanceId: string) => void;
@@ -1172,6 +1199,7 @@ function PatientProfile({
       uniqueRecordNumber={patient.uniqueRecordNumber}
       baNumber={currentAttendance.baNumber}
       createdBy={professionalId}
+      products={products}
       footSensitivitySlot={
         <FootSensitivityMap3D
           entries={footSensitivityMaps}
@@ -1547,6 +1575,7 @@ function ClinicalAgendaPage({
   profiles,
   onSaveAppointment,
   onUpdateStatus,
+  onUpdateAppointment,
   onOpenBa,
   onNotify
 }: {
@@ -1555,6 +1584,7 @@ function ClinicalAgendaPage({
   profiles: typeof demoProfiles;
   onSaveAppointment: (appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) => void;
   onUpdateStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
+  onUpdateAppointment: (appointment: ClinicalAppointment) => void;
   onOpenBa: (appointment: ClinicalAppointment) => void;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
@@ -1565,6 +1595,8 @@ function ClinicalAgendaPage({
   const [statusFilter, setStatusFilter] = useState("all");
   const [professionalFilter, setProfessionalFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<ClinicalAppointment | null>(null);
+  const [markingAbsent, setMarkingAbsent] = useState<ClinicalAppointment | null>(null);
 
   const filteredPatients = patients.filter((patient) =>
     [patient.fullName, patient.cpf, patient.phone, patient.whatsapp, patient.uniqueRecordNumber]
@@ -1623,6 +1655,39 @@ function ClinicalAgendaPage({
     event.currentTarget.reset();
     setSelectedPatientId("");
     setPatientSearch("");
+  }
+
+  function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const form = new FormData(event.currentTarget);
+    const appointmentDate = String(form.get("appointmentDate") || "");
+    const startTime = String(form.get("startTime") || "");
+    const endTime = String(form.get("endTime") || "");
+    if (!appointmentDate || !startTime || !endTime || endTime <= startTime) {
+      onNotify("Horario invalido", "O horario final deve ser maior que o horario inicial.", "warning");
+      return;
+    }
+    onUpdateAppointment({
+      ...editing,
+      appointmentDate,
+      startTime,
+      endTime,
+      professionalId: String(form.get("professionalId") || "") || undefined,
+      notes: String(form.get("notes") || ""),
+      status: String(form.get("status")) as ClinicalAppointment["status"],
+      updatedAt: new Date().toISOString()
+    });
+    setEditing(null);
+  }
+
+  function handleAbsentSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!markingAbsent) return;
+    const notes = String(new FormData(event.currentTarget).get("absenceNotes") || "");
+    const now = new Date().toISOString();
+    onUpdateAppointment({ ...markingAbsent, status: "no_show", markedAbsentAt: now, markedAbsentBy: profiles[0]?.id, absenceNotes: notes, updatedAt: now });
+    setMarkingAbsent(null);
   }
 
   return (
@@ -1720,11 +1785,15 @@ function ClinicalAgendaPage({
                 professionalName={profiles.find((item) => item.id === appointment.professionalId)?.fullName ?? "A definir"}
                 onStatus={onUpdateStatus}
                 onOpenBa={onOpenBa}
+                onEdit={setEditing}
+                onMarkAbsent={setMarkingAbsent}
               />
             )) : <EmptyState title="Nenhum agendamento encontrado" message="Ajuste os filtros ou crie um novo agendamento." />}
           </div>
         </section>
       </section>
+      {editing && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={handleEditSubmit}><div><h2>Editar agendamento</h2><p>Altere data, horarios, profissional, observacoes e status.</p></div><div className="form-grid form-grid--two"><label>Data<input defaultValue={editing.appointmentDate} name="appointmentDate" required type="date" /></label><label>Inicio<input defaultValue={editing.startTime} name="startTime" required type="time" /></label><label>Fim<input defaultValue={editing.endTime} name="endTime" required type="time" /></label><label>Profissional<select defaultValue={editing.professionalId} name="professionalId">{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>Status<select defaultValue={editing.status} name="status">{(["scheduled", "confirmed", "waiting_arrival", "arrived", "cancelled", "no_show", "rescheduled"] as const).map((item) => <option key={item} value={item}>{appointmentStatusLabel(item)}</option>)}</select></label></div><label>Observacoes<textarea defaultValue={editing.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setEditing(null)} type="button">Cancelar</button><button className="primary-button" type="submit">Salvar alteracoes</button></div></form></div>}
+      {markingAbsent && <div className="dialog-backdrop"><form className="dialog-card" onSubmit={handleAbsentSubmit}><div><h2>Deseja marcar este paciente como falta?</h2><p>Esta acao apenas atualiza o agendamento. Nenhum BA ou ProntuárioÚnico sera criado.</p></div><label>Observacao da falta<textarea name="absenceNotes" placeholder="Opcional" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setMarkingAbsent(null)} type="button">Cancelar</button><button className="danger-button" type="submit">Marcar falta</button></div></form></div>}
     </div>
   );
 }
@@ -1734,13 +1803,17 @@ function AppointmentCard({
   patient,
   professionalName,
   onStatus,
-  onOpenBa
+  onOpenBa,
+  onEdit,
+  onMarkAbsent
 }: {
   appointment: ClinicalAppointment;
   patient?: Patient;
   professionalName: string;
   onStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
   onOpenBa: (appointment: ClinicalAppointment) => void;
+  onEdit: (appointment: ClinicalAppointment) => void;
+  onMarkAbsent: (appointment: ClinicalAppointment) => void;
 }) {
   const displayName = patient?.fullName ?? appointment.temporaryPatientName ?? "Paciente sem nome";
   const phone = patient?.whatsapp ?? appointment.temporaryPatientWhatsapp ?? appointment.temporaryPatientPhone ?? "Sem telefone";
@@ -1763,6 +1836,8 @@ function AppointmentCard({
       <div className="table-actions">
         {appointment.status === "scheduled" && <button className="ghost-action" onClick={() => onStatus(appointment.id, "confirmed")} type="button">Confirmar</button>}
         {["scheduled", "confirmed", "waiting_arrival"].includes(appointment.status) && <button className="ghost-action" onClick={() => onStatus(appointment.id, "arrived")} type="button">Paciente chegou</button>}
+        <button className="ghost-action" onClick={() => onEdit(appointment)} type="button">Editar</button>
+        {!["converted_to_ba", "no_show", "cancelled"].includes(appointment.status) && <button className="ghost-action" onClick={() => onMarkAbsent(appointment)} type="button">Marcar falta</button>}
         <button className="primary-button" disabled={appointment.status === "converted_to_ba"} onClick={() => onOpenBa(appointment)} type="button"><ClipboardPlus size={17} /> Abrir BA</button>
         {appointment.status !== "converted_to_ba" && <button className="ghost-action" onClick={() => onStatus(appointment.id, "cancelled")} type="button">Cancelar</button>}
       </div>
@@ -1795,7 +1870,8 @@ function appointmentStatusLabel(status: ClinicalAppointment["status"]) {
   return labels[status];
 }
 
-function Financial({ financial, patients, attendances, profiles, companyId, onCreate }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void> }) {
+function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void> }) {
+  const [section, setSection] = useState<"transactions" | "products">("transactions");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [period, setPeriod] = useState("all");
@@ -1840,8 +1916,13 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
 
   function clear() { setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setType("all"); setStatus("all"); setMethod("all"); setCategory("all"); setPatientId("all"); setBa(""); setProfessional("all"); setMin(""); setMax(""); }
 
+  if (section === "products") {
+    return <div className="page-stack"><div className="filter-row"><button onClick={() => setSection("transactions")} type="button">Lancamentos</button><button className="is-active" type="button">Produtos</button></div><Stock companyId={companyId} onCreate={onCreateProduct} stock={stock} /></div>;
+  }
+
   return (
     <div className="page-stack">
+      <div className="filter-row"><button className="is-active" type="button">Lancamentos</button><button onClick={() => setSection("products")} type="button">Produtos</button></div>
       <div className="section-heading">
         <div><span className="eyebrow">Gestao financeiro</span><h1>Financeiro</h1><p>Receitas, despesas, pagamentos por paciente e relatorios financeiros.</p></div>
         <button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Lancamento</button>
@@ -1869,6 +1950,7 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
 function Stock({ stock, companyId, onCreate }: { stock: StockProduct[]; companyId: string; onCreate: (product: StockProduct) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const totalValue = stock.reduce((sum, product) => sum + product.currentQuantity * product.costValue, 0);
   const low = stock.filter((product) => product.currentQuantity <= product.minimumQuantity);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -1879,11 +1961,22 @@ function Stock({ stock, companyId, onCreate }: { stock: StockProduct[]; companyI
     } finally { setSaving(false); }
   }
 
+  async function importCatalog() {
+    setImporting(true);
+    const existing = new Set(stock.filter((item) => item.companyId === companyId).map((item) => normalizeText(item.name)));
+    for (const [category, name] of podologyProductCatalog) {
+      if (existing.has(normalizeText(name))) continue;
+      await onCreate({ id: `catalog-${Date.now()}-${existing.size}`, companyId, name, category, internalCode: `CAT-${String(existing.size + 1).padStart(3, "0")}`, currentQuantity: 0, minimumQuantity: 0, unit: "un", costValue: 0, saleValue: 0, supplier: "", notes: "Importado do Guia de Insumos: coluna A = categoria; coluna B = nome." });
+      existing.add(normalizeText(name));
+    }
+    setImporting(false);
+  }
+
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div><span className="eyebrow">Estoque</span><h1>Dashboard de estoque</h1><p>Produtos, movimentacoes, validade, valor em estoque e alerta de minimo.</p></div>
-        <button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Novo produto</button>
+        <div className="hero-panel__actions"><button className="ghost-action" disabled={importing} onClick={importCatalog} type="button">{importing ? "Importando..." : "Importar guia A/B"}</button><button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={18} /> Novo produto</button></div>
       </div>
       <section className="metrics-grid">
         <MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" />
@@ -2101,15 +2194,29 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
 }
 
 function SuperAdmin({ company }: { company: Company }) {
+  const [users, setUsers] = useState(demoProfiles.filter((item) => item.companyId === company.id));
+  const [open, setOpen] = useState(false);
+  const [selectedModules, setSelectedModules] = useState<string[]>(["dashboard", "patients", "schedule"]);
+
+  function createUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setUsers((current) => [...current, { id: `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules }]);
+    setOpen(false);
+  }
+
   return (
     <ModulePage eyebrow="Gestao administrativa" title="Super Admin" description="Gerencie empresas, planos, bloqueios, usuarios e saude operacional da plataforma.">
+      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={17} /> Criar usuario</button></div>
       <section className="metrics-grid">
         <MetricCard icon={<BuildingIcon />} label="Empresas" value="1" detail="Clinicas cadastradas" tone="primary" />
-        <MetricCard icon={<Users />} label="Usuarios" value={String(demoProfiles.length)} detail="Todos os perfis" />
+        <MetricCard icon={<Users />} label="Usuarios" value={String(users.length)} detail="Vinculados a empresa selecionada" />
         <MetricCard icon={<CreditCard />} label="MRR previsto" value="R$ 349" detail="Plano ativo" tone="success" />
         <MetricCard icon={<AlertTriangle />} label="Bloqueadas" value="0" detail="Sem restricoes" />
       </section>
       <Table headers={["Empresa", "Plano", "Status", "Contato"]} rows={[[company.displayName, company.planName, company.planStatus, company.contactEmail]]} />
+      <Table headers={["Nome", "E-mail", "Perfil", "Status", "Abas permitidas"]} rows={users.map((user) => [user.fullName, user.email, user.role, user.active ? "Ativo" : "Inativo", user.modulePermissions?.length ? user.modulePermissions.join(", ") : "Padrao do perfil"])} />
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={createUser}><div><h2>Criar usuario em {company.displayName}</h2><p>O usuario sera limitado a esta empresa e as abas selecionadas.</p></div><div className="form-grid form-grid--two"><label>Nome<input name="fullName" required /></label><label>E-mail<input name="email" required type="email" /></label><label>Perfil<select name="role">{(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{role}</option>)}</select></label><label className="toggle-row"><input defaultChecked name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" type="submit">Salvar usuario e permissoes</button></div></form></div>}
     </ModulePage>
   );
 }
@@ -2306,6 +2413,38 @@ function normalizeText(value: string) {
 
 function normalizeDigits(value: string) {
   return value.replace(/\D/g, "");
+}
+
+function dashboardDateRange(period: DashboardPeriod, customStart: string, customEnd: string) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start);
+  if (period === "week") {
+    const mondayOffset = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - mondayOffset);
+    end.setTime(start.getTime());
+    end.setDate(end.getDate() + 6);
+  } else if (period === "month") {
+    start.setDate(1);
+    end.setMonth(end.getMonth() + 1, 0);
+  } else if (period === "custom" && customStart && customEnd) {
+    const [startYear, startMonth, startDay] = customStart.split("-").map(Number);
+    const [endYear, endMonth, endDay] = customEnd.split("-").map(Number);
+    start.setFullYear(startYear, startMonth - 1, startDay);
+    end.setFullYear(endYear, endMonth - 1, endDay);
+  }
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+function isDateInRange(value: string | undefined, range: { start: Date; end: Date }) {
+  if (!value) return false;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+  return date >= range.start && date <= range.end;
+}
+
+function sameLocalDay(first: Date, second: Date) {
+  return first.getFullYear() === second.getFullYear() && first.getMonth() === second.getMonth() && first.getDate() === second.getDate();
 }
 
 function imageTypeLabel(type: AttendanceImage["imageType"]) {

@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, FinancialTransaction, FootSensitivityMap, Patient, StockProduct } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, FinancialTransaction, FootSensitivityMap, Patient, StockProduct } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -189,6 +189,31 @@ export async function finishAttendanceBa(attendanceId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
 
   const { data, error } = await supabase.rpc("mark_attendance_finished", { target_attendance_id: attendanceId });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateClinicalAppointment(appointment: ClinicalAppointment) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .update({
+      appointment_date: appointment.appointmentDate,
+      start_time: appointment.startTime,
+      end_time: appointment.endTime,
+      professional_id: appointment.professionalId || null,
+      notes: appointment.notes || null,
+      status: appointment.status,
+      marked_absent_at: appointment.markedAbsentAt || null,
+      marked_absent_by: appointment.markedAbsentBy || null,
+      absence_notes: appointment.absenceNotes || null
+    })
+    .eq("id", appointment.id)
+    .eq("company_id", appointment.companyId)
+    .select()
+    .single();
+
   if (error) throw error;
   return data;
 }

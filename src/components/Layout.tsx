@@ -9,10 +9,12 @@ import {
   HeartPulse,
   LayoutDashboard,
   LogOut,
+  Menu,
   Settings,
   ShieldCheck,
   Stethoscope,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { useState } from "react";
 import type { Company, Profile } from "../types";
@@ -39,6 +41,7 @@ type LayoutProps = {
   activeView: ViewKey;
   onViewChange: (view: ViewKey) => void;
   onLogout: () => Promise<void>;
+  allowedViews?: ViewKey[];
   children: React.ReactNode;
 };
 
@@ -57,10 +60,18 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "plans", label: "Planos", icon: <Building2 size={18} /> }
 ];
 
-export function Layout({ company, profile, activeView, onViewChange, onLogout, children }: LayoutProps) {
+export function Layout({ company, profile, activeView, onViewChange, onLogout, allowedViews, children }: LayoutProps) {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const visibleItems = navItems.filter((item) => profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key));
+
+  function navigate(view: ViewKey) {
+    if (profile.role !== "super_admin" && allowedViews && !allowedViews.includes(view)) return;
+    onViewChange(view);
+    setMobileMenuOpen(false);
+  }
 
   async function confirmLogout() {
     setLoggingOut(true);
@@ -75,8 +86,13 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, c
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <button className="brand" onClick={() => onViewChange("dashboard")}>
+      {mobileMenuOpen && <button aria-label="Fechar menu" className="mobile-menu-backdrop" onClick={() => setMobileMenuOpen(false)} type="button" />}
+      <aside className={`sidebar ${mobileMenuOpen ? "is-open" : ""}`}>
+        <div className="sidebar__mobile-heading">
+          <span>Menu principal</span>
+          <button aria-label="Fechar menu" className="icon-button" onClick={() => setMobileMenuOpen(false)} type="button"><X size={18} /></button>
+        </div>
+        <button className="brand" onClick={() => navigate("dashboard")}>
           <span className="brand__mark">{company.logoUrl ? <img src={company.logoUrl} alt="" /> : <Activity size={24} />}</span>
           <span>
             <strong>Podo360</strong>
@@ -85,11 +101,11 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, c
         </button>
 
         <nav className="sidebar__nav" aria-label="Principal">
-          {navItems.map((item) => (
+          {visibleItems.map((item) => (
             <button
               className={activeView === item.key ? "is-active" : ""}
               key={item.key}
-              onClick={() => onViewChange(item.key)}
+              onClick={() => navigate(item.key)}
               type="button"
               title={item.label}
             >
@@ -102,6 +118,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, c
 
       <div className="workspace">
         <header className="topbar">
+          <button aria-label="Abrir menu" className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} type="button"><Menu size={20} /></button>
           <div>
             <strong>{company.displayName}</strong>
             <small>{company.planName} · {company.planStatus}</small>

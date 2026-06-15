@@ -1,4 +1,4 @@
-export type Role = "super_admin" | "company_admin" | "professional" | "reception" | "financial";
+export type Role = "super_admin" | "company_admin" | "professional" | "reception" | "financial" | "stock" | "schedule" | "reports" | "custom";
 
 export type PlanStatus = "trial" | "active" | "past_due" | "blocked" | "cancelled";
 
@@ -61,6 +61,7 @@ export type Profile = {
   email: string;
   role: Role;
   active: boolean;
+  modulePermissions?: string[];
 };
 
 export type Patient = {
@@ -179,6 +180,9 @@ export type ClinicalAppointment = {
   convertedAttendanceId?: string;
   convertedAt?: string;
   convertedBy?: string;
+  markedAbsentAt?: string;
+  markedAbsentBy?: string;
+  absenceNotes?: string;
   createdBy: string;
   createdAt: string;
   updatedAt?: string;

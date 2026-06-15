@@ -15,7 +15,11 @@ const permissions: Record<Role, string[]> = {
   ],
   professional: ["patients:read", "attendances:write", "reports:write", "bodymap:write"],
   reception: ["patients:read", "patients:write", "schedule:write", "history:basic"],
-  financial: ["financial:read", "financial:write", "reports:financial"]
+  financial: ["financial:read", "financial:write", "reports:financial"],
+  stock: ["stock:read", "stock:write"],
+  schedule: ["schedule:write", "patients:read"],
+  reports: ["reports:read"],
+  custom: []
 };
 
 export function can(role: Role, permission: string) {
@@ -28,7 +32,11 @@ export function roleLabel(role: Role) {
     company_admin: "Admin da empresa",
     professional: "Podologo",
     reception: "Recepcao",
-    financial: "Financeiro"
+    financial: "Financeiro",
+    stock: "Estoque",
+    schedule: "Agenda",
+    reports: "Relatorios",
+    custom: "Usuario personalizado"
   };
   return labels[role];
 }
