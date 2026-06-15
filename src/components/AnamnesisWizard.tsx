@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Save, SkipForward } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient } from "../types";
+import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient, StockProduct } from "../types";
 
 type Field =
   | { name: string; label: string; type: "text" | "date" | "number" | "textarea" }
@@ -27,6 +27,7 @@ type AnamnesisWizardProps = {
   footSensitivitySlot?: ReactNode;
   woundImagesSlot?: ReactNode;
   imageEvolutionSlot?: ReactNode;
+  products?: StockProduct[];
 };
 
 const modules: Module[] = [
@@ -135,7 +136,8 @@ export function AnamnesisWizard({
   createdBy,
   footSensitivitySlot,
   woundImagesSlot,
-  imageEvolutionSlot
+  imageEvolutionSlot,
+  products = []
 }: AnamnesisWizardProps) {
   const [step, setStep] = useState(record?.currentStep ?? 1);
   const [formData, setFormData] = useState<AnamnesisFormData>({
@@ -223,7 +225,12 @@ export function AnamnesisWizard({
 
       <form className="wizard-form" onSubmit={handleSubmit}>
         {currentModule.fields.map((field) => (
-          <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
+          field.name === "dressing_products" ? (
+            <div className="product-picker" key={field.name}>
+              <label>Produto cadastrado<select onChange={(event) => event.target.value && updateField("dressing_products", event.target.value)} value={products.some((item) => item.name === formData.dressing_products) ? String(formData.dressing_products) : ""}><option value="">Selecione um produto</option>{products.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
+              <label>Outro produto<textarea onChange={(event) => updateField("dressing_products", event.target.value)} placeholder="Digite quando o produto nao estiver cadastrado" value={products.some((item) => item.name === formData.dressing_products) ? "" : String(formData.dressing_products || "")} /></label>
+            </div>
+          ) : <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
         ))}
 
         {currentModule.key === "monofilament_3d" && footSensitivitySlot}

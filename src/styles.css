@@ -732,6 +732,12 @@ button {
   padding: 28px;
 }
 
+.sidebar__mobile-heading,
+.mobile-menu-button,
+.mobile-menu-backdrop {
+  display: none;
+}
+
 .toast {
   position: fixed;
   top: 88px;
@@ -1400,6 +1406,19 @@ button {
   border-radius: 14px;
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(14px);
+}
+
+.filter-row input {
+  min-height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.product-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .metric-card {
@@ -2702,19 +2721,45 @@ textarea {
   }
 
   .sidebar {
-    position: static;
-    height: auto;
-    padding: 14px;
+    position: fixed;
+    z-index: 60;
+    inset: 0 auto 0 0;
+    width: min(86vw, 320px);
+    height: 100vh;
+    padding: 16px;
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar__mobile-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #fff;
   }
 
   .sidebar__nav {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 4px;
+    display: grid;
+    overflow: visible;
   }
 
-  .sidebar__nav button {
+  .mobile-menu-button {
+    display: inline-flex;
     flex: 0 0 auto;
+  }
+
+  .mobile-menu-backdrop {
+    display: block;
+    position: fixed;
+    z-index: 55;
+    inset: 0;
+    border: 0;
+    background: rgba(7, 20, 30, 0.55);
   }
 
   .topbar,
@@ -2741,6 +2786,27 @@ textarea {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .product-picker,
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-backdrop {
+    padding: 10px;
+    place-items: start center;
+  }
+
+  .dialog-card {
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
+    padding: 18px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .definition-grid--three {
