@@ -242,7 +242,6 @@ export async function createClinicalAppointment(appointment: Omit<ClinicalAppoin
     initial_complaint: appointment.initialComplaint,
     notes: appointment.notes || null,
     status: appointment.status,
-    origin: appointment.origin || null,
     payer_type: appointment.payerType || "private",
     insurance_name: appointment.insuranceName || null,
     created_by: appointment.createdBy

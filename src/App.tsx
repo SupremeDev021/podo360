@@ -51,6 +51,7 @@ import {
   demoStock,
   demoUniqueMedicalRecords
 } from "./data/demoData";
+import { podologyProductCatalog, podologyProductCategories } from "./data/productCatalog";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
@@ -72,6 +73,27 @@ import type {
 } from "./types";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function catalogStock(companyId: string, existing: StockProduct[]) {
+  const names = new Set(existing.map((item) => normalizeText(item.name)));
+  const catalog = podologyProductCatalog
+    .filter(([, name]) => !names.has(normalizeText(name)))
+    .map(([category, name], index): StockProduct => ({
+      id: `catalog-${index + 1}`,
+      companyId,
+      name,
+      category,
+      internalCode: `CAT-${String(index + 1).padStart(3, "0")}`,
+      currentQuantity: 0,
+      minimumQuantity: 0,
+      unit: "un",
+      costValue: 0,
+      saleValue: 0,
+      supplier: "",
+      active: true
+    }));
+  return [...existing, ...catalog];
+}
 
 type AppNotice = {
   id: number;
@@ -96,7 +118,6 @@ type BaOpeningPrefill = {
   uniqueRecordNumber?: string;
   visitKind?: Attendance["visitKind"];
   chiefComplaint?: string;
-  origin?: string;
   initialNotes?: string;
   payerType?: ClinicalAppointment["payerType"];
   insuranceName?: string;
@@ -147,7 +168,7 @@ export function App() {
   const [attendances, setAttendances] = useState<Attendance[]>(demoAttendances);
   const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
   const [financial, setFinancial] = useState<FinancialTransaction[]>(demoFinancial);
-  const [stock, setStock] = useState<StockProduct[]>(demoStock);
+  const [stock, setStock] = useState<StockProduct[]>(() => catalogStock(demoCompany.id, demoStock));
   const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
   const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
@@ -165,6 +186,17 @@ export function App() {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
     document.documentElement.style.setProperty("--color-secondary", company.secondaryColor);
     document.documentElement.style.setProperty("--color-accent", company.accentColor);
+    document.title = `${company.displayName} | Podo360`;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", company.primaryColor);
+    let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (company.logoUrl) {
+      if (!favicon) {
+        favicon = document.createElement("link");
+        favicon.rel = "icon";
+        document.head.appendChild(favicon);
+      }
+      favicon.href = company.logoUrl;
+    }
   }, [company]);
 
   const selectedPatient = patients.find((patient) => patient.id === selectedPatientId) ?? patients[0];
@@ -385,7 +417,6 @@ export function App() {
       appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
       notes: [
         `Clinica vinculada: ${company.displayName}.`,
-        String(form.get("attendanceOrigin") || "") ? `Origem: ${String(form.get("attendanceOrigin"))}.` : "",
         String(form.get("payerType") || "") ? `Pagamento: ${String(form.get("payerType"))}.` : "",
         String(form.get("openingReason") || "") ? `Motivo: ${String(form.get("openingReason"))}.` : "",
         String(form.get("initialNotes") || "")
@@ -453,7 +484,6 @@ export function App() {
       uniqueRecordNumber: patient?.uniqueRecordNumber ?? "",
       visitKind: appointment.appointmentType === "return" ? "return" : "first_evaluation",
       chiefComplaint: appointment.initialComplaint,
-      origin: appointment.origin ?? "Agenda Clínica",
       initialNotes: appointment.notes ?? ""
       , payerType: appointment.payerType
       , insuranceName: appointment.insuranceName
@@ -705,7 +735,6 @@ function Dashboard({ companyId, appointments, financial, stock, attendances, pat
           <p>Organize pacientes, anamnese, agenda, atendimentos, financeiro, estoque e relatorios em uma experiencia clara para a equipe.</p>
         </div>
         <div className="hero-panel__actions">
-          <button className="primary-button" type="button"><Plus size={18} /> Novo atendimento</button>
           <button className="ghost-button" type="button"><FileText size={18} /> Gerar relatorio</button>
         </div>
       </section>
@@ -723,7 +752,7 @@ function Dashboard({ companyId, appointments, financial, stock, attendances, pat
         <MetricCard icon={<TrendingUp />} label="Reincidencia" value={String(recurringPatientIds.size)} detail="Pacientes com mais de um atendimento" tone="warning" />
         <MetricCard icon={<ClipboardEdit />} label="Atendimentos" value={String(localAttendances.length)} detail={`${localAttendances.filter((item) => item.status === "completed").length} finalizados`} />
         <MetricCard icon={<Receipt />} label="Receita no periodo" value={currency.format(revenue)} detail={`${currency.format(expenses)} em despesas`} tone="success" />
-        <MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(stock.filter((product) => product.companyId === companyId && product.currentQuantity <= product.minimumQuantity).length)} detail="Produtos abaixo do minimo" tone="danger" />
+        <MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(stock.filter((product) => product.companyId === companyId && product.minimumQuantity > 0 && product.currentQuantity <= product.minimumQuantity).length)} detail="Produtos abaixo do minimo" tone="danger" />
       </section>
 
       <div className="dashboard-grid">
@@ -751,7 +780,7 @@ function Dashboard({ companyId, appointments, financial, stock, attendances, pat
           </div>
           <Table
             headers={["Produto", "Atual", "Minimo"]}
-            rows={stock.filter((product) => product.companyId === companyId && product.currentQuantity <= product.minimumQuantity).map((product) => [product.name, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`])}
+            rows={stock.filter((product) => product.companyId === companyId && product.minimumQuantity > 0 && product.currentQuantity <= product.minimumQuantity).map((product) => [product.name, `${product.currentQuantity} ${product.unit}`, `${product.minimumQuantity} ${product.unit}`])}
           />
         </div>
       </section>
@@ -816,7 +845,6 @@ function BaOpening({
     sourceAppointmentId: "",
     visitKind: "",
     chiefComplaint: "",
-    origin: "",
     initialNotes: ""
   });
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
@@ -842,7 +870,6 @@ function BaOpening({
       sourceAppointmentId: prefill.appointmentId,
       visitKind: prefill.visitKind || "",
       chiefComplaint: prefill.chiefComplaint || "",
-      origin: prefill.origin || "Agenda Clínica",
       initialNotes: prefill.initialNotes || ""
     });
     setBirthDateMessage(result.message);
@@ -926,7 +953,7 @@ function BaOpening({
       uniqueRecordNumber: ""
     });
     setBirthDateMessage("");
-    setBaPrefill({ sourceAppointmentId: "", visitKind: "", chiefComplaint: "", origin: "", initialNotes: "" });
+    setBaPrefill({ sourceAppointmentId: "", visitKind: "", chiefComplaint: "", initialNotes: "" });
     setSearchOpen(false);
   }
 
@@ -1023,7 +1050,6 @@ function BaOpening({
                 <option value="urgent">Urgente</option>
               </select>
             </label>
-            <label>Origem do atendimento<input name="attendanceOrigin" defaultValue={baPrefill.origin} placeholder="Ex.: recepcao, WhatsApp, encaminhamento" /></label>
             <label>Convênio ou particular<select name="payerType" onChange={(event) => setPayerType(event.target.value as "private" | "insurance")} value={payerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>
             {payerType === "insurance" && <label>Nome do convênio<input defaultValue={prefill?.insuranceName} name="insuranceName" required placeholder="Informe o convênio" /></label>}
             <label>Data/hora de abertura<input value={new Date().toLocaleString("pt-BR")} readOnly /></label>
@@ -1674,8 +1700,7 @@ function ClinicalAgendaPage({
       appointmentType: String(form.get("appointmentType") || "first_evaluation") as ClinicalAppointment["appointmentType"],
       initialComplaint: String(form.get("initialComplaint") || ""),
       notes: String(form.get("notes") || ""),
-      origin: String(form.get("origin") || "Recepcao")
-      , payerType: String(form.get("payerType") || "private") as ClinicalAppointment["payerType"]
+      payerType: String(form.get("payerType") || "private") as ClinicalAppointment["payerType"]
       , insuranceName: String(form.get("insuranceName") || "") || undefined
     });
     event.currentTarget.reset();
@@ -1807,7 +1832,6 @@ function ClinicalAgendaPage({
             {appointmentPayerType === "insurance" && <label>Nome do convênio<input name="insuranceName" required /></label>}
           </div>
           <label>Queixa/resumo inicial<textarea name="initialComplaint" /></label>
-          <label>Origem<input name="origin" placeholder="WhatsApp, telefone, recepcao" /></label>
           <label>Observacoes<textarea name="notes" /></label>
           <div className="dialog-card__actions"><button className="ghost-action" onClick={() => setNewAppointmentOpen(false)} type="button">Cancelar</button><button className="primary-button" type="submit"><CalendarPlus size={18} /> Criar agendamento</button></div>
         </form></div>}
@@ -1989,11 +2013,14 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   const [editing, setEditing] = useState<StockProduct | null>(null);
   const [saving, setSaving] = useState(false);
   const [otherFields, setOtherFields] = useState<Record<string, boolean>>({});
+  const [selectedCategory, setSelectedCategory] = useState("");
   const totalValue = stock.reduce((sum, product) => sum + product.currentQuantity * product.costValue, 0);
-  const low = stock.filter((product) => product.currentQuantity <= product.minimumQuantity);
-  const categories = Array.from(new Set(stock.map((item) => item.category).filter(Boolean)));
+  const low = stock.filter((product) => product.minimumQuantity > 0 && product.currentQuantity <= product.minimumQuantity);
+  const categories = Array.from(new Set([...podologyProductCategories, ...stock.map((item) => item.category).filter(Boolean)]));
   const suppliers = Array.from(new Set(stock.map((item) => item.supplier).filter(Boolean)));
   const units = [["un", "Unidade"], ["cx", "Caixa"], ["pct", "Pacote"], ["frasco", "Frasco"], ["tubo", "Tubo"], ["par", "Par"], ["kit", "Kit"], ["ml", "ml"], ["g", "g"]];
+  const productOptions = selectedCategory && selectedCategory !== "__other__" ? stock.filter((item) => item.category === selectedCategory) : stock;
+  const productsByCategory = Array.from(new Set(productOptions.map((item) => item.category || "Sem categoria"))).map((category) => [category, productOptions.filter((item) => (item.category || "Sem categoria") === category)] as const);
 
   function fieldValue(form: FormData, key: string) {
     return String(form.get(`${key}Other`) || form.get(key) || "");
@@ -2003,7 +2030,7 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
     event.preventDefault(); setSaving(true); const form = new FormData(event.currentTarget);
     const base: StockProduct = editing ?? { id: `stock-${Date.now()}`, companyId, name: "", category: "", internalCode: "", currentQuantity: 0, minimumQuantity: 0, unit: "un", costValue: 0, saleValue: 0, supplier: "", expiresAt: undefined, active: true };
     const product: StockProduct = { ...base, companyId, name: fieldValue(form, "name"), category: fieldValue(form, "category"), internalCode: String(form.get("internalCode") || base.internalCode || `PROD-${Date.now()}`), currentQuantity: Number(form.get("currentQuantity") ?? base.currentQuantity), minimumQuantity: Number(form.get("minimumQuantity") ?? base.minimumQuantity), unit: fieldValue(form, "unit"), costValue: Number(form.get("costValue") || 0), saleValue: Number(form.get("saleValue") || 0), supplier: fieldValue(form, "supplier"), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined, active: form.get("active") === "on" };
-    try { if (editing) await onUpdate(product); else await onCreate(product); setOpen(false); setEditing(null); setOtherFields({}); } finally { setSaving(false); }
+    try { if (editing) await onUpdate(product); else await onCreate(product); setOpen(false); setEditing(null); setOtherFields({}); setSelectedCategory(""); } finally { setSaving(false); }
   }
 
   function choiceField(name: string, label: string, options: Array<[string, string]>, current?: string) {
@@ -2012,10 +2039,10 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   }
 
   return <div className="page-stack">
-    <div className="section-heading"><div><span className="eyebrow">Estoque</span><h1>Produtos</h1><p>Cadastro, valores, fornecedores e disponibilidade dos produtos.</p></div><button className="primary-button" onClick={() => { setEditing(null); setOtherFields({}); setOpen(true); }} type="button"><Plus size={18} /> Novo produto</button></div>
+    <div className="section-heading"><div><span className="eyebrow">Estoque</span><h1>Produtos</h1><p>Cadastro, valores, fornecedores e disponibilidade dos produtos.</p></div><button className="primary-button" onClick={() => { setEditing(null); setOtherFields({}); setSelectedCategory(""); setOpen(true); }} type="button"><Plus size={18} /> Novo produto</button></div>
     <section className="metrics-grid"><MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" /><MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(low.length)} detail="Abaixo do minimo" tone="danger" /><MetricCard icon={<CalendarClock />} label="Ativos" value={String(stock.filter((item) => item.active !== false).length)} detail="Disponiveis para uso" tone="warning" /><MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" /></section>
-    {stock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={stock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), product.active === false ? "Inativo" : "Ativo", <button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setOpen(true); }} type="button">Editar</button>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
-    {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>{editing ? "Editar produto" : "Novo produto"}</h2><p>Use as opcoes existentes ou escolha Outro para informar um novo valor.</p></div><div className="form-grid form-grid--two">{choiceField("name", "Nome", stock.map((item): [string, string] => [item.name, item.name]), editing?.name)}{choiceField("category", "Categoria", categories.map((item): [string, string] => [item, item]), editing?.category)}{choiceField("unit", "Unidade de medida", units as Array<[string, string]>, editing?.unit)}{choiceField("supplier", "Fornecedor", suppliers.map((item): [string, string] => [item, item]), editing?.supplier)}<label>Codigo interno<input defaultValue={editing?.internalCode} name="internalCode" /></label><label>Quantidade atual<input defaultValue={editing?.currentQuantity ?? 0} min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue={editing?.minimumQuantity ?? 0} min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue={editing?.costValue ?? 0} min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue={editing?.saleValue ?? 0} min="0" name="saleValue" step="0.01" type="number" /></label><label className="toggle-row"><input defaultChecked={editing?.active !== false} name="active" type="checkbox" /> Produto ativo</label></div><label>Observacoes<textarea defaultValue={editing?.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : editing ? "Salvar alteracoes" : "Salvar produto"}</button></div></form></div>}
+    {stock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={stock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), product.active === false ? "Inativo" : "Ativo", <button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setSelectedCategory(product.category); setOpen(true); }} type="button">Editar</button>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
+    {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>{editing ? "Editar produto" : "Novo produto"}</h2><p>Escolha uma categoria para filtrar o catálogo ou informe um item personalizado.</p></div><div className="form-grid form-grid--two"><label>Categoria<select defaultValue={editing?.category || ""} name="category" onChange={(event) => { setSelectedCategory(event.target.value); setOtherFields((state) => ({ ...state, category: event.target.value === "__other__" })); }}><option value="">Todas as categorias</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__other__">Outra categoria</option></select>{otherFields.category && <input name="categoryOther" placeholder="Informe a nova categoria" required />}</label><label>Produto<select defaultValue={editing?.name || ""} name="name" onChange={(event) => setOtherFields((state) => ({ ...state, name: event.target.value === "__other__" }))}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{otherFields.name && <input name="nameOther" placeholder="Informe o novo produto" required />}</label>{choiceField("unit", "Unidade de medida", units as Array<[string, string]>, editing?.unit)}{choiceField("supplier", "Fornecedor", suppliers.map((item): [string, string] => [item, item]), editing?.supplier)}<label>Codigo interno<input defaultValue={editing?.internalCode} name="internalCode" /></label><label>Quantidade atual<input defaultValue={editing?.currentQuantity ?? 0} min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue={editing?.minimumQuantity ?? 0} min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue={editing?.costValue ?? 0} min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue={editing?.saleValue ?? 0} min="0" name="saleValue" step="0.01" type="number" /></label><label className="toggle-row"><input defaultChecked={editing?.active !== false} name="active" type="checkbox" /> Produto ativo</label></div><label>Observacoes<textarea defaultValue={editing?.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); setSelectedCategory(""); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : editing ? "Salvar alteracoes" : "Salvar produto"}</button></div></form></div>}
   </div>;
 }
 
@@ -2182,7 +2209,7 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
           <label>Nome exibido<input value={company.displayName} onChange={(event) => update("displayName", event.target.value)} /></label>
           <label>E-mail comercial<input value={company.contactEmail} onChange={(event) => update("contactEmail", event.target.value)} /></label>
           <label>Telefone comercial<input value={company.contactPhone} onChange={(event) => update("contactPhone", event.target.value)} /></label>
-          <label>Logo URL<input value={company.logoUrl || ""} onChange={(event) => update("logoUrl", event.target.value)} /></label>
+          <label>Logo URL (menu, login e aba do navegador)<input value={company.logoUrl || ""} onChange={(event) => update("logoUrl", event.target.value)} placeholder="https://..." /></label>
           <label>Cor principal<input type="color" value={company.primaryColor} onChange={(event) => update("primaryColor", event.target.value)} /></label>
           <label>Cor secundaria<input type="color" value={company.secondaryColor} onChange={(event) => update("secondaryColor", event.target.value)} /></label>
           <label>Cor de destaque<input type="color" value={company.accentColor} onChange={(event) => update("accentColor", event.target.value)} /></label>
