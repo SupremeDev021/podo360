@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - codex/fix-masks-stock-products-reports
+      - codex/refine-products-design-and-remove-origin
   workflow_dispatch:
 
 permissions:
