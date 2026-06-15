@@ -1,7 +1,6 @@
 import {
   Activity,
   Boxes,
-  Building2,
   CalendarDays,
   ClipboardPlus,
   CreditCard,
@@ -56,8 +55,7 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "reports", label: "Relatorios", icon: <FileText size={18} /> },
   { key: "hci", label: "HCI", icon: <HeartPulse size={18} /> },
   { key: "settings", label: "Identidade", icon: <Settings size={18} /> },
-  { key: "super-admin", label: "Super Admin", icon: <ShieldCheck size={18} /> },
-  { key: "plans", label: "Planos", icon: <Building2 size={18} /> }
+  { key: "super-admin", label: "Super Admin", icon: <ShieldCheck size={18} /> }
 ];
 
 export function Layout({ company, profile, activeView, onViewChange, onLogout, allowedViews, children }: LayoutProps) {
@@ -121,7 +119,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
           <button aria-label="Abrir menu" className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} type="button"><Menu size={20} /></button>
           <div>
             <strong>{company.displayName}</strong>
-            <small>{company.planName} · {company.planStatus}</small>
+            <small>Ambiente clínico seguro</small>
           </div>
           <div className="topbar__actions">
             <span className="status-dot">Supabase ready</span>

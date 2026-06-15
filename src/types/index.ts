@@ -52,6 +52,10 @@ export type Company = {
   hciConsentValidityDays?: number;
   hciAllowImages?: boolean;
   hciDefaultScope?: HciAccessScope;
+  autoFinancialOnFinish?: boolean;
+  requireFinancialConfirmation?: boolean;
+  includeProductsInFinancial?: boolean;
+  includeProceduresInFinancial?: boolean;
 };
 
 export type Profile = {
@@ -62,6 +66,8 @@ export type Profile = {
   role: Role;
   active: boolean;
   modulePermissions?: string[];
+  disabledAt?: string;
+  disabledBy?: string;
 };
 
 export type Patient = {
@@ -144,6 +150,8 @@ export type Attendance = {
   visitKind?: "first_evaluation" | "return";
   initialNotes?: string;
   priority?: "low" | "normal" | "high" | "urgent";
+  payerType?: "private" | "insurance";
+  insuranceName?: string;
   procedure: string;
   complaint: string;
   clinicalEvaluation: string;
@@ -183,6 +191,8 @@ export type ClinicalAppointment = {
   markedAbsentAt?: string;
   markedAbsentBy?: string;
   absenceNotes?: string;
+  payerType?: "private" | "insurance";
+  insuranceName?: string;
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
@@ -252,6 +262,8 @@ export type FinancialTransaction = {
   companyId: string;
   patientId?: string;
   attendanceId?: string;
+  baNumber?: string;
+  uniqueMedicalRecordId?: string;
   description: string;
   type: "income" | "expense";
   amount: number;
@@ -261,6 +273,8 @@ export type FinancialTransaction = {
   category: string;
   status: PaymentStatus;
   notes?: string;
+  payerType?: "private" | "insurance";
+  insuranceName?: string;
 };
 
 export type StockProduct = {
@@ -277,6 +291,7 @@ export type StockProduct = {
   supplier: string;
   expiresAt?: string;
   notes?: string;
+  active?: boolean;
 };
 
 export type BodyMapEntry = {
