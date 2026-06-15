@@ -388,7 +388,6 @@ export const demoClinicalAppointments: ClinicalAppointment[] = [
     initialComplaint: "Reavaliacao de halux direito",
     notes: "Paciente ja possui ProntuárioÚnico.",
     status: "confirmed",
-    origin: "WhatsApp",
     createdBy: "user-2",
     createdAt: "2026-06-10T15:30:00",
     updatedAt: "2026-06-10T15:30:00"
@@ -410,7 +409,6 @@ export const demoClinicalAppointments: ClinicalAppointment[] = [
     initialComplaint: "Dor plantar ao caminhar",
     notes: "Pre-cadastro de agenda. Nao possui ProntuárioÚnico ate a Abertura de BA.",
     status: "scheduled",
-    origin: "Telefone",
     createdBy: "user-2",
     createdAt: "2026-06-10T16:10:00",
     updatedAt: "2026-06-10T16:10:00"

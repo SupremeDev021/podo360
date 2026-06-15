@@ -184,7 +184,6 @@ export type ClinicalAppointment = {
   initialComplaint: string;
   notes?: string;
   status: AppointmentStatus;
-  origin?: string;
   convertedAttendanceId?: string;
   convertedAt?: string;
   convertedBy?: string;
