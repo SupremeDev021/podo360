@@ -197,7 +197,17 @@ export type ClinicalAppointment = {
   updatedAt?: string;
 };
 
-export type AnamnesisFormData = Record<string, string | number | boolean | string[] | Record<string, unknown> | null | undefined>;
+export type UsedProduct = {
+  productId?: string;
+  name: string;
+  category?: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+  unitPrice?: number;
+};
+
+export type AnamnesisFormData = Record<string, string | number | boolean | string[] | UsedProduct[] | Record<string, unknown> | null | undefined>;
 
 export type AnamnesisRecord = {
   id: string;
@@ -291,6 +301,8 @@ export type StockProduct = {
   expiresAt?: string;
   notes?: string;
   active?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 };
 
 export type BodyMapEntry = {

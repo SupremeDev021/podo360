@@ -1,7 +1,7 @@
-import { ArrowLeft, ArrowRight, CheckCircle2, Save, SkipForward } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Plus, Save, SkipForward, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient, StockProduct } from "../types";
+import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient, StockProduct, UsedProduct } from "../types";
 
 type Field =
   | { name: string; label: string; type: "text" | "date" | "number" | "textarea" }
@@ -148,7 +148,10 @@ export function AnamnesisWizard({
   const [stepStatuses, setStepStatuses] = useState<Record<string, AnamnesisStepStatus>>(
     () => modules.reduce<Record<string, AnamnesisStepStatus>>((acc, module) => ({ ...acc, [module.key]: record?.stepStatuses?.[module.key] ?? "not_started" }), {})
   );
-  const [otherProduct, setOtherProduct] = useState(false);
+  const [usedProducts, setUsedProducts] = useState<UsedProduct[]>(() => {
+    const saved = record?.formData.used_products;
+    return Array.isArray(saved) && saved.length && typeof saved[0] === "object" ? saved as UsedProduct[] : [{ name: "", quantity: 1, unit: "un" }];
+  });
   const currentModule = modules[step - 1];
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
 
@@ -160,6 +163,7 @@ export function AnamnesisWizard({
   }
 
   function save(nextStep = step, completed = false, overrideStatuses = stepStatuses) {
+    const selectedProducts = usedProducts.filter((item) => item.name.trim());
     onSave({
       id: record?.id ?? `anamnesis-${attendanceId}`,
       companyId,
@@ -168,7 +172,7 @@ export function AnamnesisWizard({
       attendanceId,
       uniqueRecordNumber,
       baNumber,
-      formData,
+      formData: { ...formData, dressing_products: selectedProducts.map((item) => item.name), used_products: selectedProducts },
       currentStep: nextStep,
       stepStatuses: overrideStatuses,
       isCompleted: completed,
@@ -211,6 +215,11 @@ export function AnamnesisWizard({
     return Array.from(grouped.entries());
   }, [products]);
 
+  function updateUsedProduct(index: number, patch: Partial<UsedProduct>) {
+    setUsedProducts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+    setStepStatuses((current) => ({ ...current, [currentModule.key]: "in_progress" }));
+  }
+
   return (
     <section className="data-panel">
       <div className="section-heading">
@@ -235,9 +244,19 @@ export function AnamnesisWizard({
       <form className="wizard-form" onSubmit={handleSubmit}>
         {currentModule.fields.map((field) => (
           field.name === "dressing_products" ? (
-            <div className="product-picker" key={field.name}>
-              <label>Selecionar produto<select onChange={(event) => { const value = event.target.value; setOtherProduct(value === "__other__"); if (value !== "__other__") updateField("dressing_products", value); }} value={otherProduct ? "__other__" : products.some((item) => item.name === formData.dressing_products) ? String(formData.dressing_products) : ""}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select></label>
-              {otherProduct && <label>Nome do outro produto<input onChange={(event) => updateField("dressing_products", event.target.value)} placeholder="Digite o produto utilizado" value={String(formData.dressing_products || "")} /></label>}
+            <div className="used-products-editor" key={field.name}>
+              {usedProducts.map((usedProduct, index) => {
+                const registered = products.find((item) => item.name === usedProduct.name);
+                const isOther = Boolean(usedProduct.name) && !registered;
+                return <div className="used-product-row" key={`${index}-${usedProduct.productId || "new"}`}>
+                  <label>Produto<select onChange={(event) => { const selected = products.find((item) => item.id === event.target.value); updateUsedProduct(index, selected ? { productId: selected.id, name: selected.name, category: selected.category, unit: selected.unit, unitPrice: selected.saleValue } : { productId: undefined, name: event.target.value === "__other__" ? " " : "" }); }} value={registered?.id || (isOther ? "__other__" : "")}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{isOther && <input onChange={(event) => updateUsedProduct(index, { name: event.target.value })} placeholder="Nome do outro produto" value={usedProduct.name.trimStart()} />}</label>
+                  <label>Quantidade<input min="0.001" onChange={(event) => updateUsedProduct(index, { quantity: Number(event.target.value) })} step="0.001" type="number" value={usedProduct.quantity} /></label>
+                  <label>Unidade<input onChange={(event) => updateUsedProduct(index, { unit: event.target.value })} value={usedProduct.unit} /></label>
+                  <label>Observação<input onChange={(event) => updateUsedProduct(index, { notes: event.target.value })} value={usedProduct.notes || ""} /></label>
+                  <button aria-label="Remover produto" className="icon-button" disabled={usedProducts.length === 1} onClick={() => setUsedProducts((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><Trash2 size={16} /></button>
+                </div>;
+              })}
+              <button className="ghost-action used-products-add" onClick={() => setUsedProducts((current) => [...current, { name: "", quantity: 1, unit: "un" }])} type="button"><Plus size={16} /> Adicionar produto</button>
             </div>
           ) : <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
         ))}

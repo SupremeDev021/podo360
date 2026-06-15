@@ -21,6 +21,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   TrendingUp,
   Users
 } from "lucide-react";
@@ -55,7 +56,8 @@ import { podologyProductCatalog, podologyProductCategories } from "./data/produc
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, startAttendanceBa, updateClinicalAppointment, updateStockProduct } from "./services/podo360Repository";
+import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, startAttendanceBa, updateClinicalAppointment, updateStockProduct } from "./services/podo360Repository";
+import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
   Attendance,
@@ -69,6 +71,7 @@ import type {
   Patient,
   Profile,
   StockProduct,
+  UsedProduct,
   UniqueMedicalRecord
 } from "./types";
 
@@ -182,6 +185,19 @@ export function App() {
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const profile = demoProfiles[0];
 
+  function handleMaskedInput(event: FormEvent<HTMLDivElement>) {
+    const input = event.target as HTMLInputElement;
+    if (!input?.name) return;
+    if (["phone", "whatsapp", "temporaryPatientPhone", "temporaryPatientWhatsapp"].includes(input.name)) input.value = formatPhone(input.value);
+    if (input.name === "cpf") input.value = formatCpf(input.value);
+    if (input.name === "document") input.value = formatCnpj(input.value);
+    if (["amount", "costValue", "saleValue", "reportMinValue", "reportMaxValue"].includes(input.name)) {
+      input.type = "text";
+      input.inputMode = "numeric";
+      input.value = formatCurrencyInput(input.value);
+    }
+  }
+
   useEffect(() => {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
     document.documentElement.style.setProperty("--color-secondary", company.secondaryColor);
@@ -245,14 +261,22 @@ export function App() {
     notify("Ponto salvo", "Sensibilidade do pe 3D registrada neste BA.", "success");
   }
 
-  function handleSaveAnamnesis(record: AnamnesisRecord) {
+  async function handleSaveAnamnesis(record: AnamnesisRecord) {
     setAnamneses((current) => {
       const index = current.findIndex((item) => item.id === record.id);
       if (index < 0) return [record, ...current];
       return current.map((item) => (item.id === record.id ? record : item));
     });
-    const usedProduct = String(record.formData.dressing_products || "").trim();
-    if (usedProduct) setAttendances((current) => current.map((item) => item.id === record.attendanceId ? { ...item, productsUsed: Array.from(new Set([...item.productsUsed, usedProduct])) } : item));
+    const usedProducts = (Array.isArray(record.formData.used_products) ? record.formData.used_products : []) as UsedProduct[];
+    const names = usedProducts.map((item) => item.name.trim()).filter(Boolean);
+    setAttendances((current) => current.map((item) => item.id === record.attendanceId ? { ...item, productsUsed: Array.from(new Set([...item.productsUsed, ...names])) } : item));
+    if (usedProducts.some((entry) => entry.name.trim() && !entry.productId && stock.some((product) => normalizeText(product.name) === normalizeText(entry.name)))) {
+      notify("Este item já está cadastrado na lista.", "Use o produto existente no select para evitar duplicidade.", "warning");
+    }
+    for (const item of usedProducts.filter((entry) => entry.name.trim() && !stock.some((product) => normalizeText(product.name) === normalizeText(entry.name)))) {
+      await handleCreateProduct({ id: `stock-${Date.now()}-${item.name}`, companyId: record.companyId, name: item.name.trim(), category: item.category || "Outros", internalCode: `OUT-${Date.now()}`, currentQuantity: 0, minimumQuantity: 0, unit: item.unit || "un", costValue: 0, saleValue: item.unitPrice || 0, supplier: "", active: true });
+    }
+    await Promise.all([saveAnamnesisRecord(record), saveAttendanceUsedProducts(record, usedProducts)]);
     notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
   }
 
@@ -561,7 +585,7 @@ export function App() {
     try {
       await updateStockProduct(product);
       setStock((current) => current.map((item) => item.id === product.id ? product : item));
-      notify("Produto atualizado com sucesso.", `${product.name} foi atualizado.`, "success");
+      notify(product.active === false ? "Item removido do estoque com sucesso." : "Produto atualizado com sucesso.", product.active === false ? `${product.name} foi inativado e o histórico foi preservado.` : `${product.name} foi atualizado.`, "success");
     } catch {
       notify("Erro ao atualizar produto", "Confira os dados e sua permissao de estoque.", "danger");
     }
@@ -593,6 +617,7 @@ export function App() {
 
   return (
     <Layout allowedViews={allowedViewsForProfile(profile)} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
+      <div className="app-input-mask-scope" onInputCapture={handleMaskedInput}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
       {activeView === "dashboard" && <Dashboard appointments={appointments} companyId={company.id} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
@@ -677,7 +702,14 @@ export function App() {
       {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} onUpdate={handleUpdateProduct} stock={stock} />}
       {activeView === "reports" && (
         <Reports
+          anamneses={anamneses}
+          attendanceImages={attendanceImages}
+          attendances={attendances}
+          companyId={company.id}
+          financial={financial}
           patient={selectedPatient}
+          patients={patients}
+          profiles={demoProfiles}
           report={aiReport}
           includeHci={includeHciInReport}
           hciAvailable={demoHciMatches.some((match) => match.consentStatus === "authorized")}
@@ -697,6 +729,7 @@ export function App() {
       )}
       {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} />}
       {activeView === "super-admin" && <SuperAdmin company={company} onNotify={notify} />}
+      </div>
     </Layout>
   );
 }
@@ -877,6 +910,8 @@ function BaOpening({
   }, [prefill]);
 
   function updatePatientField(key: keyof typeof patientData, value: string) {
+    if (key === "cpf") value = formatCpf(value);
+    if (key === "phone" || key === "whatsapp") value = formatPhone(value);
     if (key === "birthDate") {
       const result = calculateAgeValue(value);
       setBirthDateMessage(result.message);
@@ -1814,8 +1849,8 @@ function ClinicalAgendaPage({
           {patientMode === "temporary" && (
             <div className="form-grid form-grid--two">
               <label>Nome completo<input name="temporaryPatientName" /></label>
-              <label>Telefone<input name="temporaryPatientPhone" /></label>
-              <label>WhatsApp<input name="temporaryPatientWhatsapp" /></label>
+              <label>Telefone<input inputMode="tel" name="temporaryPatientPhone" onInput={(event) => { event.currentTarget.value = formatPhone(event.currentTarget.value); }} /></label>
+              <label>WhatsApp<input inputMode="tel" name="temporaryPatientWhatsapp" onInput={(event) => { event.currentTarget.value = formatPhone(event.currentTarget.value); }} /></label>
               <label>E-mail<input name="temporaryPatientEmail" type="email" /></label>
               <label>Data de nascimento<input name="temporaryPatientBirthDate" type="date" /></label>
             </div>
@@ -1970,7 +2005,7 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
     const form = new FormData(event.currentTarget);
     try {
       const attendance = attendances.find((item) => item.id === String(form.get("attendanceId") || ""));
-      await onCreate({ id: `fin-${Date.now()}`, companyId, patientId: String(form.get("patientId") || "") || attendance?.patientId || undefined, attendanceId: attendance?.id, baNumber: attendance?.baNumber, uniqueMedicalRecordId: attendance?.uniqueMedicalRecordId, description: String(form.get("description")), type: String(form.get("type")) as FinancialTransaction["type"], amount: Number(form.get("amount")), dueDate: String(form.get("dueDate")), paidAt: String(form.get("paidAt") || "") || undefined, paymentMethod: String(form.get("paymentMethod")) as FinancialTransaction["paymentMethod"], category: String(form.get("category")), status: String(form.get("status")) as FinancialTransaction["status"], payerType: financialPayerType, insuranceName: financialPayerType === "insurance" ? String(form.get("insuranceName") || "") : undefined, notes: String(form.get("notes") || "") || undefined });
+      await onCreate({ id: `fin-${Date.now()}`, companyId, patientId: String(form.get("patientId") || "") || attendance?.patientId || undefined, attendanceId: attendance?.id, baNumber: attendance?.baNumber, uniqueMedicalRecordId: attendance?.uniqueMedicalRecordId, description: String(form.get("description")), type: String(form.get("type")) as FinancialTransaction["type"], amount: parseCurrency(String(form.get("amount"))), dueDate: String(form.get("dueDate")), paidAt: String(form.get("paidAt") || "") || undefined, paymentMethod: String(form.get("paymentMethod")) as FinancialTransaction["paymentMethod"], category: String(form.get("category")), status: String(form.get("status")) as FinancialTransaction["status"], payerType: financialPayerType, insuranceName: financialPayerType === "insurance" ? String(form.get("insuranceName") || "") : undefined, notes: String(form.get("notes") || "") || undefined });
       setOpen(false);
     } finally { setSaving(false); }
   }
@@ -2014,6 +2049,8 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   const [saving, setSaving] = useState(false);
   const [otherFields, setOtherFields] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [deleting, setDeleting] = useState<StockProduct | null>(null);
+  const visibleStock = stock.filter((item) => item.active !== false);
   const totalValue = stock.reduce((sum, product) => sum + product.currentQuantity * product.costValue, 0);
   const low = stock.filter((product) => product.minimumQuantity > 0 && product.currentQuantity <= product.minimumQuantity);
   const categories = Array.from(new Set([...podologyProductCategories, ...stock.map((item) => item.category).filter(Boolean)]));
@@ -2029,7 +2066,7 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); const form = new FormData(event.currentTarget);
     const base: StockProduct = editing ?? { id: `stock-${Date.now()}`, companyId, name: "", category: "", internalCode: "", currentQuantity: 0, minimumQuantity: 0, unit: "un", costValue: 0, saleValue: 0, supplier: "", expiresAt: undefined, active: true };
-    const product: StockProduct = { ...base, companyId, name: fieldValue(form, "name"), category: fieldValue(form, "category"), internalCode: String(form.get("internalCode") || base.internalCode || `PROD-${Date.now()}`), currentQuantity: Number(form.get("currentQuantity") ?? base.currentQuantity), minimumQuantity: Number(form.get("minimumQuantity") ?? base.minimumQuantity), unit: fieldValue(form, "unit"), costValue: Number(form.get("costValue") || 0), saleValue: Number(form.get("saleValue") || 0), supplier: fieldValue(form, "supplier"), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined, active: form.get("active") === "on" };
+    const product: StockProduct = { ...base, companyId, name: fieldValue(form, "name"), category: fieldValue(form, "category"), internalCode: String(form.get("internalCode") || base.internalCode || `PROD-${Date.now()}`), currentQuantity: Number(form.get("currentQuantity") ?? base.currentQuantity), minimumQuantity: Number(form.get("minimumQuantity") ?? base.minimumQuantity), unit: fieldValue(form, "unit"), costValue: parseCurrency(String(form.get("costValue") || 0)), saleValue: parseCurrency(String(form.get("saleValue") || 0)), supplier: fieldValue(form, "supplier"), expiresAt: String(form.get("expiresAt") || "") || undefined, notes: String(form.get("notes") || "") || undefined, active: form.get("active") === "on" };
     try { if (editing) await onUpdate(product); else await onCreate(product); setOpen(false); setEditing(null); setOtherFields({}); setSelectedCategory(""); } finally { setSaving(false); }
   }
 
@@ -2041,13 +2078,21 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   return <div className="page-stack">
     <div className="section-heading"><div><span className="eyebrow">Estoque</span><h1>Produtos</h1><p>Cadastro, valores, fornecedores e disponibilidade dos produtos.</p></div><button className="primary-button" onClick={() => { setEditing(null); setOtherFields({}); setSelectedCategory(""); setOpen(true); }} type="button"><Plus size={18} /> Novo produto</button></div>
     <section className="metrics-grid"><MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" /><MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(low.length)} detail="Abaixo do minimo" tone="danger" /><MetricCard icon={<CalendarClock />} label="Ativos" value={String(stock.filter((item) => item.active !== false).length)} detail="Disponiveis para uso" tone="warning" /><MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" /></section>
-    {stock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={stock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), product.active === false ? "Inativo" : "Ativo", <button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setSelectedCategory(product.category); setOpen(true); }} type="button">Editar</button>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
+    {visibleStock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={visibleStock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), "Ativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setSelectedCategory(product.category); setOpen(true); }} type="button">Editar</button><button className="danger-link" onClick={() => setDeleting(product)} type="button">Excluir</button></div>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
     {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>{editing ? "Editar produto" : "Novo produto"}</h2><p>Escolha uma categoria para filtrar o catálogo ou informe um item personalizado.</p></div><div className="form-grid form-grid--two"><label>Categoria<select defaultValue={editing?.category || ""} name="category" onChange={(event) => { setSelectedCategory(event.target.value); setOtherFields((state) => ({ ...state, category: event.target.value === "__other__" })); }}><option value="">Todas as categorias</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__other__">Outra categoria</option></select>{otherFields.category && <input name="categoryOther" placeholder="Informe a nova categoria" required />}</label><label>Produto<select defaultValue={editing?.name || ""} name="name" onChange={(event) => setOtherFields((state) => ({ ...state, name: event.target.value === "__other__" }))}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{otherFields.name && <input name="nameOther" placeholder="Informe o novo produto" required />}</label>{choiceField("unit", "Unidade de medida", units as Array<[string, string]>, editing?.unit)}{choiceField("supplier", "Fornecedor", suppliers.map((item): [string, string] => [item, item]), editing?.supplier)}<label>Codigo interno<input defaultValue={editing?.internalCode} name="internalCode" /></label><label>Quantidade atual<input defaultValue={editing?.currentQuantity ?? 0} min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue={editing?.minimumQuantity ?? 0} min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue={editing?.costValue ?? 0} min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue={editing?.saleValue ?? 0} min="0" name="saleValue" step="0.01" type="number" /></label><label className="toggle-row"><input defaultChecked={editing?.active !== false} name="active" type="checkbox" /> Produto ativo</label></div><label>Observacoes<textarea defaultValue={editing?.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); setSelectedCategory(""); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : editing ? "Salvar alteracoes" : "Salvar produto"}</button></div></form></div>}
+    {deleting && <div className="dialog-backdrop"><section className="dialog-card"><div className="dialog-card__icon"><Trash2 size={22} /></div><div><h2>Deseja realmente excluir este item do estoque?</h2><p>Este item será inativado para preservar movimentações, atendimentos e relatórios vinculados.</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setDeleting(null)} type="button">Cancelar</button><button className="danger-button" onClick={async () => { await onUpdate({ ...deleting, active: false, deletedAt: new Date().toISOString(), deletedBy: demoProfiles[0].id }); setDeleting(null); }} type="button">Excluir item</button></div></section></div>}
   </div>;
 }
 
 function Reports({
+  anamneses,
+  attendanceImages,
+  attendances,
+  companyId,
+  financial,
   patient,
+  patients,
+  profiles,
   report,
   includeHci,
   hciAvailable,
@@ -2055,7 +2100,14 @@ function Reports({
   onGenerate,
   onChangeReport
 }: {
+  anamneses: AnamnesisRecord[];
+  attendanceImages: AttendanceImage[];
+  attendances: Attendance[];
+  companyId: string;
+  financial: FinancialTransaction[];
   patient: Patient;
+  patients: Patient[];
+  profiles: typeof demoProfiles;
   report: string;
   includeHci: boolean;
   hciAvailable: boolean;
@@ -2063,39 +2115,111 @@ function Reports({
   onGenerate: () => void;
   onChangeReport: (value: string) => void;
 }) {
+  const [reportType, setReportType] = useState<"medical" | "financial" | "attendance">("medical");
+  const [generated, setGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [period, setPeriod] = useState("month");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [status, setStatus] = useState("all");
+  const [type, setType] = useState("all");
+  const [paymentMethod, setPaymentMethod] = useState("all");
+  const [patientId, setPatientId] = useState("all");
+  const [professionalId, setProfessionalId] = useState("all");
+  const [minValue, setMinValue] = useState("");
+  const [maxValue, setMaxValue] = useState("");
+  const [query, setQuery] = useState("");
+  const financialResults = financial.filter((item) => {
+    const attendance = attendances.find((entry) => entry.id === item.attendanceId);
+    return item.companyId === companyId &&
+      matchesPeriod(item.paidAt || item.dueDate, period, periodStart, periodEnd) &&
+      (status === "all" || item.status === status) &&
+      (type === "all" || item.type === type) &&
+      (paymentMethod === "all" || item.paymentMethod === paymentMethod || (paymentMethod === "private" && item.payerType === "private")) &&
+      (patientId === "all" || item.patientId === patientId) &&
+      (professionalId === "all" || attendance?.professionalId === professionalId) &&
+      (!minValue || item.amount >= parseCurrency(minValue)) &&
+      (!maxValue || item.amount <= parseCurrency(maxValue)) &&
+      (!query || normalizeText(`${item.baNumber || ""} ${item.category} ${item.description}`).includes(normalizeText(query)));
+  });
+  const attendanceResults = attendances.filter((item) => item.companyId === companyId &&
+    matchesPeriod(item.openedAt || item.scheduledAt, period, periodStart, periodEnd) &&
+    (status === "all" || item.status === status) &&
+    (patientId === "all" || item.patientId === patientId) &&
+    (professionalId === "all" || item.professionalId === professionalId) &&
+    (!query || normalizeText(`${item.baNumber} ${item.uniqueRecordNumber} ${item.complaint} ${item.procedure} ${item.conduct} ${item.productsUsed.join(" ")}`).includes(normalizeText(query))));
+  const revenue = financialResults.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
+  const expenses = financialResults.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+
+  async function generate() {
+    setLoading(true);
+    if (reportType === "medical") await onGenerate();
+    setGenerated(true);
+    setLoading(false);
+  }
+
+  function clear() {
+    setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setStatus("all"); setType("all"); setPaymentMethod("all"); setPatientId("all"); setProfessionalId("all"); setMinValue(""); setMaxValue(""); setQuery(""); setGenerated(false);
+  }
+
+  function exportCsv() {
+    const rows = reportType === "financial"
+      ? [["Descrição", "BA", "Tipo", "Valor", "Status"], ...financialResults.map((item) => [item.description, item.baNumber || "", item.type, String(item.amount), item.status])]
+      : [["Paciente", "ProntuárioÚnico", "BA", "Data", "Status", "Procedimento", "Produtos"], ...attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "", item.uniqueRecordNumber, item.baNumber, item.openedAt, item.status, item.procedure, item.productsUsed.join("; ")])];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    link.download = `podo360-${reportType}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div><span className="eyebrow">Relatorios</span><h1>Relatorios clinicos e financeiros</h1><p>Historico de atendimento, financeiro e encaminhamento medico com IA.</p></div>
-        <button className="primary-button" onClick={onGenerate} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
+        <button className="primary-button" disabled={loading} onClick={generate} type="button"><Sparkles size={18} /> {loading ? "Gerando..." : "Gerar relatório"}</button>
       </div>
       <section className="split-grid">
         <div className="data-panel">
           <h2>Filtros</h2>
           <div className="report-list">
-            <button className="is-active" type="button"><FileText size={18} /> Encaminhamento medico</button>
-            <button type="button"><Receipt size={18} /> Financeiro</button>
-            <button type="button"><ClipboardEdit size={18} /> Historico de atendimento</button>
+            <button className={reportType === "medical" ? "is-active" : ""} onClick={() => { setReportType("medical"); setGenerated(false); }} type="button"><FileText size={18} /> Encaminhamento médico</button>
+            <button className={reportType === "financial" ? "is-active" : ""} onClick={() => { setReportType("financial"); setGenerated(false); }} type="button"><Receipt size={18} /> Financeiro</button>
+            <button className={reportType === "attendance" ? "is-active" : ""} onClick={() => { setReportType("attendance"); setGenerated(false); }} type="button"><ClipboardEdit size={18} /> Histórico de atendimento</button>
           </div>
-          <p className="muted">Paciente atual: {patient.fullName}</p>
-          {hciAvailable && (
+          {reportType !== "medical" && <div className="report-filters">
+            <label>Período<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">Todo período</option><option value="today">Hoje</option><option value="week">Esta semana</option><option value="month">Este mês</option><option value="custom">Personalizado</option></select></label>
+            {period === "custom" && <><label>Início<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label><label>Fim<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label></>}
+            <label>Paciente<select value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="all">Todos os pacientes</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
+            <label>Profissional<select value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
+            <label>{reportType === "financial" ? "BA, categoria ou descrição" : "BA, ProntuárioÚnico, queixa, curativo, produto ou procedimento"}<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos os status</option>{reportType === "financial" ? (["paid", "pending", "overdue", "cancelled"] as const).map((item) => <option key={item} value={item}>{paymentStatusLabel(item)}</option>) : (["waiting", "in_progress", "completed", "cancelled", "no_show"] as const).map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</select></label>
+            {reportType === "financial" && <><label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option value="all">Receitas e despesas</option><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Forma de pagamento<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="all">Todas</option>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}<option value="private">Particular</option></select></label><label>Valor mínimo<input inputMode="numeric" name="reportMinValue" value={minValue} onChange={(event) => setMinValue(event.target.value)} /></label><label>Valor máximo<input inputMode="numeric" name="reportMaxValue" value={maxValue} onChange={(event) => setMaxValue(event.target.value)} /></label></>}
+            <button className="ghost-action" onClick={clear} type="button">Limpar filtros</button>
+          </div>}
+          {reportType === "medical" && <p className="muted">Paciente atual: {patient.fullName}</p>}
+          {reportType === "medical" && hciAvailable && (
             <label className="toggle-row">
               <input checked={includeHci} onChange={(event) => onIncludeHciChange(event.target.checked)} type="checkbox" />
               Incluir HCI autorizado no relatorio
             </label>
           )}
-          {!hciAvailable && <p className="muted">HCI so aparece quando houver consentimento autorizado e permissao de acesso.</p>}
+          {reportType === "medical" && !hciAvailable && <p className="muted">HCI só aparece quando houver consentimento autorizado e permissão de acesso.</p>}
         </div>
         <div className="data-panel">
           <div className="section-heading section-heading--compact">
             <div><h2>Relatorio editavel</h2><p>A IA organiza o historico sem emitir diagnostico definitivo.</p></div>
             <div className="icon-group">
-              <button className="icon-button" title="Exportar PDF" type="button"><Download size={17} /></button>
-              <button className="icon-button" title="Imprimir" type="button"><Printer size={17} /></button>
-              <button className="icon-button" title="Enviar futuramente" type="button"><Send size={17} /></button>
+              <button className="icon-button" onClick={() => window.print()} title="Exportar PDF / imprimir" type="button"><Printer size={17} /></button>
+              <button className="icon-button" disabled={!generated || reportType === "medical"} onClick={exportCsv} title="Exportar CSV" type="button"><Download size={17} /></button>
+              <button className="icon-button" disabled title="Envio será configurado futuramente" type="button"><Send size={17} /></button>
             </div>
           </div>
-          <textarea className="report-editor" value={report || "Clique em Gerar relatorio com IA para criar o encaminhamento."} onChange={(event) => onChangeReport(event.target.value)} />
+          {reportType === "medical" && <textarea className="report-editor" value={report || "Clique em Gerar relatório para criar o encaminhamento."} onChange={(event) => onChangeReport(event.target.value)} />}
+          {reportType === "financial" && generated && <><section className="metrics-grid"><MetricCard icon={<TrendingUp />} label="Receitas" value={currency.format(revenue)} detail={`${financialResults.filter((item) => item.type === "income").length} lançamentos`} /><MetricCard icon={<Receipt />} label="Despesas" value={currency.format(expenses)} detail={`${financialResults.filter((item) => item.type === "expense").length} lançamentos`} /><MetricCard icon={<CreditCard />} label="Saldo" value={currency.format(revenue - expenses)} detail="Receitas menos despesas" /><MetricCard icon={<CalendarClock />} label="Pendente" value={currency.format(financialResults.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.amount, 0))} detail="A receber" /></section>{financialResults.length ? <Table headers={["Descrição", "Paciente", "BA", "Tipo", "Valor", "Status"]} rows={financialResults.map((item) => [item.description, patients.find((entry) => entry.id === item.patientId)?.fullName || "-", item.baNumber || "-", item.type === "income" ? "Receita" : "Despesa", currency.format(item.amount), paymentStatusLabel(item.status)])} /> : <EmptyState title="Nenhum lançamento encontrado para os filtros selecionados." message="Limpe ou ajuste os filtros." />}</>}
+          {reportType === "attendance" && generated && (attendanceResults.length ? <Table headers={["Paciente", "ProntuárioÚnico", "BA", "Data", "Profissional", "Status", "Procedimento", "Produtos", "Anamnese", "Imagens"]} rows={attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "-", item.uniqueRecordNumber, item.baNumber, formatDateTime(item.openedAt), profiles.find((entry) => entry.id === item.professionalId)?.fullName || "-", statusLabel(item.status), item.procedure || "-", item.productsUsed.join(", ") || "-", anamneses.find((entry) => entry.attendanceId === item.id)?.isCompleted ? "Concluída" : "Sem conclusão", String(attendanceImages.filter((image) => image.attendanceId === item.id).length)])} /> : <EmptyState title="Nenhum atendimento encontrado para os filtros selecionados." message="Limpe ou ajuste os filtros." />)}
+          {reportType !== "medical" && !generated && <EmptyState title="Configure os filtros e gere o relatório" message="Os resultados aparecerão aqui." />}
         </div>
       </section>
     </div>
@@ -2208,7 +2332,8 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
         <form className="panel-form">
           <label>Nome exibido<input value={company.displayName} onChange={(event) => update("displayName", event.target.value)} /></label>
           <label>E-mail comercial<input value={company.contactEmail} onChange={(event) => update("contactEmail", event.target.value)} /></label>
-          <label>Telefone comercial<input value={company.contactPhone} onChange={(event) => update("contactPhone", event.target.value)} /></label>
+          <label>Telefone comercial<input inputMode="tel" value={company.contactPhone} onChange={(event) => update("contactPhone", formatPhone(event.target.value))} /></label>
+          <label>CNPJ<input inputMode="numeric" value={company.document} onChange={(event) => update("document", formatCnpj(event.target.value))} /></label>
           <label>Logo URL (menu, login e aba do navegador)<input value={company.logoUrl || ""} onChange={(event) => update("logoUrl", event.target.value)} placeholder="https://..." /></label>
           <label>Cor principal<input type="color" value={company.primaryColor} onChange={(event) => update("primaryColor", event.target.value)} /></label>
           <label>Cor secundaria<input type="color" value={company.secondaryColor} onChange={(event) => update("secondaryColor", event.target.value)} /></label>
