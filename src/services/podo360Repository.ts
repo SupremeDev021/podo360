@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, FinancialTransaction, FootSensitivityMap, Patient, StockProduct } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -80,6 +80,32 @@ export async function saveAnamnesisRecord(record: AnamnesisRecord) {
     .select()
     .single();
 
+  if (error) throw error;
+  return data;
+}
+
+export async function saveAttendanceUsedProducts(record: AnamnesisRecord, products: UsedProduct[]) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { error: deleteError } = await supabase.from("attendance_used_products").delete().eq("company_id", record.companyId).eq("anamnesis_record_id", record.id);
+  if (deleteError) throw deleteError;
+  if (!products.length) return [];
+  const { data, error } = await supabase.from("attendance_used_products").insert(products.map((product) => ({
+    company_id: record.companyId,
+    patient_id: record.patientId,
+    unique_medical_record_id: record.uniqueMedicalRecordId,
+    attendance_id: record.attendanceId,
+    anamnesis_record_id: record.id,
+    ba_number: record.baNumber,
+    product_id: product.productId?.startsWith("catalog-") || product.productId?.startsWith("stock-") ? null : product.productId || null,
+    product_name: product.name.trim(),
+    category_name: product.category || null,
+    quantity: product.quantity,
+    unit: product.unit,
+    unit_price: product.unitPrice || 0,
+    total_price: product.quantity * (product.unitPrice || 0),
+    notes: product.notes || null,
+    created_by: record.createdBy
+  }))).select();
   if (error) throw error;
   return data;
 }
@@ -260,7 +286,9 @@ export async function updateStockProduct(product: StockProduct) {
     cost_value: product.costValue,
     sale_value: product.saleValue,
     notes: product.notes || null,
-    active: product.active ?? true
+    active: product.active ?? true,
+    deleted_at: product.deletedAt || null,
+    deleted_by: product.deletedBy || null
   }).eq("id", product.id).eq("company_id", product.companyId).select().single();
   if (error) throw error;
   return data;
