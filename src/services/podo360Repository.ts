@@ -218,6 +218,13 @@ export async function updateClinicalAppointment(appointment: ClinicalAppointment
   return data;
 }
 
+export async function createCompanyUser(input: { companyId: string; fullName: string; email: string; role: string; active: boolean; modules: string[] }) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.functions.invoke("admin-create-company-user", { body: input });
+  if (error) throw error;
+  return data;
+}
+
 export async function createStockProduct(product: StockProduct) {
   if (!isSupabaseConfigured || !supabase) return null;
 

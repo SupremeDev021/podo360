@@ -55,7 +55,7 @@ import {
 import { podologyProductCatalog } from "./data/productCatalog";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
-import { createAttendanceBa, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa, updateClinicalAppointment } from "./services/podo360Repository";
+import { createAttendanceBa, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, startAttendanceBa, updateClinicalAppointment } from "./services/podo360Repository";
 import type {
   AnamnesisRecord,
   Attendance,
@@ -2197,12 +2197,24 @@ function SuperAdmin({ company }: { company: Company }) {
   const [users, setUsers] = useState(demoProfiles.filter((item) => item.companyId === company.id));
   const [open, setOpen] = useState(false);
   const [selectedModules, setSelectedModules] = useState<string[]>(["dashboard", "patients", "schedule"]);
+  const [savingUser, setSavingUser] = useState(false);
+  const [userMessage, setUserMessage] = useState("");
 
-  function createUser(event: FormEvent<HTMLFormElement>) {
+  async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    setUsers((current) => [...current, { id: `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules }]);
-    setOpen(false);
+    const user = { id: `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
+    setSavingUser(true);
+    setUserMessage("");
+    try {
+      await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules });
+      setUsers((current) => [...current, user]);
+      setOpen(false);
+    } catch {
+      setUserMessage("Nao foi possivel criar o usuario no Supabase. Verifique a Edge Function e suas permissoes.");
+    } finally {
+      setSavingUser(false);
+    }
   }
 
   return (
@@ -2216,7 +2228,7 @@ function SuperAdmin({ company }: { company: Company }) {
       </section>
       <Table headers={["Empresa", "Plano", "Status", "Contato"]} rows={[[company.displayName, company.planName, company.planStatus, company.contactEmail]]} />
       <Table headers={["Nome", "E-mail", "Perfil", "Status", "Abas permitidas"]} rows={users.map((user) => [user.fullName, user.email, user.role, user.active ? "Ativo" : "Inativo", user.modulePermissions?.length ? user.modulePermissions.join(", ") : "Padrao do perfil"])} />
-      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={createUser}><div><h2>Criar usuario em {company.displayName}</h2><p>O usuario sera limitado a esta empresa e as abas selecionadas.</p></div><div className="form-grid form-grid--two"><label>Nome<input name="fullName" required /></label><label>E-mail<input name="email" required type="email" /></label><label>Perfil<select name="role">{(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{role}</option>)}</select></label><label className="toggle-row"><input defaultChecked name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" type="submit">Salvar usuario e permissoes</button></div></form></div>}
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={createUser}><div><h2>Criar usuario em {company.displayName}</h2><p>O usuario sera convidado, limitado a esta empresa e as abas selecionadas.</p></div><div className="form-grid form-grid--two"><label>Nome<input name="fullName" required /></label><label>E-mail<input name="email" required type="email" /></label><label>Perfil<select name="role">{(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{role}</option>)}</select></label><label className="toggle-row"><input defaultChecked name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset>{userMessage && <div className="inline-error">{userMessage}</div>}<div className="dialog-card__actions"><button className="ghost-action" disabled={savingUser} onClick={() => setOpen(false)} type="button">Cancelar</button><button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Criando usuario..." : "Salvar usuario e permissoes"}</button></div></form></div>}
     </ModulePage>
   );
 }
