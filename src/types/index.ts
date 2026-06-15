@@ -273,6 +273,8 @@ export type FinancialTransaction = {
   category: string;
   status: PaymentStatus;
   notes?: string;
+  payerType?: "private" | "insurance";
+  insuranceName?: string;
 };
 
 export type StockProduct = {

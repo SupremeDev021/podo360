@@ -325,7 +325,9 @@ export async function createFinancialTransaction(transaction: FinancialTransacti
     payment_method: transaction.paymentMethod,
     category: transaction.category,
     status: transaction.status,
-    created_by: createdBy
+    created_by: createdBy,
+    payer_type: transaction.payerType || "private",
+    insurance_name: transaction.insuranceName || null
   };
   let { data, error } = await supabase.from("financial_transactions").insert({ ...basePayload, notes: transaction.notes || null }).select().single();
 
