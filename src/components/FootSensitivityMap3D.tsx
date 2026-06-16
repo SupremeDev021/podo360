@@ -13,7 +13,7 @@ import {
 } from "../data/footRegionMap";
 import type { FootSensitivityMap, FootSide, SensitivityStatus } from "../types";
 
-const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-textured.glb`;
+const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-segmented.glb`;
 
 type RaycastPoint = ThreeEvent<PointerEvent>["point"];
 type RaycastGroup = {
@@ -233,21 +233,6 @@ export function FootSensitivityMap3D({
                   />
                 </Suspense>
               </FootModelErrorBoundary>
-              {sideRegions.map((region) => (
-                <InvisibleRegionZone
-                  key={region.pointKey}
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    const localPoint = readLocalPoint(event) ?? region.position;
-                    selectRegion(region, localPoint);
-                  }}
-                  onPointerMove={(event) => {
-                    event.stopPropagation();
-                    hoverRegion(region);
-                  }}
-                  region={region}
-                />
-              ))}
               {renderSavedMarkers(currentBaEntries, sideRegions, true)}
               {renderSavedMarkers(historicalEntries, sideRegions, false)}
               <RegionHighlight
@@ -353,29 +338,6 @@ function FootLoading() {
   );
 }
 
-function InvisibleRegionZone({
-  onPointerDown,
-  onPointerMove,
-  region
-}: {
-  onPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
-  region: SideAwareFootRegion;
-}) {
-  return (
-    <mesh
-      name={region.regionKey}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      position={region.position}
-      scale={region.zoneScale}
-    >
-      <sphereGeometry args={[1, 24, 16]} />
-      <meshBasicMaterial color="#ffffff" opacity={0} transparent depthWrite={false} />
-    </mesh>
-  );
-}
-
 function RegionHighlight({ color, label, region, visible }: { color: string; label?: string; region: SideAwareFootRegion; visible: boolean }) {
   if (!visible) return null;
   return (
@@ -416,7 +378,19 @@ function renderSavedMarkers(entries: FootSensitivityMap[], sideRegions: SideAwar
 function getFootRegionFromMeshName(meshName: string, footSide: FootSide) {
   const normalized = meshName.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
   if (!normalized) return null;
-  const baseKey = Object.entries(meshNameFootRegionMap).find(([meshKey]) => normalized.includes(meshKey))?.[1];
+
+  const sideMatch = normalized.match(/^(right|left)_(.+?)(?:_click_zone)?$/);
+  if (sideMatch) {
+    const [, side, rawBaseKey] = sideMatch;
+    if (side !== footSide) return null;
+    const baseKey = rawBaseKey.replace(/_click_zone$/, "");
+    const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
+    return region ? withFootSide(region, footSide) : null;
+  }
+
+  const baseKey = Object.entries(meshNameFootRegionMap)
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([meshKey]) => normalized.includes(meshKey))?.[1];
   if (!baseKey) return null;
   const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
   return region ? withFootSide(region, footSide) : null;
