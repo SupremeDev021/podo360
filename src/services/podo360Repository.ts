@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -56,6 +56,77 @@ export async function createPatient(patient: Patient) {
 
   if (clinicalError) throw clinicalError;
   return createdPatient;
+}
+
+export async function saveCompanySettings(company: Company) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const payload = {
+    company_id: company.id,
+    display_name: company.displayName,
+    logo_url: company.logoUrl || null,
+    logo_path: company.logoPath || null,
+    logo_uploaded_at: company.logoUploadedAt || null,
+    primary_color: company.primaryColor,
+    secondary_color: company.secondaryColor,
+    accent_color: company.accentColor,
+    background_color: company.backgroundColor || null,
+    sidebar_color: company.sidebarColor || null,
+    sidebar_text_color: company.sidebarTextColor || null,
+    sidebar_hover_color: company.sidebarHoverColor || null,
+    commercial_data: {
+      contactEmail: company.contactEmail,
+      contactPhone: company.contactPhone,
+      document: company.document
+    },
+    hci_enabled: company.hciEnabled ?? false,
+    hci_consent_validity_days: company.hciConsentValidityDays ?? 180,
+    hci_allow_images: company.hciAllowImages ?? false,
+    hci_default_scope: company.hciDefaultScope ?? "history_without_images",
+    auto_financial_on_finish: company.autoFinancialOnFinish ?? false,
+    require_financial_confirmation: company.requireFinancialConfirmation ?? true,
+    include_products_in_financial: company.includeProductsInFinancial ?? true,
+    include_procedures_in_financial: company.includeProceduresInFinancial ?? true
+  };
+
+  const { data, error } = await supabase
+    .from("company_settings")
+    .upsert(payload, { onConflict: "company_id" })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadCompanyLogo(companyId: string, file: File) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+  const safeName = file.name
+    .replace(/\.[^.]+$/, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70) || "logo";
+  const path = `${companyId}/logo/${Date.now()}-${safeName}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage.from("company-assets").upload(path, file, {
+    cacheControl: "3600",
+    contentType: file.type,
+    upsert: true
+  });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from("company-assets").getPublicUrl(path);
+
+  return {
+    path,
+    url: data.publicUrl,
+    uploadedAt: new Date().toISOString()
+  };
 }
 
 export async function saveAnamnesisRecord(record: AnamnesisRecord) {

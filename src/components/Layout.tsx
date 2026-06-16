@@ -2,6 +2,8 @@ import {
   Activity,
   Boxes,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   ClipboardPlus,
   CreditCard,
   FileText,
@@ -15,7 +17,7 @@ import {
   Users,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Company, Profile } from "../types";
 import { roleLabel } from "../services/rbac";
 
@@ -63,7 +65,15 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("podo360-sidebar-collapsed") === "true";
+  });
   const visibleItems = navItems.filter((item) => profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key));
+
+  useEffect(() => {
+    window.localStorage.setItem("podo360-sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   function navigate(view: ViewKey) {
     if (profile.role !== "super_admin" && allowedViews && !allowedViews.includes(view)) return;
@@ -83,9 +93,9 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
       {mobileMenuOpen && <button aria-label="Fechar menu" className="mobile-menu-backdrop" onClick={() => setMobileMenuOpen(false)} type="button" />}
-      <aside className={`sidebar ${mobileMenuOpen ? "is-open" : ""}`}>
+      <aside className={`sidebar ${mobileMenuOpen ? "is-open" : ""} ${sidebarCollapsed ? "is-collapsed" : ""}`}>
         <div className="sidebar__mobile-heading">
           <span>Menu principal</span>
           <button aria-label="Fechar menu" className="icon-button" onClick={() => setMobileMenuOpen(false)} type="button"><X size={18} /></button>
@@ -112,6 +122,17 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
             </button>
           ))}
         </nav>
+        <button
+          aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
+          aria-pressed={sidebarCollapsed}
+          className="sidebar__collapse"
+          onClick={() => setSidebarCollapsed((current) => !current)}
+          type="button"
+          title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          <span>{sidebarCollapsed ? "Expandir" : "Recolher"}</span>
+        </button>
       </aside>
 
       <div className="workspace">
@@ -122,7 +143,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
             <small>Ambiente clínico seguro</small>
           </div>
           <div className="topbar__actions">
-            <span className="status-dot">Supabase ready</span>
+            <span className="status-dot">Sistema conectado</span>
             <div className="user-chip">
               <span>{profile.fullName.slice(0, 2).toUpperCase()}</span>
               <div>

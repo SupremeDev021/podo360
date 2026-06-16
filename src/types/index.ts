@@ -40,6 +40,8 @@ export type Company = {
   name: string;
   displayName: string;
   logoUrl?: string;
+  logoPath?: string;
+  logoUploadedAt?: string;
   contactEmail: string;
   contactPhone: string;
   document: string;
@@ -48,6 +50,10 @@ export type Company = {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  backgroundColor?: string;
+  sidebarColor?: string;
+  sidebarTextColor?: string;
+  sidebarHoverColor?: string;
   hciEnabled?: boolean;
   hciConsentValidityDays?: number;
   hciAllowImages?: boolean;

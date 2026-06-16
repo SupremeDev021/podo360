@@ -59,7 +59,7 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
     tone: "info",
     message: isSupabaseConfigured
       ? "Use suas credenciais para acessar o ambiente da clinica."
-      : "Modo demonstracao ativo. O Supabase ainda nao foi configurado neste ambiente."
+      : "Ambiente demonstrativo disponivel para avaliacao."
   });
 
   function validateCredentials() {
@@ -112,7 +112,7 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
     }
 
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback({ tone: "info", message: "A recuperacao de senha estara disponivel quando o Supabase for configurado." });
+      setFeedback({ tone: "info", message: "A recuperacao de senha sera liberada quando o acesso oficial estiver ativo." });
       return;
     }
 
@@ -244,7 +244,7 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
           </button>
 
           <button className="login-submit" disabled={loading || recovering} type="submit">
-            {loading ? <><LoaderCircle className="login-spinner" size={19} /> Validando acesso...</> : <>{isSupabaseConfigured ? "Entrar" : "Entrar no demo"} <ArrowRight size={19} /></>}
+            {loading ? <><LoaderCircle className="login-spinner" size={19} /> Validando acesso...</> : <>{isSupabaseConfigured ? "Entrar" : "Acessar demonstração"} <ArrowRight size={19} /></>}
           </button>
 
           <div className="login-card__trust"><LockKeyhole size={15} /><span>Ambiente seguro e protegido</span></div>
