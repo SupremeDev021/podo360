@@ -17,9 +17,10 @@ export type SideAwareFootRegion = FootRegionDefinition & {
   displayLabel: string;
 };
 
-// Calibrated against podo360-foot-textured.glb, which is a single mesh with a
-// local bounding box of roughly x/y/z -0.8..0.8. Zones are invisible click
-// surfaces; visual feedback is rendered separately as subtle translucent areas.
+// Calibrated in Blender against podo360-foot-textured.glb, which is a single
+// mesh with a local bounding box of roughly x/y/z -0.8..0.8. These definitions
+// mirror the invisible named click-zone meshes exported into
+// podo360-foot-segmented.glb.
 export const footRegionDefinitions: FootRegionDefinition[] = [
   { baseKey: "hallux", label: "Hálux", clinicalGroup: "Dedos", position: [-0.7, -0.33, 0.18], zoneScale: [0.12, 0.16, 0.12] },
   { baseKey: "second_toe", label: "2º dedo", clinicalGroup: "Dedos", position: [-0.74, -0.16, 0.18], zoneScale: [0.1, 0.11, 0.11] },
@@ -44,12 +45,9 @@ export const footRegionDefinitions: FootRegionDefinition[] = [
   { baseKey: "lateral_plantar_border", label: "Borda lateral plantar", clinicalGroup: "Planta do pé", position: [-0.02, 0.53, 0], zoneScale: [0.38, 0.08, 0.12] },
   { baseKey: "dorsal_forefoot", label: "Dorso do antepé", clinicalGroup: "Dorso do pé", position: [-0.42, 0, 0.36], zoneScale: [0.2, 0.36, 0.1] },
   { baseKey: "dorsal_midfoot", label: "Dorso médio", clinicalGroup: "Dorso do pé", position: [-0.02, 0, 0.38], zoneScale: [0.24, 0.34, 0.1] },
-  { baseKey: "dorsal_lateral", label: "Dorso lateral", clinicalGroup: "Dorso do pé", position: [-0.06, 0.42, 0.3], zoneScale: [0.24, 0.1, 0.12] },
-  { baseKey: "dorsal_medial", label: "Dorso medial", clinicalGroup: "Dorso do pé", position: [-0.06, -0.42, 0.3], zoneScale: [0.24, 0.1, 0.12] },
   { baseKey: "calcaneus", label: "Calcâneo", clinicalGroup: "Calcanhar e tornozelo", position: [0.6, 0, 0.14], zoneScale: [0.14, 0.28, 0.16] },
   { baseKey: "medial_ankle", label: "Tornozelo medial", clinicalGroup: "Calcanhar e tornozelo", position: [0.72, -0.28, 0.42], zoneScale: [0.1, 0.12, 0.16] },
-  { baseKey: "lateral_ankle", label: "Tornozelo lateral", clinicalGroup: "Calcanhar e tornozelo", position: [0.72, 0.28, 0.42], zoneScale: [0.1, 0.12, 0.16] },
-  { baseKey: "posterior_heel", label: "Região posterior do calcanhar", clinicalGroup: "Calcanhar e tornozelo", position: [0.74, 0, 0.12], zoneScale: [0.1, 0.24, 0.14] }
+  { baseKey: "lateral_ankle", label: "Tornozelo lateral", clinicalGroup: "Calcanhar e tornozelo", position: [0.72, 0.28, 0.42], zoneScale: [0.1, 0.12, 0.16] }
 ];
 
 export const legacyFootRegionMap: Record<string, string> = {

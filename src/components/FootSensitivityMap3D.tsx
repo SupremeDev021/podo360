@@ -52,16 +52,33 @@ class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: 
 }
 
 function FootGlbModel({
+  footSide,
   onModelPointerDown,
   onModelPointerMove,
   onModelPointerOut
 }: {
+  footSide: FootSide;
   onModelPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onModelPointerMove: (event: ThreeEvent<PointerEvent>) => void;
   onModelPointerOut: () => void;
 }) {
   const { scene } = useGLTF(FOOT_MODEL_URL);
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((object) => {
+      const clickable = object as {
+        name: string;
+        visible: boolean;
+        material?: unknown;
+        userData?: Record<string, unknown>;
+      };
+      const zoneSide = getClickZoneSide(clickable.name, clickable.userData);
+      if (!zoneSide) return;
+      clickable.visible = zoneSide === footSide;
+      configureInvisibleZoneMaterial(clickable.material);
+    });
+    return clone;
+  }, [footSide, scene]);
 
   return (
     <primitive
@@ -225,6 +242,7 @@ export function FootSensitivityMap3D({
               <FootModelErrorBoundary fallback={<FallbackFootMesh />}>
                 <Suspense fallback={<FootLoading />}>
                   <FootGlbModel
+                    footSide={footSide}
                     onModelPointerDown={handleModelPointerDown}
                     onModelPointerMove={handleModelPointerMove}
                     onModelPointerOut={() => {
@@ -394,6 +412,26 @@ function getFootRegionFromMeshName(meshName: string, footSide: FootSide) {
   if (!baseKey) return null;
   const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
   return region ? withFootSide(region, footSide) : null;
+}
+
+function getClickZoneSide(name: string, userData?: Record<string, unknown>): FootSide | null {
+  const explicitSide = userData?.footSide;
+  if (explicitSide === "right" || explicitSide === "left") return explicitSide;
+  if (name.startsWith("right_")) return "right";
+  if (name.startsWith("left_")) return "left";
+  return null;
+}
+
+function configureInvisibleZoneMaterial(material: unknown) {
+  const materials = Array.isArray(material) ? material : [material];
+  materials.forEach((entry) => {
+    const materialLike = entry as { transparent?: boolean; opacity?: number; depthWrite?: boolean; colorWrite?: boolean } | undefined;
+    if (!materialLike) return;
+    materialLike.transparent = true;
+    materialLike.opacity = 0;
+    materialLike.depthWrite = false;
+    materialLike.colorWrite = false;
+  });
 }
 
 function getFootRegionFromPoint(point: FootCoordinate, footSide: FootSide) {
