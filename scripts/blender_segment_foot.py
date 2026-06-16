@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_GLB = ROOT / "public" / "models" / "podo360-foot-textured.glb"
 BACKUP_GLB = ROOT / "public" / "models" / "podo360-foot-original-backup.glb"
 OUTPUT_GLB = ROOT / "public" / "models" / "podo360-foot-segmented.glb"
+UNOPTIMIZED_BACKUP_GLB = ROOT / "public" / "models" / "podo360-foot-segmented-unoptimized-backup.glb"
 DIAGNOSTIC_JSON = ROOT / "public" / "models" / "podo360-foot-segmented-diagnostics.json"
+DECIMATE_RATIO = 0.42
+MAX_TEXTURE_SIZE = 2048
 
 
 REGIONS = [
@@ -63,7 +66,7 @@ def make_invisible_material():
 
 
 def create_click_zone(name, location, scale, material, foot_side, clinical_label):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1, location=location)
+    bpy.ops.mesh.primitive_cube_add(size=2, location=location)
     zone = bpy.context.object
     zone.name = name
     zone.data.name = f"{name}_mesh"
@@ -79,7 +82,48 @@ def create_click_zone(name, location, scale, material, foot_side, clinical_label
     return zone
 
 
-def collect_diagnostics():
+def optimize_original_meshes():
+    original_meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH" and not obj.get("podo360ClickZone")]
+    before_vertices = sum(len(obj.data.vertices) for obj in original_meshes)
+    before_polygons = sum(len(obj.data.polygons) for obj in original_meshes)
+
+    for obj in original_meshes:
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        modifier = obj.modifiers.new("podo360_web_decimate", "DECIMATE")
+        modifier.ratio = DECIMATE_RATIO
+        modifier.use_collapse_triangulate = True
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+        obj.select_set(False)
+
+    after_vertices = sum(len(obj.data.vertices) for obj in original_meshes)
+    after_polygons = sum(len(obj.data.polygons) for obj in original_meshes)
+    return {
+        "decimate_ratio": DECIMATE_RATIO,
+        "vertices_before": before_vertices,
+        "vertices_after": after_vertices,
+        "polygons_before": before_polygons,
+        "polygons_after": after_polygons,
+    }
+
+
+def resize_large_images():
+    resized = []
+    for image in bpy.data.images:
+        width, height = image.size
+        max_dimension = max(width, height)
+        if max_dimension <= MAX_TEXTURE_SIZE:
+            resized.append({"name": image.name, "width": width, "height": height, "resized": False})
+            continue
+        scale = MAX_TEXTURE_SIZE / max_dimension
+        new_width = max(1, round(width * scale))
+        new_height = max(1, round(height * scale))
+        image.scale(new_width, new_height)
+        resized.append({"name": image.name, "width": width, "height": height, "new_width": new_width, "new_height": new_height, "resized": True})
+    return resized
+
+
+def collect_diagnostics(optimization):
     mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
     original_meshes = [obj for obj in mesh_objects if not obj.get("podo360ClickZone")]
     click_zones = [obj for obj in mesh_objects if obj.get("podo360ClickZone")]
@@ -98,7 +142,8 @@ def collect_diagnostics():
         "polygons": polygons,
         "materials": materials,
         "textures_preserved": True,
-        "strategy": "Blender-generated invisible named click-zone meshes over single source mesh",
+        "strategy": "Blender-generated invisible named click-zone meshes over optimized single source mesh",
+        "optimization": optimization,
     }
 
 
@@ -118,6 +163,8 @@ def main():
         raise FileNotFoundError(f"GLB de origem nao encontrado: {SOURCE_GLB}")
     if not BACKUP_GLB.exists():
         shutil.copy2(SOURCE_GLB, BACKUP_GLB)
+    if OUTPUT_GLB.exists() and not UNOPTIMIZED_BACKUP_GLB.exists():
+        shutil.copy2(OUTPUT_GLB, UNOPTIMIZED_BACKUP_GLB)
 
     clear_scene()
     bpy.ops.import_scene.gltf(filepath=str(SOURCE_GLB))
@@ -126,6 +173,13 @@ def main():
         if obj.type == "MESH" and not obj.name:
             obj.name = "podo360_foot_textured_mesh"
             obj.data.name = "podo360_foot_textured_mesh_data"
+
+    optimization = {
+        "mesh": optimize_original_meshes(),
+        "images": resize_large_images(),
+        "click_zone_geometry": "cube",
+        "draco_enabled": False,
+    }
 
     invisible_material = make_invisible_material()
     for side, suffix in (("right", "D"), ("left", "E")):
@@ -139,7 +193,7 @@ def main():
                 clinical_label=f"{label} {suffix}",
             )
 
-    diagnostics = collect_diagnostics()
+    diagnostics = collect_diagnostics(optimization)
     DIAGNOSTIC_JSON.write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
     export_glb()
     print(json.dumps(diagnostics, ensure_ascii=False, indent=2))

@@ -61,11 +61,64 @@
   ],
   "original_mesh_count": 1,
   "click_zone_count": 52,
-  "vertices": 136838,
-  "polygons": 242634,
+  "vertices": 66413,
+  "polygons": 101906,
   "materials": [
     "Material_0"
   ],
   "textures_preserved": true,
-  "strategy": "Blender-generated invisible named click-zone meshes over single source mesh"
+  "strategy": "Blender-generated invisible named click-zone meshes over optimized single source mesh",
+  "optimization": {
+    "mesh": {
+      "decimate_ratio": 0.42,
+      "vertices_before": 136838,
+      "vertices_after": 66413,
+      "polygons_before": 242634,
+      "polygons_after": 101906
+    },
+    "images": [
+      {
+        "name": "Image_0",
+        "width": 4096,
+        "height": 4096,
+        "new_width": 2048,
+        "new_height": 2048,
+        "resized": true
+      },
+      {
+        "name": "Image_1",
+        "width": 2048,
+        "height": 2048,
+        "resized": false
+      },
+      {
+        "name": "Image_2",
+        "width": 4096,
+        "height": 4096,
+        "new_width": 2048,
+        "new_height": 2048,
+        "resized": true
+      },
+      {
+        "name": "Image_3",
+        "width": 2048,
+        "height": 2048,
+        "resized": false
+      },
+      {
+        "name": "Render Result",
+        "width": 0,
+        "height": 0,
+        "resized": false
+      },
+      {
+        "name": "Viewer Node",
+        "width": 256,
+        "height": 256,
+        "resized": false
+      }
+    ],
+    "click_zone_geometry": "cube",
+    "draco_enabled": false
+  }
 }
