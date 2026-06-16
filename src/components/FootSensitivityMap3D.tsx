@@ -3,25 +3,18 @@ import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { RefreshCw, Rotate3D, Save } from "lucide-react";
 import { Component, Suspense, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import {
+  footRegionDefinitions,
+  legacyFootRegionMap,
+  meshNameFootRegionMap,
+  withFootSide,
+  type FootCoordinate,
+  type SideAwareFootRegion
+} from "../data/footRegionMap";
 import type { FootSensitivityMap, FootSide, SensitivityStatus } from "../types";
 
-const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-textured.glb`;
+const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-segmented.glb`;
 
-type FootRegion = {
-  baseKey: string;
-  label: string;
-  clinicalGroup: string;
-  position: [number, number, number];
-};
-
-type SideAwareFootRegion = FootRegion & {
-  regionKey: string;
-  pointKey: string;
-  sideLabel: "D" | "E";
-  displayLabel: string;
-};
-
-type FootCoordinate = [number, number, number];
 type RaycastPoint = ThreeEvent<PointerEvent>["point"];
 type RaycastGroup = {
   worldToLocal: (point: RaycastPoint) => RaycastPoint;
@@ -39,116 +32,11 @@ type FootSensitivityMap3DProps = {
   baNumber: string;
 };
 
-const footRegions: FootRegion[] = [
-  { baseKey: "hallux", label: "Hálux", clinicalGroup: "Dedos", position: [-1.24, -0.36, 0.2] },
-  { baseKey: "second_toe", label: "2º dedo", clinicalGroup: "Dedos", position: [-1.3, -0.17, 0.22] },
-  { baseKey: "third_toe", label: "3º dedo", clinicalGroup: "Dedos", position: [-1.31, 0.01, 0.22] },
-  { baseKey: "fourth_toe", label: "4º dedo", clinicalGroup: "Dedos", position: [-1.27, 0.19, 0.2] },
-  { baseKey: "fifth_toe", label: "5º dedo", clinicalGroup: "Dedos", position: [-1.17, 0.36, 0.17] },
-  { baseKey: "hallux_nail", label: "Unha do hálux", clinicalGroup: "Unhas", position: [-1.36, -0.37, 0.36] },
-  { baseKey: "second_toe_nail", label: "Unha do 2º dedo", clinicalGroup: "Unhas", position: [-1.42, -0.17, 0.36] },
-  { baseKey: "third_toe_nail", label: "Unha do 3º dedo", clinicalGroup: "Unhas", position: [-1.43, 0.01, 0.36] },
-  { baseKey: "fourth_toe_nail", label: "Unha do 4º dedo", clinicalGroup: "Unhas", position: [-1.38, 0.19, 0.34] },
-  { baseKey: "fifth_toe_nail", label: "Unha do 5º dedo", clinicalGroup: "Unhas", position: [-1.28, 0.36, 0.3] },
-  { baseKey: "first_metatarsal_head", label: "Cabeça do 1º metatarso", clinicalGroup: "Planta do pé", position: [-0.66, -0.37, 0.02] },
-  { baseKey: "second_metatarsal_head", label: "Cabeça do 2º metatarso", clinicalGroup: "Planta do pé", position: [-0.72, -0.18, 0.01] },
-  { baseKey: "third_metatarsal_head", label: "Cabeça do 3º metatarso", clinicalGroup: "Planta do pé", position: [-0.73, 0, 0] },
-  { baseKey: "fourth_metatarsal_head", label: "Cabeça do 4º metatarso", clinicalGroup: "Planta do pé", position: [-0.71, 0.19, 0.01] },
-  { baseKey: "fifth_metatarsal_head", label: "Cabeça do 5º metatarso", clinicalGroup: "Planta do pé", position: [-0.63, 0.38, 0.02] },
-  { baseKey: "metatarsal_region", label: "Região metatarsal", clinicalGroup: "Planta do pé", position: [-0.46, 0, -0.04] },
-  { baseKey: "medial_arch", label: "Arco plantar medial", clinicalGroup: "Planta do pé", position: [0.08, -0.43, -0.11] },
-  { baseKey: "lateral_arch", label: "Arco plantar lateral", clinicalGroup: "Planta do pé", position: [0.08, 0.43, -0.11] },
-  { baseKey: "plantar_heel", label: "Calcanhar plantar", clinicalGroup: "Planta do pé", position: [0.9, 0, -0.1] },
-  { baseKey: "medial_plantar_border", label: "Borda medial plantar", clinicalGroup: "Planta do pé", position: [-0.05, -0.56, 0] },
-  { baseKey: "lateral_plantar_border", label: "Borda lateral plantar", clinicalGroup: "Planta do pé", position: [-0.04, 0.56, 0] },
-  { baseKey: "dorsal_forefoot", label: "Dorso do antepé", clinicalGroup: "Dorso do pé", position: [-0.72, 0, 0.39] },
-  { baseKey: "dorsal_midfoot", label: "Dorso médio", clinicalGroup: "Dorso do pé", position: [-0.08, 0, 0.41] },
-  { baseKey: "dorsal_lateral", label: "Dorso lateral", clinicalGroup: "Dorso do pé", position: [-0.2, 0.45, 0.33] },
-  { baseKey: "dorsal_medial", label: "Dorso medial", clinicalGroup: "Dorso do pé", position: [-0.2, -0.45, 0.33] },
-  { baseKey: "calcaneus", label: "Calcâneo", clinicalGroup: "Calcanhar e tornozelo", position: [1.06, 0, 0.16] },
-  { baseKey: "medial_ankle", label: "Tornozelo medial", clinicalGroup: "Calcanhar e tornozelo", position: [1.34, -0.34, 0.48] },
-  { baseKey: "lateral_ankle", label: "Tornozelo lateral", clinicalGroup: "Calcanhar e tornozelo", position: [1.34, 0.34, 0.48] },
-  { baseKey: "posterior_heel", label: "Região posterior do calcanhar", clinicalGroup: "Calcanhar e tornozelo", position: [1.34, 0, 0.12] }
-];
-
-const legacyPointMap: Record<string, string> = {
-  hallux: "hallux",
-  "hallux-pulp": "hallux",
-  hallux_pulp: "hallux",
-  "halux": "hallux",
-  "hallux-nail": "hallux_nail",
-  hallux_nail: "hallux_nail",
-  nails: "hallux_nail",
-  toe_2: "second_toe",
-  "toe-2": "second_toe",
-  segundo_dedo: "second_toe",
-  dedo_indicador: "second_toe",
-  dedo_indicador_d: "second_toe",
-  dedo_indicador_e: "second_toe",
-  index_toe: "second_toe",
-  toe_3: "third_toe",
-  "toe-3": "third_toe",
-  toe_4: "fourth_toe",
-  "toe-4": "fourth_toe",
-  toe_5: "fifth_toe",
-  "toe-5": "fifth_toe",
-  plantar: "metatarsal_region",
-  "plantar-center": "metatarsal_region",
-  plantar_center: "metatarsal_region",
-  forefoot: "dorsal_forefoot",
-  "forefoot-medial": "first_metatarsal_head",
-  forefoot_medial: "first_metatarsal_head",
-  "forefoot-lateral": "fifth_metatarsal_head",
-  forefoot_lateral: "fifth_metatarsal_head",
-  metatarsal: "metatarsal_region",
-  "metatarsal-1": "first_metatarsal_head",
-  metatarsal_1: "first_metatarsal_head",
-  "metatarsal-5": "fifth_metatarsal_head",
-  metatarsal_5: "fifth_metatarsal_head",
-  arch: "medial_arch",
-  "arch-medial": "medial_arch",
-  arch_medial: "medial_arch",
-  heel: "plantar_heel",
-  "heel-center": "plantar_heel",
-  heel_center: "plantar_heel",
-  medial_border: "medial_plantar_border",
-  "medial-border": "medial_plantar_border",
-  lateral_border: "lateral_plantar_border",
-  "lateral-border": "lateral_plantar_border",
-  dorsal: "dorsal_midfoot",
-  "dorsum-center": "dorsal_midfoot",
-  dorsum_center: "dorsal_midfoot",
-  ankle: "medial_ankle",
-  "ankle-front": "medial_ankle",
-  ankle_front: "medial_ankle",
-  point_1: "hallux",
-  foot_point_1: "hallux",
-  mesh001: "hallux"
-};
-
 const statusColor: Record<SensitivityStatus, string> = {
   present: "#22c55e",
   reduced: "#f59e0b",
   absent: "#ef4444",
   not_tested: "#94a3b8"
-};
-
-const meshNameRegionMap: Record<string, string> = {
-  hallux: "hallux",
-  big_toe: "hallux",
-  second_toe: "second_toe",
-  third_toe: "third_toe",
-  fourth_toe: "fourth_toe",
-  fifth_toe: "fifth_toe",
-  metatarsal: "metatarsal_region",
-  arch: "medial_arch",
-  heel: "plantar_heel",
-  calcaneus: "calcaneus",
-  dorsal: "dorsal_midfoot",
-  plantar: "metatarsal_region",
-  medial_border: "medial_plantar_border",
-  lateral_border: "lateral_plantar_border",
-  ankle: "medial_ankle"
 };
 
 class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
@@ -164,16 +52,33 @@ class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: 
 }
 
 function FootGlbModel({
+  footSide,
   onModelPointerDown,
   onModelPointerMove,
   onModelPointerOut
 }: {
+  footSide: FootSide;
   onModelPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onModelPointerMove: (event: ThreeEvent<PointerEvent>) => void;
   onModelPointerOut: () => void;
 }) {
   const { scene } = useGLTF(FOOT_MODEL_URL);
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((object) => {
+      const clickable = object as {
+        name: string;
+        visible: boolean;
+        material?: unknown;
+        userData?: Record<string, unknown>;
+      };
+      const zoneSide = getClickZoneSide(clickable.name, clickable.userData);
+      if (!zoneSide) return;
+      clickable.visible = zoneSide === footSide;
+      configureInvisibleZoneMaterial(clickable.material);
+    });
+    return clone;
+  }, [footSide, scene]);
 
   return (
     <primitive
@@ -231,9 +136,8 @@ export function FootSensitivityMap3D({
   const [selectedKey, setSelectedKey] = useState("hallux");
   const [selectedCoordinates, setSelectedCoordinates] = useState<FootCoordinate | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [hoveredCoordinates, setHoveredCoordinates] = useState<FootCoordinate | null>(null);
   const [sensitivityStatus, setSensitivityStatus] = useState<SensitivityStatus>("present");
-  const sideRegions = useMemo(() => footRegions.map((region) => withFootSide(region, footSide)), [footSide]);
+  const sideRegions = useMemo(() => footRegionDefinitions.map((region) => withFootSide(region, footSide)), [footSide]);
   const selected = useMemo(() => sideRegions.find((region) => region.baseKey === selectedKey) ?? sideRegions[0], [selectedKey, sideRegions]);
   const hovered = useMemo(() => sideRegions.find((region) => region.baseKey === hoveredKey) ?? null, [hoveredKey, sideRegions]);
   const entriesForSide = useMemo(() => entries.filter((entry) => entry.footSide === footSide), [entries, footSide]);
@@ -275,14 +179,23 @@ export function FootSensitivityMap3D({
     return [localPoint.x, localPoint.y, localPoint.z] as FootCoordinate;
   }
 
+  function selectRegion(region: SideAwareFootRegion, point: FootCoordinate) {
+    setSelectedKey(region.baseKey);
+    setSelectedCoordinates(point);
+    setHoveredKey(region.baseKey);
+  }
+
+  function hoverRegion(region: SideAwareFootRegion) {
+    setHoveredKey(region.baseKey);
+  }
+
   function handleModelPointerMove(event: ThreeEvent<PointerEvent>) {
     event.stopPropagation();
     const localPoint = readLocalPoint(event);
     if (!localPoint) return;
     const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
     const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    setHoveredKey(region.baseKey);
-    setHoveredCoordinates(localPoint);
+    hoverRegion(region);
   }
 
   function handleModelPointerDown(event: ThreeEvent<PointerEvent>) {
@@ -291,17 +204,13 @@ export function FootSensitivityMap3D({
     if (!localPoint) return;
     const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
     const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    setSelectedKey(region.baseKey);
-    setSelectedCoordinates(localPoint);
-    setHoveredKey(region.baseKey);
-    setHoveredCoordinates(localPoint);
+    selectRegion(region, localPoint);
   }
 
   function handleSideChange(side: FootSide) {
     setFootSide(side);
     setSelectedCoordinates(null);
     setHoveredKey(null);
-    setHoveredCoordinates(null);
   }
 
   return (
@@ -333,28 +242,28 @@ export function FootSensitivityMap3D({
               <FootModelErrorBoundary fallback={<FallbackFootMesh />}>
                 <Suspense fallback={<FootLoading />}>
                   <FootGlbModel
+                    footSide={footSide}
                     onModelPointerDown={handleModelPointerDown}
                     onModelPointerMove={handleModelPointerMove}
                     onModelPointerOut={() => {
                       setHoveredKey(null);
-                      setHoveredCoordinates(null);
                     }}
                   />
                 </Suspense>
               </FootModelErrorBoundary>
               {renderSavedMarkers(currentBaEntries, sideRegions, true)}
               {renderSavedMarkers(historicalEntries, sideRegions, false)}
-              <RegionFocusMarker
+              <RegionHighlight
                 color="#67e8f9"
                 label={selected.displayLabel}
-                position={selectedCoordinates ?? selected.position}
+                region={selected}
                 visible
               />
               {hovered && hovered.baseKey !== selected.baseKey ? (
-                <RegionFocusMarker
+                <RegionHighlight
                   color="#bae6fd"
                   label={hovered.displayLabel}
-                  position={hoveredCoordinates ?? hovered.position}
+                  region={hovered}
                   visible
                 />
               ) : null}
@@ -447,20 +356,20 @@ function FootLoading() {
   );
 }
 
-function RegionFocusMarker({ color, label, position, visible }: { color: string; label?: string; position: FootCoordinate; visible: boolean }) {
+function RegionHighlight({ color, label, region, visible }: { color: string; label?: string; region: SideAwareFootRegion; visible: boolean }) {
   if (!visible) return null;
   return (
-    <group position={position}>
-      <mesh>
-        <sphereGeometry args={[0.13, 24, 24]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.36} opacity={0.28} transparent />
+    <group position={region.position}>
+      <mesh scale={region.zoneScale}>
+        <sphereGeometry args={[1, 32, 18]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.24} opacity={0.24} transparent depthWrite={false} />
       </mesh>
-      <mesh>
-        <ringGeometry args={[0.15, 0.2, 32]} />
-        <meshBasicMaterial color={color} opacity={0.72} transparent />
+      <mesh scale={[region.zoneScale[0] * 1.08, region.zoneScale[1] * 1.08, region.zoneScale[2] * 1.08]}>
+        <sphereGeometry args={[1, 32, 18]} />
+        <meshBasicMaterial color={color} wireframe opacity={0.32} transparent depthWrite={false} />
       </mesh>
       {label ? (
-        <Html center distanceFactor={8} position={[0, 0, 0.26]}>
+        <Html center distanceFactor={8} position={[0, 0, Math.max(region.zoneScale[2] + 0.08, 0.18)]}>
           <span className="foot-hotspot-label">{label}</span>
         </Html>
       ) : null}
@@ -471,53 +380,73 @@ function RegionFocusMarker({ color, label, position, visible }: { color: string;
 function renderSavedMarkers(entries: FootSensitivityMap[], sideRegions: SideAwareFootRegion[], currentAttendance: boolean) {
   return entries.map((entry) => {
     const region = sideRegions.find((item) => matchesFootRegion(entry, item));
-    const coordinates = coordinatesFromEntry(entry) ?? region?.position;
-    if (!coordinates) return null;
+    if (!region) return null;
     const color = currentAttendance ? statusColor[entry.sensitivityStatus] : "#38bdf8";
     return (
-      <RegionFocusMarker
+      <RegionHighlight
         color={color}
         key={entry.id}
-        position={coordinates}
+        region={region}
         visible
       />
     );
   });
 }
 
-function withFootSide(region: FootRegion, footSide: FootSide): SideAwareFootRegion {
-  const prefix = footSide === "right" ? "right" : "left";
-  const sideLabel = footSide === "right" ? "D" : "E";
-  return {
-    ...region,
-    sideLabel,
-    regionKey: `${prefix}_${region.baseKey}`,
-    pointKey: `${prefix}_${region.baseKey}`,
-    displayLabel: `${region.label} ${sideLabel}`
-  };
-}
-
 function getFootRegionFromMeshName(meshName: string, footSide: FootSide) {
   const normalized = meshName.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
   if (!normalized) return null;
-  const baseKey = Object.entries(meshNameRegionMap).find(([meshKey]) => normalized.includes(meshKey))?.[1];
+
+  const sideMatch = normalized.match(/^(right|left)_(.+?)(?:_click_zone)?$/);
+  if (sideMatch) {
+    const [, side, rawBaseKey] = sideMatch;
+    if (side !== footSide) return null;
+    const baseKey = rawBaseKey.replace(/_click_zone$/, "");
+    const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
+    return region ? withFootSide(region, footSide) : null;
+  }
+
+  const baseKey = Object.entries(meshNameFootRegionMap)
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([meshKey]) => normalized.includes(meshKey))?.[1];
   if (!baseKey) return null;
-  const region = footRegions.find((item) => item.baseKey === baseKey);
+  const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
   return region ? withFootSide(region, footSide) : null;
+}
+
+function getClickZoneSide(name: string, userData?: Record<string, unknown>): FootSide | null {
+  const explicitSide = userData?.footSide;
+  if (explicitSide === "right" || explicitSide === "left") return explicitSide;
+  if (name.startsWith("right_")) return "right";
+  if (name.startsWith("left_")) return "left";
+  return null;
+}
+
+function configureInvisibleZoneMaterial(material: unknown) {
+  const materials = Array.isArray(material) ? material : [material];
+  materials.forEach((entry) => {
+    const materialLike = entry as { transparent?: boolean; opacity?: number; depthWrite?: boolean; colorWrite?: boolean } | undefined;
+    if (!materialLike) return;
+    materialLike.transparent = true;
+    materialLike.opacity = 0;
+    materialLike.depthWrite = false;
+    materialLike.colorWrite = false;
+  });
 }
 
 function getFootRegionFromPoint(point: FootCoordinate, footSide: FootSide) {
   const [x, y, z] = point;
-  const nearest = footRegions.reduce<{ region: FootRegion; score: number }>((best, region) => {
+  const nearest = footRegionDefinitions.reduce<{ region: SideAwareFootRegion; score: number }>((best, definition) => {
+    const region = withFootSide(definition, footSide);
     const [rx, ry, rz] = region.position;
-    const dx = (x - rx) * 1.06;
-    const dy = (y - ry) * 1.22;
-    const dz = (z - rz) * 1.38;
+    const dx = (x - rx) / Math.max(region.zoneScale[0], 0.05);
+    const dy = (y - ry) / Math.max(region.zoneScale[1], 0.05);
+    const dz = (z - rz) / Math.max(region.zoneScale[2], 0.05);
     const score = (dx * dx) + (dy * dy) + (dz * dz);
     return score < best.score ? { region, score } : best;
-  }, { region: footRegions[0], score: Number.POSITIVE_INFINITY });
+  }, { region: withFootSide(footRegionDefinitions[0], footSide), score: Number.POSITIVE_INFINITY });
 
-  return withFootSide(nearest.region, footSide);
+  return nearest.region;
 }
 
 function matchesFootRegion(entry: FootSensitivityMap, region: SideAwareFootRegion) {
@@ -536,25 +465,16 @@ function normalizeFootKey(key: string, footSide: FootSide) {
     .replace(new RegExp(`^${sidePrefix}_`), "")
     .replace(new RegExp(`^${sidePrefix}`), "")
     .replace(/^_+/, "");
-  const baseKey = legacyPointMap[withoutSide] ?? withoutSide;
+  const baseKey = legacyFootRegionMap[withoutSide] ?? withoutSide;
   return `${sidePrefix}_${baseKey}`;
-}
-
-function coordinatesFromEntry(entry: FootSensitivityMap): FootCoordinate | null {
-  const value = entry.coordinates as { x?: unknown; y?: unknown; z?: unknown } | undefined;
-  const x = Number(value?.x);
-  const y = Number(value?.y);
-  const z = Number(value?.z);
-  if ([x, y, z].some((coordinate) => Number.isNaN(coordinate))) return null;
-  return [x, y, z];
 }
 
 function regionLabel(key: string) {
   const normalized = key.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
   const side: FootSide = normalized.startsWith("left_") ? "left" : "right";
   const baseKey = normalized.replace(/^(right|left)_/, "");
-  const compatibleKey = legacyPointMap[baseKey] ?? baseKey;
-  const region = footRegions.find((item) => item.baseKey === compatibleKey);
+  const compatibleKey = legacyFootRegionMap[baseKey] ?? baseKey;
+  const region = footRegionDefinitions.find((item) => item.baseKey === compatibleKey);
   return region ? withFootSide(region, side).displayLabel : key;
 }
 
