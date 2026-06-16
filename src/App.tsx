@@ -11,6 +11,7 @@ import {
   Download,
   FileText,
   HeartPulse,
+  Image as ImageIcon,
   Layers3,
   Palette,
   Plus,
@@ -23,6 +24,7 @@ import {
   Sparkles,
   Trash2,
   TrendingUp,
+  UploadCloud,
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -53,10 +55,10 @@ import {
   demoUniqueMedicalRecords
 } from "./data/demoData";
 import { podologyProductCatalog, podologyProductCategories } from "./data/productCatalog";
-import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, startAttendanceBa, updateClinicalAppointment, updateStockProduct } from "./services/podo360Repository";
+import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, startAttendanceBa, updateClinicalAppointment, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -202,6 +204,11 @@ export function App() {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
     document.documentElement.style.setProperty("--color-secondary", company.secondaryColor);
     document.documentElement.style.setProperty("--color-accent", company.accentColor);
+    document.documentElement.style.setProperty("--color-bg", company.backgroundColor || "#f3f7fb");
+    document.documentElement.style.setProperty("--sidebar-bg", company.sidebarColor || "#071923");
+    document.documentElement.style.setProperty("--sidebar-text", company.sidebarTextColor || "#f8fbfc");
+    document.documentElement.style.setProperty("--sidebar-muted", colorWithAlpha(company.sidebarTextColor || "#f8fbfc", 0.68));
+    document.documentElement.style.setProperty("--sidebar-hover", company.sidebarHoverColor || company.primaryColor);
     document.title = `${company.displayName} | Podo360`;
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", company.primaryColor);
     let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -336,7 +343,7 @@ export function App() {
 
     setAttendances((current) => [attendance, ...current]);
     void createAttendanceBa(attendance).catch(() => {
-      notify("BA salvo apenas localmente", "Nao foi possivel sincronizar o novo BA com o Supabase.", "warning");
+      notify("BA salvo apenas localmente", "Nao foi possivel sincronizar o novo BA com o ambiente online.", "warning");
     });
     if (attendance.appointmentId) {
       setAppointments((current) =>
@@ -461,7 +468,7 @@ export function App() {
         updatedAt: now
       };
     setAppointments((current) => [created, ...current]);
-    void createClinicalAppointment(created).catch(() => notify("Agendamento salvo apenas localmente", "Nao foi possivel sincronizar com o Supabase.", "warning"));
+    void createClinicalAppointment(created).catch(() => notify("Agendamento salvo apenas localmente", "Nao foi possivel sincronizar com o ambiente online.", "warning"));
     notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou ProntuárioÚnico.", "success");
   }
 
@@ -483,7 +490,7 @@ export function App() {
   function handleUpdateAppointment(appointment: ClinicalAppointment) {
     setAppointments((current) => current.map((item) => item.id === appointment.id ? appointment : item));
     void updateClinicalAppointment(appointment).catch(() => {
-      notify("Alteracao salva apenas localmente", "Nao foi possivel sincronizar o agendamento com o Supabase.", "warning");
+      notify("Alteracao salva apenas localmente", "Nao foi possivel sincronizar o agendamento com o ambiente online.", "warning");
     });
     notify(
       appointment.status === "no_show" ? "Paciente marcado como falta." : "Agendamento atualizado com sucesso.",
@@ -523,7 +530,7 @@ export function App() {
     try {
       await startAttendanceBa(attendanceId);
     } catch {
-      notify("Erro ao iniciar atendimento", "Nao foi possivel atualizar o BA no Supabase. Tente novamente.", "danger");
+      notify("Erro ao iniciar atendimento", "Nao foi possivel atualizar o BA no ambiente online. Tente novamente.", "danger");
       return;
     }
     setAttendances((current) =>
@@ -551,7 +558,7 @@ export function App() {
     try {
       await finishAttendanceBa(attendanceId);
     } catch {
-      notify("Erro ao finalizar atendimento", "Nao foi possivel finalizar o BA no Supabase. Tente novamente.", "danger");
+      notify("Erro ao finalizar atendimento", "Nao foi possivel finalizar o BA no ambiente online. Tente novamente.", "danger");
       return;
     }
     setAttendances((current) =>
@@ -727,7 +734,7 @@ export function App() {
           onSelectMatch={setHciSelectedMatch}
         />
       )}
-      {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} />}
+      {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} onNotify={notify} />}
       {activeView === "super-admin" && <SuperAdmin company={company} onNotify={notify} />}
       </div>
     </Layout>
@@ -2301,7 +2308,7 @@ function HciView({
                   attendance.procedure
                 ])}
               />
-              <p className="muted">Acesso deve registrar log em hci_access_logs com usuario, empresa solicitante, empresa origem, motivo e secoes acessadas.</p>
+              <p className="muted">Este acesso ao historico integrado e auditado para seguranca e conformidade com a LGPD.</p>
             </>
           ) : (
             <div className="consent-empty">
@@ -2317,9 +2324,78 @@ function HciView({
   );
 }
 
-function SettingsView({ company, onCompanyChange }: { company: Company; onCompanyChange: (company: Company) => void }) {
+function SettingsView({ company, onCompanyChange, onNotify }: { company: Company; onCompanyChange: (company: Company) => void; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState(company.logoUrl || "");
+  const [logoError, setLogoError] = useState("");
+
+  useEffect(() => {
+    setLogoPreview(company.logoUrl || "");
+  }, [company.logoUrl]);
+
   function update<K extends keyof Company>(key: K, value: Company[K]) {
     onCompanyChange({ ...company, [key]: value });
+  }
+
+  async function handleLogoUpload(file?: File) {
+    setLogoError("");
+    if (!file) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml"];
+    if (!allowedTypes.includes(file.type)) {
+      setLogoError("Envie uma imagem PNG, JPG, JPEG, WEBP ou SVG.");
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setLogoError("A logo deve ter no maximo 5 MB.");
+      return;
+    }
+
+    setLogoPreview(URL.createObjectURL(file));
+    setUploadingLogo(true);
+    try {
+      const uploaded = await uploadCompanyLogo(company.id, file);
+      if (!uploaded) {
+        setLogoError("Upload indisponivel neste ambiente. Use uma URL de logo por enquanto.");
+        return;
+      }
+
+      onCompanyChange({
+        ...company,
+        logoUrl: uploaded.url,
+        logoPath: uploaded.path,
+        logoUploadedAt: uploaded.uploadedAt
+      });
+      setLogoPreview(uploaded.url);
+      onNotify("Logo enviada", "A nova logo foi aplicada ao sistema.", "success");
+    } catch {
+      setLogoError("Nao foi possivel enviar a logo agora. Tente novamente em instantes.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  function removeLogo() {
+    onCompanyChange({ ...company, logoUrl: "", logoPath: undefined, logoUploadedAt: undefined });
+    setLogoPreview("");
+    setLogoError("");
+    onNotify("Logo removida", "A identidade visual voltara a usar o icone padrao ate uma nova logo ser salva.", "info");
+  }
+
+  async function saveIdentity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await saveCompanySettings(company);
+      onNotify("Identidade visual salva", "As cores e informacoes da empresa foram atualizadas.", "success");
+    } catch {
+      onNotify("Nao foi possivel salvar agora", "As alteracoes continuam aplicadas nesta sessao. Tente novamente em instantes.", "warning");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -2329,15 +2405,40 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
         <Palette size={24} />
       </div>
       <section className="split-grid">
-        <form className="panel-form">
+        <form className="panel-form" onSubmit={saveIdentity}>
           <label>Nome exibido<input value={company.displayName} onChange={(event) => update("displayName", event.target.value)} /></label>
           <label>E-mail comercial<input value={company.contactEmail} onChange={(event) => update("contactEmail", event.target.value)} /></label>
           <label>Telefone comercial<input inputMode="tel" value={company.contactPhone} onChange={(event) => update("contactPhone", formatPhone(event.target.value))} /></label>
           <label>CNPJ<input inputMode="numeric" value={company.document} onChange={(event) => update("document", formatCnpj(event.target.value))} /></label>
-          <label>Logo URL (menu, login e aba do navegador)<input value={company.logoUrl || ""} onChange={(event) => update("logoUrl", event.target.value)} placeholder="https://..." /></label>
+          <div className="logo-upload-field">
+            <div className="logo-upload-field__preview">
+              {logoPreview ? <img src={logoPreview} alt="Previa da logo da clinica" /> : <ImageIcon size={26} />}
+            </div>
+            <div className="logo-upload-field__content">
+              <span>Upload de logo</span>
+              <p>PNG, JPG, WEBP ou SVG ate 5 MB. A imagem aparece no menu, login e aba do navegador.</p>
+              <label className="logo-upload-button">
+                <UploadCloud size={16} />
+                {uploadingLogo ? "Enviando..." : "Selecionar imagem"}
+                <input
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                  disabled={uploadingLogo}
+                  onChange={(event) => handleLogoUpload(event.target.files?.[0])}
+                  type="file"
+                />
+              </label>
+              {company.logoUrl && <button className="ghost-action" onClick={removeLogo} type="button">Remover logo</button>}
+              {logoError && <small className="inline-error">{logoError}</small>}
+            </div>
+          </div>
+          <label>Logo URL manual (opcional)<input value={company.logoUrl || ""} onChange={(event) => update("logoUrl", event.target.value)} placeholder="https://..." /></label>
           <label>Cor principal<input type="color" value={company.primaryColor} onChange={(event) => update("primaryColor", event.target.value)} /></label>
           <label>Cor secundaria<input type="color" value={company.secondaryColor} onChange={(event) => update("secondaryColor", event.target.value)} /></label>
           <label>Cor de destaque<input type="color" value={company.accentColor} onChange={(event) => update("accentColor", event.target.value)} /></label>
+          <label>Cor do fundo do sistema<input type="color" value={company.backgroundColor || "#f3f7fb"} onChange={(event) => update("backgroundColor", event.target.value)} /></label>
+          <label>Cor do menu lateral<input type="color" value={company.sidebarColor || "#071923"} onChange={(event) => update("sidebarColor", event.target.value)} /></label>
+          <label>Cor do texto do menu<input type="color" value={company.sidebarTextColor || "#f8fbfc"} onChange={(event) => update("sidebarTextColor", event.target.value)} /></label>
+          <label>Cor de destaque do menu<input type="color" value={company.sidebarHoverColor || company.primaryColor} onChange={(event) => update("sidebarHoverColor", event.target.value)} /></label>
           <fieldset className="option-fieldset">
             <legend>HCI — Historico Clinico Integrado</legend>
             <label className="toggle-row">
@@ -2361,13 +2462,16 @@ function SettingsView({ company, onCompanyChange }: { company: Company; onCompan
               </select>
             </label>
           </fieldset>
+          <div className="dialog-card__actions">
+            <button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar identidade visual"}</button>
+          </div>
         </form>
         <div className="brand-preview">
           <span className="brand__mark"><Layers3 /></span>
           <h2>{company.displayName}</h2>
           <p>{company.contactPhone} · {company.contactEmail}</p>
           <button className="primary-button" type="button">Botao com cor da clinica</button>
-          <small>Supabase: {isSupabaseConfigured ? "configurado" : "aguardando variaveis .env"}</small>
+          <small>Identidade visual aplicada ao sistema.</small>
         </div>
       </section>
     </div>
@@ -2400,7 +2504,7 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
       setOpen(false);
       setEditingUser(null);
     } catch {
-      setUserMessage("Nao foi possivel criar o usuario no Supabase. Verifique a Edge Function e suas permissoes.");
+      setUserMessage("Nao foi possivel criar o usuario agora. Verifique as permissoes administrativas e tente novamente.");
     } finally {
       setSavingUser(false);
     }
@@ -2600,6 +2704,15 @@ function filterHciMatches(query: string, matches: HciPatientMatch[]) {
 
 function normalizeText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function colorWithAlpha(hexColor: string, alpha: number) {
+  const normalized = hexColor.replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return `rgba(248, 251, 252, ${alpha})`;
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function normalizeDigits(value: string) {

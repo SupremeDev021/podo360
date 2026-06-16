@@ -106,7 +106,7 @@ const modules: Module[] = [
     { name: "dressing_products", label: "Produtos utilizados", type: "textarea" },
     { name: "dressing_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para Supabase Storage.", fields: [
+  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para armazenamento seguro.", fields: [
     { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
   ] },
   { key: "image_evolution", title: "Comparativo de evolucao", description: "Compare imagens por BA, regiao e momento do tratamento.", fields: [

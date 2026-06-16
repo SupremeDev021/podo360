@@ -109,7 +109,7 @@ export function WoundImageModule({
           </label>
         </div>
 
-        <label>URL do arquivo no Storage<input name="fileUrl" placeholder="Preenchido automaticamente apos upload no Supabase Storage" /></label>
+        <label>URL do arquivo seguro<input name="fileUrl" placeholder="Preenchido automaticamente apos o envio seguro da imagem" /></label>
         <label>Descricao da imagem<textarea name="description" /></label>
         <label>Observacoes clinicas<textarea name="clinicalNotes" /></label>
         <label>Observacao comparativa<textarea name="comparativeNotes" placeholder="Ex.: menor hiperemia comparado ao BA anterior" /></label>
