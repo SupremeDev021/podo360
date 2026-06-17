@@ -106,7 +106,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
           <span>Menu principal</span>
           <button aria-label="Fechar menu" className="icon-button" onClick={() => setMobileMenuOpen(false)} type="button"><X size={18} /></button>
         </div>
-        <button className="brand" onClick={() => navigate("dashboard")}>
+        <button className="brand" onClick={() => navigate("dashboard")} type="button">
           <span className="brand__mark">{company.logoUrl ? <img src={company.logoUrl} alt="" /> : <Activity size={24} />}</span>
           <span>
             <strong>Podo360</strong>

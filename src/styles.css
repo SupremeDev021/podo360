@@ -1859,23 +1859,51 @@ textarea {
   width: min(100%, 980px);
 }
 
+.user-management-backdrop {
+  align-items: stretch;
+  justify-items: stretch;
+  padding: 0;
+}
+
 .user-management-dialog {
-  width: min(1280px, calc(100vw - 28px));
-  min-height: calc(100vh - 40px);
-  max-height: calc(100vh - 28px);
+  width: 100%;
+  min-height: 100dvh;
+  max-height: 100dvh;
   align-content: start;
   overflow: auto;
+  border: 0;
+  border-radius: 0;
+  padding: clamp(18px, 3vw, 36px);
+}
+
+.user-management-dialog .option-fieldset {
+  max-height: none;
 }
 
 .user-management-dialog .dialog-card__actions {
   position: sticky;
-  bottom: -24px;
+  bottom: 0;
   z-index: 2;
-  margin: 8px -24px -24px;
-  padding: 14px 24px;
+  margin: 12px calc(-1 * clamp(18px, 3vw, 36px)) calc(-1 * clamp(18px, 3vw, 36px));
+  padding: 14px clamp(18px, 3vw, 36px);
   border-top: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(10px);
+}
+
+.inline-feedback {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.spin-icon {
+  animation: podo360-spin 0.8s linear infinite;
+}
+
+@keyframes podo360-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .password-field {

@@ -237,6 +237,23 @@ export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "c
   return data;
 }
 
+export async function updateAttendanceImageComparativeNotes(companyId: string, imageIds: string[], note: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("attendance_images")
+    .update({
+      comparative_notes: note,
+      updated_at: new Date().toISOString()
+    })
+    .eq("company_id", companyId)
+    .in("id", imageIds)
+    .select("id, comparative_notes, updated_at");
+
+  if (error) throw error;
+  return data;
+}
+
 export async function createAttendanceBa(attendance: Attendance) {
   if (!isSupabaseConfigured || !supabase) return null;
 
