@@ -13,6 +13,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Stethoscope,
   Users,
   X
@@ -30,6 +31,7 @@ export type ViewKey =
   | "schedule"
   | "financial"
   | "stock"
+  | "autoclave"
   | "reports"
   | "hci"
   | "settings"
@@ -54,10 +56,11 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "schedule", label: "Agenda Clínica", icon: <CalendarDays size={18} /> },
   { key: "financial", label: "Financeiro", icon: <CreditCard size={18} /> },
   { key: "stock", label: "Estoque", icon: <Boxes size={18} /> },
+  { key: "autoclave", label: "Registro de Autoclave", icon: <SlidersHorizontal size={18} /> },
   { key: "reports", label: "Relatorios", icon: <FileText size={18} /> },
   { key: "hci", label: "HCI", icon: <HeartPulse size={18} /> },
   { key: "settings", label: "Identidade", icon: <Settings size={18} /> },
-  { key: "super-admin", label: "Super Admin", icon: <ShieldCheck size={18} /> }
+  { key: "super-admin", label: "Administração da Clínica", icon: <ShieldCheck size={18} /> }
 ];
 
 export function Layout({ company, profile, activeView, onViewChange, onLogout, allowedViews, children }: LayoutProps) {
@@ -69,7 +72,10 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("podo360-sidebar-collapsed") === "true";
   });
-  const visibleItems = navItems.filter((item) => profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key));
+  const visibleItems = navItems.filter((item) => {
+    if (item.key === "super-admin") return profile.role === "super_admin";
+    return profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key);
+  });
 
   useEffect(() => {
     window.localStorage.setItem("podo360-sidebar-collapsed", String(sidebarCollapsed));
@@ -100,7 +106,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
           <span>Menu principal</span>
           <button aria-label="Fechar menu" className="icon-button" onClick={() => setMobileMenuOpen(false)} type="button"><X size={18} /></button>
         </div>
-        <button className="brand" onClick={() => navigate("dashboard")}>
+        <button className="brand" onClick={() => navigate("dashboard")} type="button">
           <span className="brand__mark">{company.logoUrl ? <img src={company.logoUrl} alt="" /> : <Activity size={24} />}</span>
           <span>
             <strong>Podo360</strong>
@@ -137,7 +143,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
 
       <div className="workspace">
         <header className="topbar">
-          <button aria-label="Abrir menu" className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} type="button"><Menu size={20} /></button>
+          <button aria-label="Abrir menu" className="mobile-menu-pill" onClick={() => setMobileMenuOpen(true)} type="button"><Menu size={18} /><span>Menu</span></button>
           <div>
             <strong>{company.displayName}</strong>
             <small>Ambiente clínico seguro</small>

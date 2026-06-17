@@ -789,7 +789,7 @@ button {
 }
 
 .sidebar__mobile-heading,
-.mobile-menu-button,
+.mobile-menu-pill,
 .mobile-menu-backdrop {
   display: none;
 }
@@ -864,6 +864,12 @@ button {
   width: min(100%, 760px);
 }
 
+.dialog-card--xlarge {
+  width: min(100%, 1040px);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
 .dialog-card h2,
 .dialog-card p {
   margin: 0;
@@ -921,6 +927,19 @@ button {
 .operational-filters {
   display: grid;
   gap: 14px;
+}
+
+.mobile-menu-pill {
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-sm);
+  font-weight: 800;
 }
 
 .filter-grid {
@@ -1507,6 +1526,57 @@ button {
   gap: 9px;
 }
 
+.medical-patient-search {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.06), transparent 46%),
+    #fff;
+}
+
+.patient-search-results {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.patient-search-results button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+}
+
+.patient-search-results button.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-surface-strong);
+}
+
+.patient-search-results small,
+.selected-patient-card small,
+.selected-patient-card span {
+  color: var(--color-muted);
+}
+
+.selected-patient-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-primary), white 70%);
+  border-radius: 12px;
+  background: var(--color-surface-strong);
+}
+
 .danger-link {
   min-height: 34px;
   border: 1px solid #fecaca;
@@ -1676,6 +1746,22 @@ th {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.form-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--color-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .panel-form label {
   display: grid;
   gap: 6px;
@@ -1773,8 +1859,92 @@ textarea {
   width: min(100%, 980px);
 }
 
-.user-management-dialog {
-  max-height: min(880px, calc(100vh - 32px));
+.user-management-page {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-height: calc(100dvh - 220px);
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-soft);
+}
+
+.user-management-page .option-fieldset {
+  max-height: none;
+}
+
+.user-management-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 12px calc(-1 * clamp(18px, 3vw, 32px)) calc(-1 * clamp(18px, 3vw, 32px));
+  padding: 14px clamp(18px, 3vw, 32px);
+  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(10px);
+}
+
+.inline-feedback {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.spin-icon {
+  animation: podo360-spin 0.8s linear infinite;
+}
+
+@keyframes podo360-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.app-upload-field {
+  position: relative;
+  min-height: 132px;
+  align-content: center;
+  justify-items: center;
+  gap: 7px !important;
+  padding: 18px;
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary), white 55%);
+  border-radius: 16px;
+  color: var(--color-primary) !important;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.07), rgba(14, 165, 233, 0.04)),
+    #fff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.app-upload-field span {
+  color: var(--color-text);
+  font-weight: 900;
+}
+
+.app-upload-field small {
+  max-width: 340px;
+  color: var(--color-muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.app-upload-field input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .financial-review-summary,
@@ -2410,6 +2580,28 @@ textarea {
   color: #b91c1c;
 }
 
+.autoclave-filters {
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.06), rgba(14, 165, 233, 0.04)),
+    #fff;
+}
+
+.autoclave-items {
+  display: grid;
+  gap: 9px;
+}
+
+.autoclave-item-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(130px, 0.8fr) 92px 92px minmax(160px, 1fr) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.autoclave-item-row input {
+  min-width: 0;
+}
+
 .search-result-list button.is-selected {
   border-color: var(--color-primary);
   background: var(--color-surface-strong);
@@ -2740,7 +2932,7 @@ textarea {
 .logo-upload-field {
   align-items: center;
   background: color-mix(in srgb, var(--color-surface), white 45%);
-  border: 1px solid var(--color-border);
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary), white 58%);
   border-radius: 20px;
   display: grid;
   gap: 14px;
@@ -3114,7 +3306,7 @@ td {
     overflow: visible;
   }
 
-  .mobile-menu-button {
+  .mobile-menu-pill {
     display: inline-flex;
     flex: 0 0 auto;
   }
@@ -3151,6 +3343,12 @@ td {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid--three,
+  .autoclave-item-row,
+  .patient-search-results button {
     grid-template-columns: 1fr;
   }
 

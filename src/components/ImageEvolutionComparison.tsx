@@ -1,4 +1,4 @@
-import { GitCompare, ListTree } from "lucide-react";
+import { GitCompare, ListTree, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Attendance, AttendanceImage } from "../types";
 import { ImageThumb } from "./WoundImageModule";
@@ -8,7 +8,7 @@ type ImageEvolutionComparisonProps = {
   attendances: Attendance[];
   patientId: string;
   uniqueMedicalRecordId: string;
-  onComparativeNote?: (imageIds: string[], note: string) => void;
+  onComparativeNote?: (imageIds: string[], note: string) => Promise<void> | void;
 };
 
 export function ImageEvolutionComparison({ images, attendances, patientId, uniqueMedicalRecordId, onComparativeNote }: ImageEvolutionComparisonProps) {
@@ -17,6 +17,8 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
   const [typeFilter, setTypeFilter] = useState("all");
   const [baFilter, setBaFilter] = useState("all");
   const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   const patientImages = useMemo(
     () => images
@@ -39,10 +41,26 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
     setSelectedIds((current) => current.includes(imageId) ? current.filter((id) => id !== imageId) : [...current, imageId]);
   }
 
-  function saveNote() {
-    if (!note.trim() || !selectedIds.length) return;
-    onComparativeNote?.(selectedIds, note.trim());
-    setNote("");
+  async function saveNote() {
+    if (!note.trim()) {
+      setFeedback("Digite uma observacao antes de salvar.");
+      return;
+    }
+    if (!selectedIds.length) {
+      setFeedback("Selecione ao menos uma imagem para vincular a observacao.");
+      return;
+    }
+    setSaving(true);
+    setFeedback("");
+    try {
+      await onComparativeNote?.(selectedIds, note.trim());
+      setNote("");
+      setFeedback("Observacao comparativa salva com sucesso.");
+    } catch {
+      setFeedback("Nao foi possivel salvar agora. Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -105,7 +123,11 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
       {onComparativeNote && (
         <div className="comparison-note">
           <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observacao comparativa para as imagens selecionadas" />
-          <button className="ghost-action" onClick={saveNote} type="button"><GitCompare size={17} /> Salvar observacao comparativa</button>
+          <button className="ghost-action" disabled={saving} onClick={saveNote} type="button">
+            {saving ? <LoaderCircle className="spin-icon" size={17} /> : <GitCompare size={17} />}
+            {saving ? "Salvando observacao..." : "Salvar observacao comparativa"}
+          </button>
+          {feedback && <small className="inline-feedback">{feedback}</small>}
         </div>
       )}
     </div>

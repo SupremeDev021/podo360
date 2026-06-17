@@ -10,6 +10,12 @@ export type PaymentMethod = "pix" | "cash" | "credit_card" | "debit_card" | "ins
 
 export type BodySide = "right" | "left" | "bilateral" | "not_applicable";
 
+export type AutoclaveIndicatorResult = "approved" | "failed" | "not_used" | "waiting";
+
+export type AutoclaveFinalResult = "approved" | "failed" | "reprocess";
+
+export type AutoclaveStatus = "registered" | "approved" | "failed" | "reprocess";
+
 export type AttendanceStatus =
   | "ba_open"
   | "waiting"
@@ -309,6 +315,58 @@ export type StockProduct = {
   active?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+};
+
+export type AutoclaveRecordItem = {
+  id: string;
+  companyId: string;
+  autoclaveRecordId: string;
+  stockProductId?: string;
+  stockProductCode?: string;
+  materialName: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AutoclaveRecord = {
+  id: string;
+  companyId: string;
+  cycleDate: string;
+  startTime: string;
+  endTime: string;
+  cycleNumber: string;
+  sterilizationLot: string;
+  responsibleUserId?: string;
+  responsibleName: string;
+  unitName: string;
+  autoclaveProductId?: string;
+  autoclaveName: string;
+  autoclaveCode: string;
+  temperature: string;
+  pressure: string;
+  exposureTime: string;
+  cycleType: "instruments" | "dressings" | "mixed_materials" | "other";
+  chemicalIndicatorResult: Exclude<AutoclaveIndicatorResult, "waiting">;
+  biologicalIndicatorResult: AutoclaveIndicatorResult;
+  integratorResult: AutoclaveIndicatorResult;
+  bowieDickResult: AutoclaveIndicatorResult;
+  finalResult: AutoclaveFinalResult;
+  status: AutoclaveStatus;
+  notes?: string;
+  incidents?: string;
+  correctiveAction?: string;
+  attachmentUrl?: string;
+  attachmentPath?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  items: AutoclaveRecordItem[];
 };
 
 export type BodyMapEntry = {

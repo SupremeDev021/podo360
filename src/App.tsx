@@ -9,9 +9,12 @@ import {
   ClipboardPlus,
   CreditCard,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   HeartPulse,
   Image as ImageIcon,
+  KeyRound,
   Layers3,
   Palette,
   Plus,
@@ -40,6 +43,7 @@ import { UniqueMedicalRecordView } from "./components/UniqueMedicalRecord";
 import { WoundImageModule } from "./components/WoundImageModule";
 import {
   demoAnamneses,
+  demoAutoclaveRecords,
   demoAttendanceImages,
   demoAttendances,
   demoClinicalAppointments,
@@ -58,12 +62,14 @@ import { podologyProductCatalog, podologyProductCategories } from "./data/produc
 import { supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { createAttendanceBa, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, startAttendanceBa, updateClinicalAppointment, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
   Attendance,
   AttendanceImage,
+  AutoclaveRecord,
+  AutoclaveRecordItem,
   ClinicalAppointment,
   Company,
   FinancialTransaction,
@@ -143,7 +149,7 @@ const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
 const modulePermissionOptions: Array<[ViewKey, string]> = [
   ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos / Pacientes"],
   ["schedule", "Agenda Clinica"], ["patient-profile", "ProntuárioÚnico / Anamnese / Imagens"], ["reports", "Relatorios"],
-  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Usuarios / Empresas / Super Admin"]
+  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["autoclave", "Registro de Autoclave / Esterilizacao"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Administracao da Clinica"]
 ];
 
 function allowedViewsForProfile(profile: Profile): ViewKey[] {
@@ -152,10 +158,10 @@ function allowedViewsForProfile(profile: Profile): ViewKey[] {
   const defaults: Record<Profile["role"], ViewKey[]> = {
     super_admin: modulePermissionOptions.map(([key]) => key),
     company_admin: modulePermissionOptions.map(([key]) => key).filter((key) => key !== "super-admin"),
-    professional: ["dashboard", "patients", "patient-profile", "attendances", "schedule", "reports", "hci"],
+    professional: ["dashboard", "patients", "patient-profile", "attendances", "schedule", "reports", "autoclave", "hci"],
     reception: ["dashboard", "ba-opening", "patients", "patient-profile", "attendances", "schedule"],
     financial: ["dashboard", "financial", "reports"],
-    stock: ["dashboard", "stock", "financial"],
+    stock: ["dashboard", "stock", "autoclave", "financial"],
     schedule: ["dashboard", "patients", "schedule"],
     reports: ["dashboard", "reports"],
     custom: ["dashboard"]
@@ -174,6 +180,7 @@ export function App() {
   const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
   const [financial, setFinancial] = useState<FinancialTransaction[]>(demoFinancial);
   const [stock, setStock] = useState<StockProduct[]>(() => catalogStock(demoCompany.id, demoStock));
+  const [autoclaveRecords, setAutoclaveRecords] = useState<AutoclaveRecord[]>(demoAutoclaveRecords);
   const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
   const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
@@ -240,20 +247,43 @@ export function App() {
     setNotice({ id: Date.now(), title, message, tone });
   }
 
-  async function handleGenerateAiReport(reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.") {
-    const content = await generateReferralReport({
-      company,
-      patient: selectedPatient,
-      attendances: selectedPatientAttendances,
-      anamneses: selectedPatientAnamneses,
-      footSensitivityMaps: selectedPatientFootMaps,
-      attendanceImages: selectedPatientImages,
-      integratedHistories: includeHciInReport ? authorizedHciHistories : [],
-      includeHci: includeHciInReport,
-      professionalName: profile.fullName,
-      reason
-    });
-    setAiReport(content);
+  async function handleGenerateAiReport(patientId = selectedPatient.id, reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId?: string) {
+    const reportPatient = patients.find((item) => item.id === patientId && item.companyId === company.id) ?? selectedPatient;
+    const patientAttendances = attendances.filter((attendance) => attendance.patientId === reportPatient.id && attendance.companyId === company.id);
+    const reportAttendances = attendanceId ? patientAttendances.filter((attendance) => attendance.id === attendanceId) : patientAttendances;
+    if (attendanceId && !reportAttendances.length) {
+      notify("Não foi possível gerar o relatório com IA no momento.", "O atendimento selecionado não foi encontrado para esta clínica.", "danger");
+      return;
+    }
+    const relatedAttendanceIds = new Set(reportAttendances.map((attendance) => attendance.id));
+    const reportAnamneses = anamneses.filter((record) => record.patientId === reportPatient.id && record.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(record.attendanceId)));
+    const reportFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === reportPatient.id && entry.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(entry.attendanceId)));
+    const reportImages = attendanceImages.filter((image) => image.patientId === reportPatient.id && image.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(image.attendanceId)));
+    const reportHciHistories = demoIntegratedHistories.filter((history) =>
+      demoHciConsents.some((consent) =>
+        consent.uniqueMedicalRecordId === reportPatient.uniqueMedicalRecordId &&
+        consent.sourceCompanyId === history.sourceCompany.id &&
+        consent.consentStatus === "authorized"
+      )
+    );
+    try {
+      const content = await generateReferralReport({
+        company,
+        patient: reportPatient,
+        attendances: reportAttendances,
+        anamneses: reportAnamneses,
+        footSensitivityMaps: reportFootMaps,
+        attendanceImages: reportImages,
+        integratedHistories: includeHciInReport ? reportHciHistories : [],
+        includeHci: includeHciInReport,
+        professionalName: profile.fullName,
+        reason
+      });
+      setAiReport(content);
+      notify("Relatório com IA gerado", "Revise o texto antes de exportar ou compartilhar.", "success");
+    } catch {
+      notify("Não foi possível gerar o relatório com IA no momento.", "Verifique a configuração do serviço de IA.", "danger");
+    }
   }
 
   function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
@@ -299,15 +329,32 @@ export function App() {
     notify("Imagem da ferida salva", "Registro visual vinculado ao BA e ao ProntuárioÚnico.", "success");
   }
 
-  function handleSaveComparativeNote(imageIds: string[], note: string) {
-    setAttendanceImages((current) =>
-      current.map((image) =>
-        imageIds.includes(image.id)
-          ? { ...image, comparativeNotes: note, updatedAt: new Date().toISOString() }
-          : image
-      )
-    );
-    notify("Comparativo salvo", "Observacao comparativa aplicada as imagens selecionadas.", "success");
+  async function handleSaveComparativeNote(imageIds: string[], note: string) {
+    const selectedImages = attendanceImages.filter((image) => imageIds.includes(image.id));
+    if (!selectedImages.length) {
+      notify("Selecione uma imagem", "A observacao comparativa precisa estar vinculada a pelo menos uma imagem.", "warning");
+      throw new Error("comparison_images_missing");
+    }
+    if (selectedImages.some((image) => image.companyId !== company.id)) {
+      notify("Você não tem permissão para realizar esta ação.", "As imagens selecionadas não pertencem à clínica atual.", "danger");
+      throw new Error("comparison_company_mismatch");
+    }
+
+    const updatedAt = new Date().toISOString();
+    try {
+      await updateAttendanceImageComparativeNotes(company.id, imageIds, note);
+      setAttendanceImages((current) =>
+        current.map((image) =>
+          imageIds.includes(image.id)
+            ? { ...image, comparativeNotes: note, updatedAt }
+            : image
+        )
+      );
+      notify("Observação comparativa salva com sucesso.", "O comparativo ficou vinculado ao atendimento, BA e ProntuárioÚnico.", "success");
+    } catch (error) {
+      notify("Não foi possível salvar agora. Tente novamente.", "A sessão foi preservada; revise permissões ou conexão.", "danger");
+      throw error;
+    }
   }
 
   function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
@@ -609,6 +656,18 @@ export function App() {
     }
   }
 
+  async function handleSaveAutoclaveRecord(record: AutoclaveRecord) {
+    const existing = autoclaveRecords.some((item) => item.id === record.id);
+    try {
+      if (existing) await updateAutoclaveRecord(record);
+      else await createAutoclaveRecord(record);
+      setAutoclaveRecords((current) => existing ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]);
+      notify(existing ? "Registro de autoclave atualizado" : "Registro de autoclave criado", `Ciclo ${record.cycleNumber} salvo para ${company.displayName}.`, "success");
+    } catch {
+      notify("Nao foi possivel salvar o registro", "Confira os dados e sua permissao de esterilizacao.", "danger");
+    }
+  }
+
   async function handleLogout() {
     if (supabase) {
       const { error } = await supabase.auth.signOut();
@@ -627,7 +686,7 @@ export function App() {
       <div className="app-input-mask-scope" onInputCapture={handleMaskedInput}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
-      {activeView === "dashboard" && <Dashboard appointments={appointments} companyId={company.id} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
+      {activeView === "dashboard" && <Dashboard appointments={appointments} company={company} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
       {activeView === "ba-opening" && (
         <BaOpening
           company={company}
@@ -658,7 +717,9 @@ export function App() {
           footSensitivityMaps={selectedPatientFootMaps}
           attendanceImages={selectedPatientImages}
           products={stock.filter((item) => item.companyId === company.id)}
-          onGenerateReport={handleGenerateAiReport}
+          onGenerateReport={(attendanceId) => handleGenerateAiReport(selectedPatient.id, "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId)}
+          aiReport={aiReport}
+          onChangeAiReport={setAiReport}
           onCreateAttendance={handleCreateAttendance}
           onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
@@ -669,7 +730,6 @@ export function App() {
           professionalId={profile.id}
           profiles={demoProfiles}
           hciHistories={authorizedHciHistories}
-          onBack={() => setActiveView("patients")}
           onSchedule={() => setActiveView("schedule")}
           onSelectAttendance={setActiveAttendanceId}
         />
@@ -707,11 +767,13 @@ export function App() {
       )}
       {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} stock={stock} onCreateProduct={handleCreateProduct} onUpdateProduct={handleUpdateProduct} />}
       {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} onUpdate={handleUpdateProduct} stock={stock} />}
+      {activeView === "autoclave" && <AutoclaveRecords company={company} profile={profile} records={autoclaveRecords} stock={stock} onSave={handleSaveAutoclaveRecord} />}
       {activeView === "reports" && (
         <Reports
           anamneses={anamneses}
           attendanceImages={attendanceImages}
           attendances={attendances}
+          company={company}
           companyId={company.id}
           financial={financial}
           patient={selectedPatient}
@@ -734,7 +796,7 @@ export function App() {
           onSelectMatch={setHciSelectedMatch}
         />
       )}
-      {activeView === "settings" && <SettingsView company={company} onCompanyChange={setCompany} onNotify={notify} />}
+      {activeView === "settings" && <SettingsView company={company} profile={profile} onCompanyChange={setCompany} onNotify={notify} />}
       {activeView === "super-admin" && <SuperAdmin company={company} onNotify={notify} />}
       </div>
     </Layout>
@@ -743,8 +805,9 @@ export function App() {
 
 type DashboardPeriod = "today" | "week" | "month" | "custom";
 
-function Dashboard({ companyId, appointments, financial, stock, attendances, patients }: { companyId: string; appointments: ClinicalAppointment[]; financial: FinancialTransaction[]; stock: StockProduct[]; attendances: Attendance[]; patients: Patient[] }) {
+function Dashboard({ company, appointments, financial, stock, attendances, patients }: { company: Company; appointments: ClinicalAppointment[]; financial: FinancialTransaction[]; stock: StockProduct[]; attendances: Attendance[]; patients: Patient[] }) {
   const [period, setPeriod] = useState<DashboardPeriod>("month");
+  const companyId = company.id;
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const range = useMemo(() => dashboardDateRange(period, customStart, customEnd), [period, customStart, customEnd]);
@@ -775,7 +838,7 @@ function Dashboard({ companyId, appointments, financial, stock, attendances, pat
           <p>Organize pacientes, anamnese, agenda, atendimentos, financeiro, estoque e relatorios em uma experiencia clara para a equipe.</p>
         </div>
         <div className="hero-panel__actions">
-          <button className="ghost-button" type="button"><FileText size={18} /> Gerar relatorio</button>
+          <button className="ghost-button" onClick={() => exportDashboardReport(company, periodLabel, range, { localPatients, periodPatients, localAttendances, localAppointments, localFinancial, stock, revenue, expenses, recurringPatientIds })} type="button"><FileText size={18} /> Gerar relatorio</button>
         </div>
       </section>
 
@@ -1232,6 +1295,8 @@ function PatientProfile({
   attendanceImages,
   products,
   onGenerateReport,
+  aiReport,
+  onChangeAiReport,
   onCreateAttendance,
   onFinishAttendance,
   onSaveAnamnesis,
@@ -1242,7 +1307,6 @@ function PatientProfile({
   professionalId,
   profiles,
   hciHistories,
-  onBack,
   onSchedule,
   onSelectAttendance
 }: {
@@ -1254,18 +1318,19 @@ function PatientProfile({
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
   products: StockProduct[];
-  onGenerateReport: () => void;
+  onGenerateReport: (attendanceId?: string) => Promise<void> | void;
+  aiReport: string;
+  onChangeAiReport: (value: string) => void;
   onCreateAttendance: (patient: Patient) => void;
   onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
   onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
   onSaveAttendanceImage: (image: Omit<AttendanceImage, "id" | "createdAt">) => void;
-  onSaveComparativeNote: (imageIds: string[], note: string) => void;
+  onSaveComparativeNote: (imageIds: string[], note: string) => Promise<void> | void;
   company: Company;
   professionalId: string;
   profiles: typeof demoProfiles;
   hciHistories: IntegratedClinicalHistory[];
-  onBack: () => void;
   onSchedule: () => void;
   onSelectAttendance: (attendanceId: string) => void;
 }) {
@@ -1278,6 +1343,19 @@ function PatientProfile({
     attendances.find((attendance) => attendance.status === "in_progress") ??
     attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
+  const [generatingAiReport, setGeneratingAiReport] = useState(false);
+
+  async function generateCurrentAttendanceReport() {
+    if (!currentAttendance) return;
+    setGeneratingAiReport(true);
+    setActivePatientTab("reports");
+    try {
+      await onGenerateReport(currentAttendance.id);
+    } finally {
+      setGeneratingAiReport(false);
+    }
+  }
+
   const anamnesisNode = currentAttendance ? (
     <AnamnesisWizard
       patient={patient}
@@ -1332,7 +1410,6 @@ function PatientProfile({
     <div className="page-stack">
       <section className="profile-header">
         <div>
-          <button className="profile-back" onClick={onBack} type="button">Voltar para pesquisa</button>
           <span className="eyebrow">ProntuárioÚnico: {patient.uniqueRecordNumber}</span>
           <h1>{patient.fullName}</h1>
           <p>{patient.whatsapp} · {patient.profession || "Profissao nao informada"} · CPF {patient.cpf}</p>
@@ -1341,7 +1418,7 @@ function PatientProfile({
           <button className="ghost-action" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={18} /> Novo BA</button>
           <button className="ghost-action" onClick={onSchedule} type="button"><CalendarPlus size={18} /> Agendar atendimento</button>
           <button className="ghost-action" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
-          <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
+          <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={generateCurrentAttendanceReport} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatorio com IA"}</button>
         </div>
       </section>
 
@@ -1408,6 +1485,9 @@ function PatientProfile({
           footSensitivityMaps={footSensitivityMaps}
           attendanceImages={attendanceImages}
           onGenerateReport={onGenerateReport}
+          generatingAiReport={generatingAiReport}
+          report={aiReport}
+          onChangeReport={onChangeAiReport}
         />
       )}
       {activePatientTab === "hci" && <PatientHci patient={patient} histories={hciHistories} />}
@@ -1519,7 +1599,10 @@ function ReportsSection({
   anamneses,
   footSensitivityMaps,
   attendanceImages,
-  onGenerateReport
+  onGenerateReport,
+  generatingAiReport,
+  report,
+  onChangeReport
 }: {
   patient: Patient;
   currentAttendance?: Attendance;
@@ -1528,7 +1611,10 @@ function ReportsSection({
   anamneses: AnamnesisRecord[];
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
-  onGenerateReport: () => void;
+  onGenerateReport: (attendanceId?: string) => Promise<void> | void;
+  generatingAiReport?: boolean;
+  report: string;
+  onChangeReport: (value: string) => void;
 }) {
   return (
     <section className="split-grid">
@@ -1543,15 +1629,18 @@ function ReportsSection({
         <div className="report-list">
           <button disabled={!currentAttendance} onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
           <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico completo</button>
-          <button className="primary-button" onClick={onGenerateReport} type="button"><Sparkles size={18} /> Gerar relatório médico com IA</button>
+          <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={() => currentAttendance && onGenerateReport(currentAttendance.id)} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatório médico com IA"}</button>
         </div>
       </div>
       <div className="data-panel">
-        {attendances.length ? (
-          <Table
-            headers={["BA", "Data", "Status"]}
-            rows={attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), statusLabel(attendance.status)])}
-          />
+        {generatingAiReport ? <EmptyState title="Gerando relatório com IA..." message="Buscando BA, anamnese, imagens, evolução e dados da clínica para montar a pré-visualização." /> : report ? (
+          <>
+            <div className="section-heading section-heading--compact"><div><h2>Pré-visualização do relatório</h2><p>Revise o texto antes de exportar.</p></div><Printer size={20} /></div>
+            <textarea className="report-editor" value={report} onChange={(event) => onChangeReport(event.target.value)} />
+            <div className="dialog-card__actions"><button className="ghost-action" onClick={() => navigator.clipboard?.writeText(report)} type="button">Copiar</button><button className="primary-button" onClick={() => openPrintDocument(`Relatório clínico ${patient.fullName}`, [documentHeader(company, "Relatório Clínico Podológico"), `<pre class="report-text">${report}</pre>`].join(""), company)} type="button">Exportar PDF</button></div>
+          </>
+        ) : attendances.length ? (
+          <Table headers={["BA", "Data", "Status"]} rows={attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), statusLabel(attendance.status)])} />
         ) : <EmptyState title="Nenhum relatório gerado" message="Este paciente ainda não possui atendimentos para exportacao." />}
       </div>
     </section>
@@ -2091,10 +2180,147 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
   </div>;
 }
 
+function AutoclaveRecords({ company, profile, records, stock, onSave }: { company: Company; profile: Profile; records: AutoclaveRecord[]; stock: StockProduct[]; onSave: (record: AutoclaveRecord) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AutoclaveRecord | null>(null);
+  const [viewing, setViewing] = useState<AutoclaveRecord | null>(null);
+  const [deleting, setDeleting] = useState<AutoclaveRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [cycleType, setCycleType] = useState("all");
+  const [items, setItems] = useState<AutoclaveRecordItem[]>([emptyAutoclaveItem(company.id, "draft")]);
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState("");
+  const [equipmentCode, setEquipmentCode] = useState("");
+  const companyRecords = records.filter((record) => record.companyId === company.id && !record.deletedAt);
+  const companyStock = stock.filter((item) => item.companyId === company.id && item.active !== false && !item.deletedAt);
+  const autoclaveEquipments = companyStock.filter((item) => {
+    const haystack = normalizeText(`${item.name} ${item.category} ${item.notes || ""}`);
+    return haystack.includes("autoclave") || haystack.includes("equipamento") || haystack.includes("biosseguranca") || haystack.includes("seladora") || haystack.includes("incubadora");
+  });
+  const materialOptions = companyStock.filter((item) => !autoclaveEquipments.some((equipment) => equipment.id === item.id));
+  const filtered = companyRecords.filter((record) =>
+    (status === "all" || record.status === status) &&
+    (cycleType === "all" || record.cycleType === cycleType) &&
+    (!query || normalizeText(`${record.cycleDate} ${record.cycleNumber} ${record.sterilizationLot} ${record.responsibleName} ${record.autoclaveName} ${record.autoclaveCode}`).includes(normalizeText(query)))
+  );
+  const approved = companyRecords.filter((record) => record.finalResult === "approved").length;
+  const failed = companyRecords.filter((record) => record.finalResult !== "approved").length;
+
+  function openNew() {
+    setEditing(null);
+    setItems([emptyAutoclaveItem(company.id, "draft")]);
+    setSelectedEquipmentId("");
+    setEquipmentCode("");
+    setOpen(true);
+  }
+
+  function openEdit(record: AutoclaveRecord) {
+    setEditing(record);
+    setItems(record.items.length ? record.items : [emptyAutoclaveItem(company.id, record.id)]);
+    setSelectedEquipmentId(record.autoclaveProductId || "");
+    setEquipmentCode(record.autoclaveCode || "");
+    setOpen(true);
+  }
+
+  function updateItem(index: number, patch: Partial<AutoclaveRecordItem>) {
+    setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  }
+
+  function selectMaterial(index: number, productId: string) {
+    const product = materialOptions.find((item) => item.id === productId);
+    if (!product) {
+      updateItem(index, { materialName: "", category: "", unit: "un", stockProductId: undefined, stockProductCode: undefined });
+      return;
+    }
+    updateItem(index, { materialName: product.name, category: product.category, unit: product.unit, stockProductId: product.id, stockProductCode: product.internalCode });
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    const form = new FormData(event.currentTarget);
+    const id = editing?.id ?? `auto-${Date.now()}`;
+    const now = new Date().toISOString();
+    const finalResult = String(form.get("finalResult")) as AutoclaveRecord["finalResult"];
+    const selectedEquipment = autoclaveEquipments.find((item) => item.id === String(form.get("autoclaveProductId")));
+    const record: AutoclaveRecord = {
+      id,
+      companyId: company.id,
+      cycleDate: String(form.get("cycleDate")),
+      startTime: String(form.get("startTime")),
+      endTime: String(form.get("endTime")),
+      cycleNumber: String(form.get("cycleNumber")),
+      sterilizationLot: String(form.get("sterilizationLot")),
+      responsibleUserId: profile.id,
+      responsibleName: String(form.get("responsibleName")),
+      unitName: company.displayName,
+      autoclaveProductId: selectedEquipment?.id || editing?.autoclaveProductId,
+      autoclaveName: selectedEquipment?.name || String(form.get("autoclaveName")),
+      autoclaveCode: String(form.get("autoclaveCode") || selectedEquipment?.internalCode || ""),
+      temperature: String(form.get("temperature")),
+      pressure: String(form.get("pressure")),
+      exposureTime: String(form.get("exposureTime")),
+      cycleType: String(form.get("cycleType")) as AutoclaveRecord["cycleType"],
+      chemicalIndicatorResult: String(form.get("chemicalIndicatorResult")) as AutoclaveRecord["chemicalIndicatorResult"],
+      biologicalIndicatorResult: String(form.get("biologicalIndicatorResult")) as AutoclaveRecord["biologicalIndicatorResult"],
+      integratorResult: String(form.get("integratorResult")) as AutoclaveRecord["integratorResult"],
+      bowieDickResult: String(form.get("bowieDickResult")) as AutoclaveRecord["bowieDickResult"],
+      finalResult,
+      status: finalResult === "approved" ? "approved" : finalResult === "failed" ? "failed" : "reprocess",
+      notes: String(form.get("notes") || ""),
+      incidents: String(form.get("incidents") || ""),
+      correctiveAction: String(form.get("correctiveAction") || ""),
+      attachmentUrl: String(form.get("attachmentUrl") || ""),
+      attachmentPath: editing?.attachmentPath,
+      createdBy: editing?.createdBy ?? profile.id,
+      updatedBy: profile.id,
+      createdAt: editing?.createdAt ?? now,
+      updatedAt: now,
+      items: items.filter((item) => item.materialName.trim()).map((item, index) => ({ ...item, id: item.id || `${id}-item-${index + 1}`, companyId: company.id, autoclaveRecordId: id }))
+    };
+    try {
+      await onSave(record);
+      setOpen(false);
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="page-stack">
+      <div className="section-heading">
+        <div><span className="eyebrow">Biosseguranca · esterilizacao</span><h1>Registro de Autoclave</h1><p>Ficha digital dos ciclos, indicadores, materiais esterilizados e responsavel pela liberacao.</p></div>
+        <button className="primary-button" onClick={openNew} type="button"><Plus size={18} /> Novo registro</button>
+      </div>
+      <section className="metrics-grid">
+        <MetricCard icon={<ShieldCheck />} label="Ciclos registrados" value={String(companyRecords.length)} detail="Somente desta clínica" tone="primary" />
+        <MetricCard icon={<CheckCircle2 />} label="Aprovados" value={String(approved)} detail="Resultado final aprovado" tone="success" />
+        <MetricCard icon={<AlertTriangle />} label="Reprocessar/Reprovados" value={String(failed)} detail="Exigem atenção" tone="danger" />
+        <MetricCard icon={<Boxes />} label="Materiais" value={String(companyRecords.reduce((sum, record) => sum + record.items.length, 0))} detail="Itens esterilizados" />
+      </section>
+      <section className="data-panel operational-filters autoclave-filters">
+        <div className="filter-grid">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar por data, lote, ciclo, responsavel ou equipamento" />
+          <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos os status</option><option value="registered">Registrado</option><option value="approved">Aprovado</option><option value="failed">Reprovado</option><option value="reprocess">Reprocessar</option></select>
+          <select value={cycleType} onChange={(event) => setCycleType(event.target.value)}><option value="all">Todos os ciclos</option><option value="instruments">Instrumentais</option><option value="dressings">Curativos</option><option value="mixed_materials">Materiais diversos</option><option value="other">Outro</option></select>
+        </div>
+        <button className="ghost-action" onClick={() => { setQuery(""); setStatus("all"); setCycleType("all"); }} type="button">Limpar filtros</button>
+      </section>
+      {filtered.length ? <Table headers={["Data", "Ciclo", "Lote", "Responsável", "Equipamento", "Materiais", "Resultado", "Status", "Ações"]} rows={filtered.map((record) => [formatDate(record.cycleDate), record.cycleNumber, record.sterilizationLot, record.responsibleName, record.autoclaveName, String(record.items.length), autoclaveFinalLabel(record.finalResult), autoclaveStatusLabel(record.status), <div className="table-actions"><button className="ghost-action" onClick={() => setViewing(record)} type="button">Ver</button><button className="ghost-action" onClick={() => openEdit(record)} type="button">Editar</button><button className="ghost-action" onClick={() => exportAutoclaveRecord(record, company)} type="button">Exportar</button><button className="danger-link" onClick={() => setDeleting(record)} type="button">Excluir</button></div>])} /> : <EmptyState title="Nenhum ciclo encontrado" message="Crie um registro ou ajuste os filtros de esterilizacao." />}
+      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--xlarge" onSubmit={submit}><div><h2>{editing ? "Editar registro de autoclave" : "Novo registro de autoclave"}</h2><p>Preencha os dados do ciclo, indicadores e materiais esterilizados. O registro fica vinculado somente a {company.displayName}.</p></div><div className="form-section-title">Identificação do ciclo</div><div className="form-grid form-grid--three"><label>Data do ciclo<input defaultValue={editing?.cycleDate ?? new Date().toISOString().slice(0, 10)} name="cycleDate" required type="date" /></label><label>Hora de início<input defaultValue={editing?.startTime ?? ""} name="startTime" required type="time" /></label><label>Hora de término<input defaultValue={editing?.endTime ?? ""} name="endTime" required type="time" /></label><label>Número do ciclo<input defaultValue={editing?.cycleNumber ?? ""} name="cycleNumber" required /></label><label>Código/lote<input defaultValue={editing?.sterilizationLot ?? ""} name="sterilizationLot" required /></label><label>Responsável<input defaultValue={editing?.responsibleName ?? profile.fullName} name="responsibleName" required /></label><label>Unidade/empresa<input readOnly value={company.displayName} /></label></div><div className="form-section-title">Autoclave</div>{!autoclaveEquipments.length && <div className="inline-info">Nenhum equipamento cadastrado no estoque. Cadastre uma autoclave/equipamento em Estoque para aparecer aqui.</div>}<div className="form-grid form-grid--three"><label>Equipamento utilizado<select name="autoclaveProductId" required value={selectedEquipmentId} onChange={(event) => { const product = autoclaveEquipments.find((item) => item.id === event.target.value); setSelectedEquipmentId(event.target.value); setEquipmentCode(product?.internalCode || ""); }}><option value="">Selecione no estoque</option>{autoclaveEquipments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input name="autoclaveName" type="hidden" value={autoclaveEquipments.find((item) => item.id === selectedEquipmentId)?.name || editing?.autoclaveName || ""} /></label><label>Código/patrimônio<input value={equipmentCode} onChange={(event) => setEquipmentCode(event.target.value)} name="autoclaveCode" placeholder="AUTO-001" /></label><label>Temperatura programada<input defaultValue={editing?.temperature ?? "134°C"} name="temperature" /></label><label>Pressão<input defaultValue={editing?.pressure ?? ""} name="pressure" /></label><label>Tempo de exposição<input defaultValue={editing?.exposureTime ?? ""} name="exposureTime" /></label><label>Tipo de ciclo<select defaultValue={editing?.cycleType ?? "instruments"} name="cycleType"><option value="instruments">Instrumentais</option><option value="dressings">Curativos</option><option value="mixed_materials">Materiais diversos</option><option value="other">Outro</option></select></label></div><div className="form-section-title">Materiais esterilizados</div><div className="autoclave-items">{items.map((item, index) => <div className="autoclave-item-row" key={item.id || index}><select aria-label="Material" value={item.stockProductId || ""} onChange={(event) => selectMaterial(index, event.target.value)} required><option value="">Selecione material do estoque</option>{materialOptions.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select><input aria-label="Categoria" value={item.category} readOnly placeholder="Categoria" /><input aria-label="Quantidade" min="1" type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} /><input aria-label="Unidade" value={item.unit} readOnly placeholder="un" /><input aria-label="Observação" value={item.notes || ""} onChange={(event) => updateItem(index, { notes: event.target.value })} placeholder="Observação" /><button className="icon-button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><Trash2 size={16} /></button></div>)}</div><button className="ghost-action" onClick={() => setItems((current) => [...current, emptyAutoclaveItem(company.id, editing?.id ?? "draft")])} type="button"><Plus size={16} /> Adicionar material</button><div className="form-section-title">Indicadores e resultado</div><div className="form-grid form-grid--three">{indicatorSelect("chemicalIndicatorResult", "Indicador químico", editing?.chemicalIndicatorResult)}{indicatorSelect("biologicalIndicatorResult", "Indicador biológico", editing?.biologicalIndicatorResult, true)}{indicatorSelect("integratorResult", "Integrador químico", editing?.integratorResult, true)}{indicatorSelect("bowieDickResult", "Teste Bowie-Dick", editing?.bowieDickResult, true)}<label>Resultado final<select defaultValue={editing?.finalResult ?? "approved"} name="finalResult"><option value="approved">Aprovado</option><option value="failed">Reprovado</option><option value="reprocess">Reprocessar</option></select></label><label>Anexo/Imagem do resultado<div className="app-upload-field"><UploadCloud size={22} /><span>Clique para enviar ou arraste uma imagem</span><small>PNG, JPG, JPEG ou WEBP até 5 MB.</small><input name="attachmentFile" type="file" accept="image/png,image/jpeg,image/webp" /></div></label><label>URL do anexo<input defaultValue={editing?.attachmentUrl ?? ""} name="attachmentUrl" placeholder="Opcional" /></label></div><div className="form-section-title">Controle</div><label>Observações<textarea defaultValue={editing?.notes ?? ""} name="notes" /></label><label>Intercorrências<textarea defaultValue={editing?.incidents ?? ""} name="incidents" /></label><label>Conduta realizada<textarea defaultValue={editing?.correctiveAction ?? ""} name="correctiveAction" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar registro"}</button></div></form></div>}
+      {viewing && <div className="dialog-backdrop"><section className="dialog-card dialog-card--wide"><div><h2>Ciclo {viewing.cycleNumber}</h2><p>{formatDate(viewing.cycleDate)} · {viewing.responsibleName} · {autoclaveStatusLabel(viewing.status)}</p></div><dl className="definition-grid"><div><dt>Lote</dt><dd>{viewing.sterilizationLot}</dd></div><div><dt>Autoclave</dt><dd>{viewing.autoclaveName} ({viewing.autoclaveCode || "sem código"})</dd></div><div><dt>Temperatura</dt><dd>{viewing.temperature}</dd></div><div><dt>Pressão</dt><dd>{viewing.pressure || "-"}</dd></div><div><dt>Indicador químico</dt><dd>{autoclaveIndicatorLabel(viewing.chemicalIndicatorResult)}</dd></div><div><dt>Indicador biológico</dt><dd>{autoclaveIndicatorLabel(viewing.biologicalIndicatorResult)}</dd></div><div><dt>Resultado final</dt><dd>{autoclaveFinalLabel(viewing.finalResult)}</dd></div></dl><Table headers={["Material", "Categoria", "Qtd.", "Unidade", "Obs."]} rows={viewing.items.map((item) => [item.materialName, item.category || "-", String(item.quantity), item.unit, item.notes || "-"])} /><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setViewing(null)} type="button">Fechar</button><button className="primary-button" onClick={() => exportAutoclaveRecord(viewing, company)} type="button">Exportar / imprimir</button></div></section></div>}
+      {deleting && <div className="dialog-backdrop"><section className="dialog-card"><span className="dialog-card__icon"><Trash2 size={22} /></span><div><h2>Excluir registro de autoclave?</h2><p>O ciclo será inativado para preservar o histórico da clínica.</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setDeleting(null)} type="button">Cancelar</button><button className="danger-button" onClick={async () => { await onSave({ ...deleting, deletedAt: new Date().toISOString(), updatedBy: profile.id }); setDeleting(null); }} type="button">Inativar registro</button></div></section></div>}
+    </div>
+  );
+}
+
 function Reports({
   anamneses,
   attendanceImages,
   attendances,
+  company,
   companyId,
   financial,
   patient,
@@ -2110,6 +2336,7 @@ function Reports({
   anamneses: AnamnesisRecord[];
   attendanceImages: AttendanceImage[];
   attendances: Attendance[];
+  company: Company;
   companyId: string;
   financial: FinancialTransaction[];
   patient: Patient;
@@ -2119,7 +2346,7 @@ function Reports({
   includeHci: boolean;
   hciAvailable: boolean;
   onIncludeHciChange: (value: boolean) => void;
-  onGenerate: () => void;
+  onGenerate: (patientId?: string) => void;
   onChangeReport: (value: string) => void;
 }) {
   const [reportType, setReportType] = useState<"medical" | "financial" | "attendance">("medical");
@@ -2136,6 +2363,11 @@ function Reports({
   const [minValue, setMinValue] = useState("");
   const [maxValue, setMaxValue] = useState("");
   const [query, setQuery] = useState("");
+  const [medicalPatientQuery, setMedicalPatientQuery] = useState("");
+  const [medicalPatientId, setMedicalPatientId] = useState(patient.id);
+  const medicalPatient = patients.find((item) => item.id === medicalPatientId && item.companyId === companyId) ?? patient;
+  const medicalPatientAttendances = attendances.filter((item) => item.companyId === companyId && item.patientId === medicalPatient.id);
+  const medicalPatientResults = patients.filter((item) => item.companyId === companyId && (!medicalPatientQuery || normalizeText(`${item.fullName} ${item.cpf} ${item.phone} ${item.whatsapp} ${item.uniqueRecordNumber} ${attendances.filter((attendance) => attendance.patientId === item.id).map((attendance) => attendance.baNumber).join(" ")}`).includes(normalizeText(medicalPatientQuery)))).slice(0, 6);
   const financialResults = financial.filter((item) => {
     const attendance = attendances.find((entry) => entry.id === item.attendanceId);
     return item.companyId === companyId &&
@@ -2160,7 +2392,7 @@ function Reports({
 
   async function generate() {
     setLoading(true);
-    if (reportType === "medical") await onGenerate();
+    if (reportType === "medical") await onGenerate(medicalPatient.id);
     setGenerated(true);
     setLoading(false);
   }
@@ -2179,6 +2411,24 @@ function Reports({
     link.download = `podo360-${reportType}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+
+  function exportPdf() {
+    if (reportType === "medical") {
+      openPrintDocument(
+        `Encaminhamento medico ${medicalPatient.fullName}`,
+        [documentHeader(company, "Relatório de Encaminhamento Médico"), `<pre class="report-text">${report || "Relatório ainda não gerado."}</pre>`].join(""),
+        company
+      );
+      return;
+    }
+    if (reportType === "financial") {
+      const rows = financialResults.map((item) => `<tr><td>${item.description}</td><td>${patients.find((entry) => entry.id === item.patientId)?.fullName || "-"}</td><td>${item.baNumber || "-"}</td><td>${item.type === "income" ? "Receita" : "Despesa"}</td><td>${currency.format(item.amount)}</td><td>${paymentStatusLabel(item.status)}</td></tr>`).join("");
+      openPrintDocument("Relatório financeiro", [documentHeader(company, "Relatório Financeiro"), `<h2>Resumo</h2><p>Receitas: ${currency.format(revenue)}<br>Despesas: ${currency.format(expenses)}<br>Saldo: ${currency.format(revenue - expenses)}</p>`, `<table><thead><tr><th>Descrição</th><th>Paciente</th><th>BA</th><th>Tipo</th><th>Valor</th><th>Status</th></tr></thead><tbody>${rows || "<tr><td colspan='6'>Nenhum lançamento encontrado.</td></tr>"}</tbody></table>`].join(""), company);
+      return;
+    }
+    const rows = attendanceResults.map((item) => `<tr><td>${patients.find((entry) => entry.id === item.patientId)?.fullName || "-"}</td><td>${item.uniqueRecordNumber}</td><td>${item.baNumber}</td><td>${formatDateTime(item.openedAt)}</td><td>${statusLabel(item.status)}</td><td>${item.procedure || "-"}</td><td>${item.productsUsed.join(", ") || "-"}</td></tr>`).join("");
+    openPrintDocument("Histórico de atendimento", [documentHeader(company, "Histórico de Atendimento"), `<table><thead><tr><th>Paciente</th><th>ProntuárioÚnico</th><th>BA</th><th>Data</th><th>Status</th><th>Procedimento</th><th>Produtos</th></tr></thead><tbody>${rows || "<tr><td colspan='7'>Nenhum atendimento encontrado.</td></tr>"}</tbody></table>`].join(""), company);
   }
 
   return (
@@ -2205,7 +2455,12 @@ function Reports({
             {reportType === "financial" && <><label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option value="all">Receitas e despesas</option><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Forma de pagamento<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="all">Todas</option>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}<option value="private">Particular</option></select></label><label>Valor mínimo<input inputMode="numeric" name="reportMinValue" value={minValue} onChange={(event) => setMinValue(event.target.value)} /></label><label>Valor máximo<input inputMode="numeric" name="reportMaxValue" value={maxValue} onChange={(event) => setMaxValue(event.target.value)} /></label></>}
             <button className="ghost-action" onClick={clear} type="button">Limpar filtros</button>
           </div>}
-          {reportType === "medical" && <p className="muted">Paciente atual: {patient.fullName}</p>}
+          {reportType === "medical" && <div className="medical-patient-search">
+            <label>Pesquisar paciente para encaminhamento<input value={medicalPatientQuery} onChange={(event) => setMedicalPatientQuery(event.target.value)} placeholder="Nome, CPF, telefone, ProntuárioÚnico ou BA" /></label>
+            <div className="patient-search-results">
+              {medicalPatientResults.length ? medicalPatientResults.map((item) => <button className={medicalPatient.id === item.id ? "is-selected" : ""} key={item.id} onClick={() => { setMedicalPatientId(item.id); setMedicalPatientQuery(item.fullName); setGenerated(false); }} type="button"><strong>{item.fullName}</strong><small>{item.uniqueRecordNumber} · {item.cpf} · {attendances.filter((attendance) => attendance.patientId === item.id && attendance.companyId === companyId).length} BA(s)</small></button>) : <EmptyState title="Nenhum paciente encontrado." message="Revise nome, CPF, telefone, ProntuárioÚnico ou BA." />}</div>
+            <div className="selected-patient-card"><strong>{medicalPatient.fullName}</strong><span>{medicalPatient.uniqueRecordNumber} · {medicalPatient.cpf}</span><small>{medicalPatientAttendances.length} atendimento(s) locais disponíveis para o relatório.</small></div>
+          </div>}
           {reportType === "medical" && hciAvailable && (
             <label className="toggle-row">
               <input checked={includeHci} onChange={(event) => onIncludeHciChange(event.target.checked)} type="checkbox" />
@@ -2218,7 +2473,7 @@ function Reports({
           <div className="section-heading section-heading--compact">
             <div><h2>Relatorio editavel</h2><p>A IA organiza o historico sem emitir diagnostico definitivo.</p></div>
             <div className="icon-group">
-              <button className="icon-button" onClick={() => window.print()} title="Exportar PDF / imprimir" type="button"><Printer size={17} /></button>
+              <button className="icon-button" disabled={!generated && reportType !== "medical"} onClick={exportPdf} title="Exportar PDF / imprimir" type="button"><Printer size={17} /></button>
               <button className="icon-button" disabled={!generated || reportType === "medical"} onClick={exportCsv} title="Exportar CSV" type="button"><Download size={17} /></button>
               <button className="icon-button" disabled title="Envio será configurado futuramente" type="button"><Send size={17} /></button>
             </div>
@@ -2324,11 +2579,14 @@ function HciView({
   );
 }
 
-function SettingsView({ company, onCompanyChange, onNotify }: { company: Company; onCompanyChange: (company: Company) => void; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
+function SettingsView({ company, profile, onCompanyChange, onNotify }: { company: Company; profile: Profile; onCompanyChange: (company: Company) => void; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState(company.logoUrl || "");
   const [logoError, setLogoError] = useState("");
+  const [showAccountPassword, setShowAccountPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [accountPasswordError, setAccountPasswordError] = useState("");
 
   useEffect(() => {
     setLogoPreview(company.logoUrl || "");
@@ -2359,7 +2617,15 @@ function SettingsView({ company, onCompanyChange, onNotify }: { company: Company
     try {
       const uploaded = await uploadCompanyLogo(company.id, file);
       if (!uploaded) {
-        setLogoError("Upload indisponivel neste ambiente. Use uma URL de logo por enquanto.");
+        const localUrl = await fileToDataUrl(file);
+        onCompanyChange({
+          ...company,
+          logoUrl: localUrl,
+          logoPath: `local-preview/${file.name}`,
+          logoUploadedAt: new Date().toISOString()
+        });
+        setLogoPreview(localUrl);
+        onNotify("Logo aplicada em prévia", "No ambiente oficial, a imagem será enviada para o armazenamento seguro da clínica.", "success");
         return;
       }
 
@@ -2395,6 +2661,34 @@ function SettingsView({ company, onCompanyChange, onNotify }: { company: Company
       onNotify("Nao foi possivel salvar agora", "As alteracoes continuam aplicadas nesta sessao. Tente novamente em instantes.", "warning");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function changeOwnPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("newPassword") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+    setAccountPasswordError("");
+
+    if (password.length < 8) {
+      setAccountPasswordError("Use uma senha com pelo menos 8 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setAccountPasswordError("As senhas informadas nao coincidem.");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await updateOwnPassword(password);
+      event.currentTarget.reset();
+      onNotify("Senha atualizada com sucesso.", `A senha de ${profile.fullName} foi atualizada com seguranca.`, "success");
+    } catch {
+      setAccountPasswordError("Nao foi possivel atualizar a senha agora. Se voce entrou por link de recuperacao, tente novamente em instantes.");
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -2474,6 +2768,20 @@ function SettingsView({ company, onCompanyChange, onNotify }: { company: Company
           <small>Identidade visual aplicada ao sistema.</small>
         </div>
       </section>
+      <section className="data-panel">
+        <div className="section-heading section-heading--compact">
+          <div><h2>Minha senha</h2><p>Altere somente a senha do seu proprio usuario. Nenhuma senha e salva em tabelas comuns.</p></div>
+          <KeyRound size={20} />
+        </div>
+        <form className="panel-form account-password-form" onSubmit={changeOwnPassword}>
+          <div className="form-grid form-grid--two">
+            <label>Nova senha<span className="password-field"><input autoComplete="new-password" minLength={8} name="newPassword" required type={showAccountPassword ? "text" : "password"} /><button aria-label={showAccountPassword ? "Ocultar senha" : "Mostrar senha"} className="icon-button" onClick={() => setShowAccountPassword((current) => !current)} type="button">{showAccountPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
+            <label>Confirmar nova senha<input autoComplete="new-password" minLength={8} name="confirmPassword" required type={showAccountPassword ? "text" : "password"} /></label>
+          </div>
+          {accountPasswordError && <div className="inline-error">{accountPasswordError}</div>}
+          <div className="dialog-card__actions"><button className="primary-button" disabled={changingPassword} type="submit">{changingPassword ? "Atualizando..." : "Atualizar minha senha"}</button></div>
+        </form>
+      </section>
     </div>
   );
 }
@@ -2486,10 +2794,23 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
   const [userMessage, setUserMessage] = useState("");
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [actionUser, setActionUser] = useState<{ user: Profile; action: "reset_password" | "deactivate" | "reactivate" } | null>(null);
+  const [showInitialPassword, setShowInitialPassword] = useState(false);
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const temporaryPassword = String(form.get("temporaryPassword") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+    if (!editingUser) {
+      if (temporaryPassword.length < 8) {
+        setUserMessage("A senha de primeiro acesso deve ter pelo menos 8 caracteres.");
+        return;
+      }
+      if (temporaryPassword !== confirmPassword) {
+        setUserMessage("A confirmação da senha de primeiro acesso não confere.");
+        return;
+      }
+    }
     const user = { id: editingUser?.id ?? `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
     setSavingUser(true);
     setUserMessage("");
@@ -2498,13 +2819,14 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
         await manageCompanyUser({ action: "update", userId: user.id, companyId: company.id, fullName: user.fullName, role: user.role, active: user.active, modules: selectedModules });
         setUsers((current) => current.map((item) => item.id === user.id ? user : item));
       } else {
-        await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules });
+        await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules, temporaryPassword, requirePasswordChange: form.get("requirePasswordChange") === "on", sendInviteEmail: form.get("sendInviteEmail") === "on" });
         setUsers((current) => [...current, user]);
       }
       setOpen(false);
       setEditingUser(null);
+      onNotify(editingUser ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.", `${user.fullName} ficou vinculado somente a ${company.displayName}.`, "success");
     } catch {
-      setUserMessage("Nao foi possivel criar o usuario agora. Verifique as permissoes administrativas e tente novamente.");
+      setUserMessage("Não foi possível criar o usuário. Verifique os dados e tente novamente.");
     } finally {
       setSavingUser(false);
     }
@@ -2520,18 +2842,71 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
     setActionUser(null);
   }
 
+  const closeUserForm = () => {
+    setOpen(false);
+    setEditingUser(null);
+  };
+
+  const userForm = (
+    <form className="user-management-page" onSubmit={createUser}>
+      <div className="section-heading section-heading--compact">
+        <div>
+          <h2>{editingUser ? "Editar perfil e permissoes" : `Criar usuario em ${company.displayName}`}</h2>
+          <p>Dados de acesso, perfil e permissões ficam em tela dedicada para evitar campos cortados.</p>
+        </div>
+      </div>
+      <div className="form-section-title">Dados do usuário</div>
+      <div className="form-grid form-grid--three">
+        <label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label>
+        <label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label>
+        <label>Empresa<input readOnly value={company.displayName} /></label>
+        <label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+        <label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label>
+      </div>
+      {!editingUser && (
+        <>
+          <div className="form-section-title">Acesso inicial</div>
+          <div className="form-grid form-grid--three">
+            <label>Senha de primeiro acesso<span className="password-field"><input autoComplete="new-password" minLength={8} name="temporaryPassword" required type={showInitialPassword ? "text" : "password"} /><button aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"} className="icon-button" onClick={() => setShowInitialPassword((current) => !current)} type="button">{showInitialPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
+            <label>Confirmar senha<input autoComplete="new-password" minLength={8} name="confirmPassword" required type={showInitialPassword ? "text" : "password"} /></label>
+            <label className="toggle-row"><input defaultChecked name="requirePasswordChange" type="checkbox" /> Exigir troca no primeiro acesso</label>
+            <label className="toggle-row"><input defaultChecked name="sendInviteEmail" type="checkbox" /> Enviar instruções por e-mail</label>
+          </div>
+        </>
+      )}
+      <fieldset className="option-fieldset">
+        <legend>Permissoes por abas/modulos</legend>
+        <div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div>
+      </fieldset>
+      {userMessage && <div className="inline-error">{userMessage}</div>}
+      <div className="user-management-page__actions">
+        <button className="ghost-action" disabled={savingUser} onClick={closeUserForm} type="button">Cancelar</button>
+        <button className="ghost-action" disabled={savingUser} onClick={closeUserForm} type="button">Voltar para Administração da Clínica</button>
+        <button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Salvando..." : editingUser ? "Salvar usuario e permissoes" : "Salvar usuário"}</button>
+      </div>
+    </form>
+  );
+
+  if (open) {
+    return (
+      <ModulePage eyebrow="Administracao interna" title={editingUser ? "Editar usuário" : "Criar usuário"} description={`Usuários e permissões ficam vinculados somente a ${company.displayName}.`}>
+        {userForm}
+      </ModulePage>
+    );
+  }
+
   return (
-    <ModulePage eyebrow="Gestao administrativa" title="Super Admin" description="Gerencie empresas, usuarios, permissoes e saude operacional da plataforma.">
-      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
+    <ModulePage eyebrow="Administracao interna" title="Administração da Clínica" description="Controle usuarios, permissoes e configuracoes internas somente da sua clínica. A gestão comercial da plataforma fica em um sistema separado.">
+      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setUserMessage(""); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
       <section className="metrics-grid">
-        <MetricCard icon={<BuildingIcon />} label="Empresas" value="1" detail="Clinicas cadastradas" tone="primary" />
+        <MetricCard icon={<BuildingIcon />} label="Clínica atual" value="1" detail="Escopo administrativo limitado à empresa logada" tone="primary" />
         <MetricCard icon={<Users />} label="Usuarios" value={String(users.length)} detail="Vinculados a empresa selecionada" />
         <MetricCard icon={<ShieldCheck />} label="Ativos" value={String(users.filter((item) => item.active).length)} detail="Com acesso liberado" tone="success" />
         <MetricCard icon={<AlertTriangle />} label="Desativados" value={String(users.filter((item) => !item.active).length)} detail="Sem acesso ao sistema" />
       </section>
+      <div className="inline-info">Dono da Clínica administra apenas {company.displayName}. A gestão comercial da plataforma será tratada em sistema externo.</div>
       {userMessage && <div className="inline-info">{userMessage}</div>}
-      <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
-      {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large user-management-dialog" onSubmit={createUser}><div><h2>{editingUser ? "Editar perfil e permissoes" : `Criar usuario em ${company.displayName}`}</h2><p>Dados, perfil, status e modulos ficam organizados em uma unica tela ampla.</p></div><div className="form-grid form-grid--two"><label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label><label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label><label>Empresa<input readOnly value={company.displayName} /></label><label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label><label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label></div><fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset>{userMessage && <div className="inline-error">{userMessage}</div>}<div className="dialog-card__actions"><button className="ghost-action" disabled={savingUser} onClick={() => { setOpen(false); setEditingUser(null); }} type="button">Cancelar</button><button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Salvando..." : "Salvar usuario e permissoes"}</button></div></form></div>}
+      <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setUserMessage(""); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
       {actionUser && <div className="dialog-backdrop"><section className="dialog-card"><div><h2>{actionUser.action === "reset_password" ? "Resetar senha" : actionUser.action === "deactivate" ? "Desativar usuario" : "Reativar usuario"}</h2><p>{actionUser.action === "reset_password" ? "Um link seguro de redefinicao sera enviado ao e-mail do usuario." : actionUser.action === "deactivate" ? "O acesso sera bloqueado, mas historicos, BAs e auditoria permanecerao preservados." : "O usuario voltara a acessar os modulos permitidos."}</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setActionUser(null)} type="button">Cancelar</button><button className={actionUser.action === "deactivate" ? "danger-button" : "primary-button"} onClick={confirmUserAction} type="button">Confirmar</button></div></section></div>}
     </ModulePage>
   );
@@ -2657,6 +3032,63 @@ function paymentStatusLabel(status: FinancialTransaction["status"]) {
   return labels[status];
 }
 
+function emptyAutoclaveItem(companyId: string, autoclaveRecordId: string): AutoclaveRecordItem {
+  return {
+    id: `auto-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    companyId,
+    autoclaveRecordId,
+    stockProductId: undefined,
+    stockProductCode: undefined,
+    materialName: "",
+    category: "",
+    quantity: 1,
+    unit: "un",
+    notes: ""
+  };
+}
+
+function indicatorSelect(name: string, label: string, current?: string, allowWaiting = false) {
+  return (
+    <label>{label}
+      <select defaultValue={current ?? "approved"} name={name}>
+        <option value="approved">Aprovado</option>
+        <option value="failed">Reprovado</option>
+        <option value="not_used">Não utilizado</option>
+        {allowWaiting && <option value="waiting">Aguardando resultado</option>}
+      </select>
+    </label>
+  );
+}
+
+function autoclaveIndicatorLabel(value: AutoclaveRecord["biologicalIndicatorResult"]) {
+  const labels: Record<AutoclaveRecord["biologicalIndicatorResult"], string> = {
+    approved: "Aprovado",
+    failed: "Reprovado",
+    not_used: "Não utilizado",
+    waiting: "Aguardando resultado"
+  };
+  return labels[value];
+}
+
+function autoclaveFinalLabel(value: AutoclaveRecord["finalResult"]) {
+  const labels: Record<AutoclaveRecord["finalResult"], string> = {
+    approved: "Aprovado",
+    failed: "Reprovado",
+    reprocess: "Reprocessar"
+  };
+  return labels[value];
+}
+
+function autoclaveStatusLabel(value: AutoclaveRecord["status"]) {
+  const labels: Record<AutoclaveRecord["status"], string> = {
+    registered: "Registrado",
+    approved: "Aprovado",
+    failed: "Reprovado",
+    reprocess: "Reprocessar"
+  };
+  return labels[value];
+}
+
 function generateUniqueRecordNumber(patients: Patient[]) {
   const year = new Date().getFullYear();
   const current = patients.filter((patient) => patient.uniqueRecordNumber.includes(`PU-${year}`)).length + 1;
@@ -2713,6 +3145,15 @@ function colorWithAlpha(hexColor: string, alpha: number) {
   const green = parseInt(normalized.slice(2, 4), 16);
   const blue = parseInt(normalized.slice(4, 6), 16);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function normalizeDigits(value: string) {
@@ -2783,11 +3224,27 @@ function exportAttendanceBa(patient: Patient, company: Company, attendance: Atte
       documentHeader(company, `Boletim de Atendimento ${attendance.baNumber}`),
       `<h2>Paciente</h2><p>${patient.fullName}<br>ProntuárioÚnico: ${patient.uniqueRecordNumber}<br>CPF: ${patient.cpf}</p>`,
       `<h2>Atendimento</h2><p>Data: ${formatDateTime(attendance.scheduledAt)}<br>Queixa: ${attendance.complaint}<br>Procedimento: ${attendance.procedure}<br>Conduta: ${attendance.conduct || "Nao informada"}</p>`,
-      `<h2>Anamnese</h2><pre>${JSON.stringify(relatedAnamnesis?.formData ?? {}, null, 2)}</pre>`,
+      `<h2>Anamnese</h2>${formatAnamnesisForPrint(relatedAnamnesis)}`,
       `<h2>Sensibilidade / Pe 3D</h2><ul>${relatedFootMaps.map((entry) => `<li>${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus} · ${entry.notes}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
       `<h2>Imagens da ferida</h2>${renderImagesForPrint(relatedImages)}`
     ].join(""),
-    company.primaryColor
+    company
+  );
+}
+
+function exportAutoclaveRecord(record: AutoclaveRecord, company: Company) {
+  const materialRows = record.items.map((item) => `<tr><td>${item.materialName}</td><td>${item.category || "-"}</td><td>${item.quantity}</td><td>${item.unit}</td><td>${item.notes || "-"}</td></tr>`).join("");
+  openPrintDocument(
+    `Autoclave ${record.cycleNumber}`,
+    [
+      documentHeader(company, "Ficha de Registro de Resultado de Autoclave"),
+      `<h2>Identificacao da Autoclave</h2><p>Ciclo: ${record.cycleNumber}<br>Lote: ${record.sterilizationLot}<br>Data: ${formatDate(record.cycleDate)} · ${record.startTime} ate ${record.endTime}<br>Operador: ${record.responsibleName}<br>Equipamento: ${record.autoclaveName} ${record.autoclaveCode ? `(${record.autoclaveCode})` : ""}</p>`,
+      `<h2>Parametros</h2><p>Temperatura: ${record.temperature || "-"}<br>Pressao: ${record.pressure || "-"}<br>Tempo de exposicao: ${record.exposureTime || "-"}<br>Tipo de ciclo: ${record.cycleType}</p>`,
+      `<h2>Resultado</h2><p>Indicador quimico: ${autoclaveIndicatorLabel(record.chemicalIndicatorResult)}<br>Indicador biologico: ${autoclaveIndicatorLabel(record.biologicalIndicatorResult)}<br>Integrador: ${autoclaveIndicatorLabel(record.integratorResult)}<br>Bowie-Dick: ${autoclaveIndicatorLabel(record.bowieDickResult)}<br>Resultado final: ${autoclaveFinalLabel(record.finalResult)}</p>`,
+      `<h2>Materiais esterilizados</h2><table><thead><tr><th>Material</th><th>Categoria</th><th>Qtd.</th><th>Unidade</th><th>Obs.</th></tr></thead><tbody>${materialRows}</tbody></table>`,
+      `<h2>Controle</h2><p>Observacoes: ${record.notes || "-"}<br>Intercorrencias: ${record.incidents || "-"}<br>Conduta: ${record.correctiveAction || "-"}</p><p style="margin-top:42px">Assinatura/responsavel: _______________________________________</p>`
+    ].join(""),
+    company
   );
 }
 
@@ -2806,21 +3263,107 @@ function exportMedicalRecord(
       `<h2>Dados do paciente</h2><p>${patient.fullName}<br>CPF: ${patient.cpf}<br>Nascimento: ${formatDate(patient.birthDate)}<br>Telefone/WhatsApp: ${patient.whatsapp}</p>`,
       `<h2>Dados clinicos</h2><p>Queixa principal: ${patient.clinical.chiefComplaint}<br>Historico: ${patient.clinical.diseaseHistory}<br>Medicamentos: ${patient.clinical.medications || "Nao informado"}</p>`,
       `<h2>BAs</h2><ul>${attendances.map((attendance) => `<li>${attendance.baNumber} — ${formatDateTime(attendance.scheduledAt)} — ${attendance.procedure}</li>`).join("")}</ul>`,
-      `<h2>Anamneses</h2>${anamneses.map((record) => `<h3>${record.baNumber}</h3><pre>${JSON.stringify(record.formData, null, 2)}</pre>`).join("") || "<p>Sem anamneses registradas.</p>"}`,
+      `<h2>Anamneses</h2>${anamneses.map((record) => `<h3>${record.baNumber}</h3>${formatAnamnesisForPrint(record)}`).join("") || "<p>Sem anamneses registradas.</p>"}`,
       `<h2>Sensibilidade / Pe 3D</h2><ul>${footMaps.map((entry) => `<li>${entry.baNumber} · ${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
       `<h2>Evolucao por imagens</h2>${renderImagesForPrint(images)}`,
       `<p><strong>Data da emissao:</strong> ${new Date().toLocaleString("pt-BR")}</p>`
     ].join(""),
-    company.primaryColor
+    company
   );
+}
+
+function exportDashboardReport(
+  company: Company,
+  periodLabel: string,
+  range: { start: Date; end: Date },
+  data: {
+    localPatients: Patient[];
+    periodPatients: Patient[];
+    localAttendances: Attendance[];
+    localAppointments: ClinicalAppointment[];
+    localFinancial: FinancialTransaction[];
+    stock: StockProduct[];
+    revenue: number;
+    expenses: number;
+    recurringPatientIds: Set<string>;
+  }
+) {
+  const lowStock = data.stock.filter((product) => product.companyId === company.id && product.minimumQuantity > 0 && product.currentQuantity <= product.minimumQuantity);
+  const pending = data.localFinancial.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.amount, 0);
+  openPrintDocument(
+    `Dashboard ${periodLabel}`,
+    [
+      documentHeader(company, `Relatório do Dashboard · ${periodLabel}`),
+      `<h2>Período</h2><p>${formatDate(range.start.toISOString())} até ${formatDate(range.end.toISOString())}</p>`,
+      `<h2>Resumo operacional</h2><table><tbody><tr><th>Pacientes cadastrados no período</th><td>${data.periodPatients.length}</td></tr><tr><th>Atendimentos</th><td>${data.localAttendances.length}</td></tr><tr><th>Atendimentos finalizados</th><td>${data.localAttendances.filter((item) => item.status === "completed").length}</td></tr><tr><th>Agendamentos</th><td>${data.localAppointments.length}</td></tr><tr><th>Faltas</th><td>${data.localAppointments.filter((item) => item.status === "no_show").length}</td></tr><tr><th>Reincidência</th><td>${data.recurringPatientIds.size}</td></tr></tbody></table>`,
+      `<h2>Resumo financeiro</h2><table><tbody><tr><th>Receita recebida</th><td>${currency.format(data.revenue)}</td></tr><tr><th>Despesas</th><td>${currency.format(data.expenses)}</td></tr><tr><th>Saldo</th><td>${currency.format(data.revenue - data.expenses)}</td></tr><tr><th>Total pendente</th><td>${currency.format(pending)}</td></tr></tbody></table>`,
+      `<h2>Estoque baixo</h2>${lowStock.length ? `<ul>${lowStock.map((product) => `<li>${product.name}: ${product.currentQuantity} ${product.unit} / mínimo ${product.minimumQuantity} ${product.unit}</li>`).join("")}</ul>` : "<p>Nenhum produto em alerta no período.</p>"}`,
+      `<p><strong>Data da emissão:</strong> ${new Date().toLocaleString("pt-BR")}</p>`
+    ].join(""),
+    company
+  );
+}
+
+function formatAnamnesisForPrint(record?: AnamnesisRecord) {
+  if (!record) return "<p>Sem anamnese registrada para este atendimento.</p>";
+  const data = record.formData;
+  const sections: Array<[string, Array<[string, unknown]>]> = [
+    ["Identificação", [["Paciente", data.identification_name], ["Data da avaliação", data.identification_date], ["Idade", data.identification_age], ["Profissão", data.identification_profession]]],
+    ["Queixa principal", [["Queixa", data.main_complaint || data.chief_complaint]]],
+    ["Histórico de saúde", [["Condições relatadas", data.health_history], ["Medicamentos em uso", data.medications], ["Alergias", data.allergies]]],
+    ["Exame clínico", [["Exame de pele", data.skin_exam], ["Edema", data.edema], ["Sensibilidade vibratória", data.vibratory_sensitivity], ["Sensibilidade térmica", data.thermal_sensitivity], ["Glicemia", data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
+    ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
+  ];
+  const rendered = sections
+    .map(([title, fields]) => {
+      const items = fields
+        .map(([label, value]) => [label, humanizeAnamnesisValue(value)] as const)
+        .filter(([, value]) => value);
+      if (!items.length) return "";
+      return `<section class="clinical-section"><h3>${title}</h3><dl>${items.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl></section>`;
+    })
+    .filter(Boolean)
+    .join("");
+  return rendered || "<p>Anamnese registrada sem campos clínicos preenchidos.</p>";
+}
+
+function humanizeAnamnesisValue(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (Array.isArray(value)) return value.map(humanizeAnamnesisValue).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    if ("name" in value && typeof value.name === "string") return fixClinicalText(value.name);
+    return Object.entries(value).map(([key, entry]) => `${anamnesisLabel(key)}: ${humanizeAnamnesisValue(entry)}`).join("; ");
+  }
+  return fixClinicalText(String(value));
+}
+
+function anamnesisLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function fixClinicalText(value: string) {
+  return value
+    .replace(/\bhalux\b/gi, "hálux")
+    .replace(/\bHipertensao\b/g, "Hipertensão")
+    .replace(/\bhipertensao\b/g, "hipertensão")
+    .replace(/\bhigienizacao\b/gi, "higienização")
+    .replace(/\bNao\b/g, "Não")
+    .replace(/\bnao\b/g, "não")
+    .replace(/\bevolucao\b/gi, "evolução")
+    .replace(/\bavaliacao\b/gi, "avaliação")
+    .replace(/\bclinico\b/gi, "clínico")
+    .replace(/\bregiao\b/gi, "região")
+    .replace(/\bpe\b/gi, "pé");
 }
 
 function documentHeader(company: Company, title: string) {
   return `
     <header>
       ${company.logoUrl ? `<img src="${company.logoUrl}" alt="" />` : ""}
-      <h1>${title}</h1>
-      <p>${company.displayName}<br>${company.contactPhone} · ${company.contactEmail}<br>${company.document}</p>
+      <div>
+        <h1>${title}</h1>
+        <p>${company.displayName}<br>${company.contactPhone} · ${company.contactEmail}<br>${company.document}<br>Data de emissão: ${new Date().toLocaleString("pt-BR")}</p>
+      </div>
     </header>
   `;
 }
@@ -2851,21 +3394,31 @@ function renderImagesForPrint(images: AttendanceImage[]) {
   `;
 }
 
-function openPrintDocument(title: string, body: string, primaryColor: string) {
+function openPrintDocument(title: string, body: string, company: Company) {
   const printWindow = window.open("", "_blank", "width=980,height=720");
   if (!printWindow) return;
+  const primaryColor = company.primaryColor;
+  const logoUrl = company.logoUrl || "";
   printWindow.document.write(`
     <!doctype html>
     <html lang="pt-BR">
       <head>
         <title>${title}</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #172033; margin: 32px; line-height: 1.45; }
-          header { border-bottom: 3px solid ${primaryColor}; margin-bottom: 24px; padding-bottom: 16px; }
-          header img { max-height: 64px; display: block; margin-bottom: 12px; }
+          body { font-family: Arial, sans-serif; color: #172033; margin: 32px; line-height: 1.45; position: relative; }
+          body::before { content: ""; position: fixed; inset: 18% 12%; z-index: -1; opacity: ${logoUrl ? "0.055" : "0"}; background: url("${logoUrl}") center / contain no-repeat; pointer-events: none; }
+          header { border-bottom: 3px solid ${primaryColor}; margin-bottom: 24px; padding-bottom: 16px; display: grid; grid-template-columns: ${logoUrl ? "82px 1fr" : "1fr"}; gap: 14px; align-items: center; }
+          header img { max-height: 70px; max-width: 78px; display: block; object-fit: contain; }
           h1, h2, h3 { margin-bottom: 8px; }
           h2 { border-bottom: 1px solid #dce5ea; padding-bottom: 4px; }
-          pre { white-space: pre-wrap; background: #f8fafc; padding: 12px; border: 1px solid #dce5ea; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; }
+          th, td { border: 1px solid #dce5ea; padding: 8px; text-align: left; vertical-align: top; }
+          .clinical-section { break-inside: avoid; margin-bottom: 16px; }
+          .clinical-section dl { display: grid; gap: 8px; margin: 0; }
+          .clinical-section div { display: grid; grid-template-columns: 190px 1fr; gap: 10px; border-bottom: 1px solid #eef2f5; padding-bottom: 6px; }
+          .clinical-section dt { color: #667085; font-weight: 700; }
+          .clinical-section dd { margin: 0; }
+          footer { border-top: 1px solid #dce5ea; color: #667085; font-size: 12px; margin-top: 30px; padding-top: 10px; }
           .image-print-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
           .image-print-grid article { border: 1px solid #dce5ea; padding: 12px; break-inside: avoid; }
           .image-print-grid img, .image-placeholder { width: 100%; min-height: 160px; object-fit: cover; background: #f8fafc; display: grid; place-items: center; color: #667085; }
@@ -2875,6 +3428,7 @@ function openPrintDocument(title: string, body: string, primaryColor: string) {
       <body>
         <button onclick="window.print()">Imprimir / salvar PDF</button>
         ${body}
+        <footer>Documento gerado pelo ${company.displayName} em ${new Date().toLocaleString("pt-BR")}.</footer>
       </body>
     </html>
   `);
