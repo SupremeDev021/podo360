@@ -3,6 +3,7 @@ import type {
   AnamnesisRecord,
   Attendance,
   AttendanceImage,
+  AutoclaveRecord,
   BodyMapEntry,
   ClinicalAppointment,
   Company,
@@ -64,10 +65,10 @@ export const demoPartnerCompany: Company = {
 };
 
 export const demoProfiles: Profile[] = [
-  { id: "user-1", companyId: demoCompany.id, fullName: "Dra. Marina Costa", email: "marina@podo360.app", role: "company_admin", active: true },
+  { id: "user-1", companyId: demoCompany.id, fullName: "Dra. Marina Costa", email: "marina@podo360.app", role: "super_admin", active: true },
   { id: "user-2", companyId: demoCompany.id, fullName: "Renata Lima", email: "recepcao@podo360.app", role: "reception", active: true },
   { id: "user-3", companyId: demoCompany.id, fullName: "Carlos Nunes", email: "financeiro@podo360.app", role: "financial", active: true },
-  { id: "user-4", companyId: null, fullName: "Admin Podo360", email: "admin@podo360.app", role: "super_admin", active: true }
+  { id: "user-4", companyId: demoPartnerCompany.id, fullName: "Responsavel Integrada", email: "admin@integrada.example", role: "super_admin", active: true }
 ];
 
 export const demoPatients: Patient[] = [
@@ -517,6 +518,42 @@ export const demoStock: StockProduct[] = [
   { id: "stock-1", companyId: demoCompany.id, name: "Gaze esteril", category: "Curativo", internalCode: "CUR-001", currentQuantity: 18, minimumQuantity: 25, unit: "pacote", costValue: 8.5, saleValue: 12, supplier: "MedSul", expiresAt: "2027-02-20" },
   { id: "stock-2", companyId: demoCompany.id, name: "Soro fisiologico 500ml", category: "Higienizacao", internalCode: "HIG-010", currentQuantity: 8, minimumQuantity: 10, unit: "un", costValue: 6, saleValue: 9, supplier: "Saude Mais", expiresAt: "2026-09-10" },
   { id: "stock-3", companyId: demoCompany.id, name: "Lamina descartavel", category: "Instrumental", internalCode: "INS-004", currentQuantity: 60, minimumQuantity: 20, unit: "un", costValue: 1.2, saleValue: 3, supplier: "Podotech", expiresAt: "2028-01-01" }
+];
+
+export const demoAutoclaveRecords: AutoclaveRecord[] = [
+  {
+    id: "auto-1",
+    companyId: demoCompany.id,
+    cycleDate: "2026-06-14",
+    startTime: "08:10",
+    endTime: "09:05",
+    cycleNumber: "CIC-014",
+    sterilizationLot: "LOT-2026-0614-A",
+    responsibleUserId: "user-1",
+    responsibleName: "Dra. Marina Costa",
+    unitName: demoCompany.displayName,
+    autoclaveName: "Autoclave Cristofoli Vitale",
+    autoclaveCode: "AUTO-01",
+    temperature: "134°C",
+    pressure: "2,1 bar",
+    exposureTime: "30 min",
+    cycleType: "instruments",
+    chemicalIndicatorResult: "approved",
+    biologicalIndicatorResult: "waiting",
+    integratorResult: "approved",
+    bowieDickResult: "not_used",
+    finalResult: "approved",
+    status: "approved",
+    notes: "Indicador químico com viragem adequada.",
+    incidents: "",
+    correctiveAction: "",
+    createdBy: "user-1",
+    createdAt: "2026-06-14T09:10:00",
+    items: [
+      { id: "auto-item-1", companyId: demoCompany.id, autoclaveRecordId: "auto-1", materialName: "Alicates de corte frontal", category: "Instrumentais", quantity: 4, unit: "un", notes: "Embalados individualmente" },
+      { id: "auto-item-2", companyId: demoCompany.id, autoclaveRecordId: "auto-1", materialName: "Cabos de bisturi", category: "Instrumentais", quantity: 3, unit: "un", notes: "Grau cirúrgico intacto" }
+    ]
+  }
 ];
 
 export const demoBodyMaps: BodyMapEntry[] = [

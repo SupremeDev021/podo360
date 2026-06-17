@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -434,6 +434,73 @@ export async function createFinancialTransaction(transaction: FinancialTransacti
   }
 
   if (error) throw error;
+  return data;
+}
+
+function autoclavePayload(record: AutoclaveRecord) {
+  return {
+    company_id: record.companyId,
+    cycle_date: record.cycleDate,
+    start_time: record.startTime,
+    end_time: record.endTime,
+    cycle_number: record.cycleNumber,
+    sterilization_lot: record.sterilizationLot,
+    responsible_user_id: record.responsibleUserId || null,
+    responsible_name: record.responsibleName,
+    autoclave_name: record.autoclaveName,
+    autoclave_code: record.autoclaveCode,
+    temperature: record.temperature,
+    pressure: record.pressure,
+    exposure_time: record.exposureTime,
+    cycle_type: record.cycleType,
+    chemical_indicator_result: record.chemicalIndicatorResult,
+    biological_indicator_result: record.biologicalIndicatorResult,
+    integrator_result: record.integratorResult,
+    bowie_dick_result: record.bowieDickResult,
+    final_result: record.finalResult,
+    status: record.status,
+    notes: record.notes || null,
+    incidents: record.incidents || null,
+    corrective_action: record.correctiveAction || null,
+    attachment_url: record.attachmentUrl || null,
+    attachment_path: record.attachmentPath || null,
+    created_by: record.createdBy || null,
+    updated_by: record.updatedBy || null,
+    deleted_at: record.deletedAt || null
+  };
+}
+
+async function replaceAutoclaveItems(record: AutoclaveRecord) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { error: deleteError } = await supabase.from("autoclave_record_items").delete().eq("company_id", record.companyId).eq("autoclave_record_id", record.id);
+  if (deleteError) throw deleteError;
+  if (!record.items.length) return [];
+  const { data, error } = await supabase.from("autoclave_record_items").insert(record.items.map((item) => ({
+    company_id: record.companyId,
+    autoclave_record_id: record.id,
+    material_name: item.materialName,
+    category: item.category,
+    quantity: item.quantity,
+    unit: item.unit,
+    notes: item.notes || null
+  }))).select();
+  if (error) throw error;
+  return data;
+}
+
+export async function createAutoclaveRecord(record: AutoclaveRecord) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.from("autoclave_records").insert({ id: record.id, ...autoclavePayload(record) }).select().single();
+  if (error) throw error;
+  await replaceAutoclaveItems(record);
+  return data;
+}
+
+export async function updateAutoclaveRecord(record: AutoclaveRecord) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.from("autoclave_records").update(autoclavePayload(record)).eq("id", record.id).eq("company_id", record.companyId).select().single();
+  if (error) throw error;
+  await replaceAutoclaveItems(record);
   return data;
 }
 
