@@ -2243,6 +2243,7 @@ textarea {
   border-radius: 8px;
   padding: 10px;
   background: #fff;
+  flex-wrap: wrap;
 }
 
 .compact-list--clinical li span {
@@ -2503,6 +2504,26 @@ textarea {
   background: var(--color-surface-strong);
   color: var(--color-primary);
   font-weight: 800;
+}
+
+.compact-list--clinical li small {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-muted);
+}
+
+.compact-list__actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.compact-list__actions .ghost-action,
+.compact-list__actions .danger-link {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 0.76rem;
 }
 
 .agenda-filters input,

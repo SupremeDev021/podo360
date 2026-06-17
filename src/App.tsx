@@ -62,7 +62,7 @@ import { podologyProductCatalog, podologyProductCategories } from "./data/produc
 import { supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -286,16 +286,34 @@ export function App() {
     }
   }
 
-  function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
-    setFootSensitivityMaps((current) => [
-      {
-        ...entry,
-        id: `foot-map-${current.length + 1}`,
-        createdAt: new Date().toISOString()
-      },
-      ...current
-    ]);
-    notify("Ponto salvo", "Sensibilidade do pe 3D registrada neste BA.", "success");
+  async function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) {
+    const now = new Date().toISOString();
+    if (entry.id) {
+      const existing = footSensitivityMaps.find((item) => item.id === entry.id);
+      const updated: FootSensitivityMap = { ...entry, id: entry.id, createdAt: existing?.createdAt ?? now, updatedAt: now };
+      await updateFootSensitivityMap(updated);
+      setFootSensitivityMaps((current) => current.map((item) => item.id === updated.id ? updated : item));
+      notify("Marcação atualizada", "Sensibilidade do pé 3D atualizada neste BA.", "success");
+      return;
+    }
+
+    const created: FootSensitivityMap = {
+      ...entry,
+      id: `foot-map-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now
+    };
+    await saveFootSensitivityMap(created);
+    setFootSensitivityMaps((current) => [created, ...current]);
+    notify("Marcação salva", "Sensibilidade do pé 3D registrada neste BA.", "success");
+  }
+
+  async function handleRemoveFootSensitivity(entryId: string) {
+    const entry = footSensitivityMaps.find((item) => item.id === entryId);
+    if (!entry) return;
+    await deleteFootSensitivityMap(entryId, entry.companyId);
+    setFootSensitivityMaps((current) => current.filter((item) => item.id !== entryId));
+    notify("Marcação removida", "A marcação foi removida da visualização deste atendimento.", "success");
   }
 
   async function handleSaveAnamnesis(record: AnamnesisRecord) {
@@ -724,6 +742,7 @@ export function App() {
           onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
           onSaveFootSensitivity={handleSaveFootSensitivity}
+          onRemoveFootSensitivity={handleRemoveFootSensitivity}
           onSaveAttendanceImage={handleSaveAttendanceImage}
           onSaveComparativeNote={handleSaveComparativeNote}
           company={company}
@@ -1301,6 +1320,7 @@ function PatientProfile({
   onFinishAttendance,
   onSaveAnamnesis,
   onSaveFootSensitivity,
+  onRemoveFootSensitivity,
   onSaveAttendanceImage,
   onSaveComparativeNote,
   company,
@@ -1324,7 +1344,8 @@ function PatientProfile({
   onCreateAttendance: (patient: Patient) => void;
   onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
-  onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
+  onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) => Promise<void> | void;
+  onRemoveFootSensitivity: (entryId: string) => Promise<void> | void;
   onSaveAttendanceImage: (image: Omit<AttendanceImage, "id" | "createdAt">) => void;
   onSaveComparativeNote: (imageIds: string[], note: string) => Promise<void> | void;
   company: Company;
@@ -1372,6 +1393,7 @@ function PatientProfile({
         <FootSensitivityMap3D
           entries={footSensitivityMaps}
           onSave={onSaveFootSensitivity}
+          onRemove={onRemoveFootSensitivity}
           patientId={patient.id}
           companyId={company.id}
           professionalId={professionalId}

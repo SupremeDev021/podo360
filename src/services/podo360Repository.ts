@@ -208,6 +208,42 @@ export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id
   return data;
 }
 
+export async function updateFootSensitivityMap(entry: FootSensitivityMap) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("foot_sensitivity_maps")
+    .update({
+      foot_side: entry.footSide,
+      region_key: entry.regionKey,
+      point_key: entry.pointKey,
+      coordinates: entry.coordinates,
+      sensitivity_status: entry.sensitivityStatus,
+      notes: entry.notes,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", entry.id)
+    .eq("company_id", entry.companyId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFootSensitivityMap(entryId: string, companyId: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { error } = await supabase
+    .from("foot_sensitivity_maps")
+    .delete()
+    .eq("id", entryId)
+    .eq("company_id", companyId);
+
+  if (error) throw error;
+  return true;
+}
+
 export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
   if (!isSupabaseConfigured || !supabase) return null;
 

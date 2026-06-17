@@ -1,6 +1,6 @@
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
-import { RefreshCw, Rotate3D, Save } from "lucide-react";
+import { Pencil, RefreshCw, Rotate3D, Save, Trash2 } from "lucide-react";
 import { Component, Suspense, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
@@ -22,7 +22,8 @@ type RaycastGroup = {
 
 type FootSensitivityMap3DProps = {
   entries: FootSensitivityMap[];
-  onSave: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
+  onSave: (entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) => Promise<void> | void;
+  onRemove?: (entryId: string) => Promise<void> | void;
   patientId: string;
   companyId: string;
   professionalId: string;
@@ -122,6 +123,7 @@ function FallbackFootMesh() {
 export function FootSensitivityMap3D({
   entries,
   onSave,
+  onRemove,
   patientId,
   companyId,
   professionalId,
@@ -137,6 +139,10 @@ export function FootSensitivityMap3D({
   const [selectedCoordinates, setSelectedCoordinates] = useState<FootCoordinate | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [sensitivityStatus, setSensitivityStatus] = useState<SensitivityStatus>("present");
+  const [notes, setNotes] = useState("");
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const sideRegions = useMemo(() => footRegionDefinitions.map((region) => withFootSide(region, footSide)), [footSide]);
   const selected = useMemo(() => sideRegions.find((region) => region.baseKey === selectedKey) ?? sideRegions[0], [selectedKey, sideRegions]);
   const hovered = useMemo(() => sideRegions.find((region) => region.baseKey === hoveredKey) ?? null, [hoveredKey, sideRegions]);
@@ -144,29 +150,34 @@ export function FootSensitivityMap3D({
   const currentBaEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId === attendanceId), [attendanceId, entriesForSide]);
   const historicalEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId !== attendanceId), [attendanceId, entriesForSide]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
     const [x, y, z] = selectedCoordinates ?? selected.position;
-
-    onSave({
-      companyId,
-      patientId,
-      uniqueMedicalRecordId,
-      attendanceId,
-      uniqueRecordNumber,
-      baNumber,
-      footSide,
-      regionKey: selected.regionKey,
-      pointKey: selected.pointKey,
-      coordinates: { x, y, z },
-      sensitivityStatus,
-      notes: String(data.get("notes") || ""),
-      createdBy: professionalId,
-      updatedAt: new Date().toISOString()
-    });
-
-    event.currentTarget.reset();
+    setSaving(true);
+    try {
+      await onSave({
+        id: editingEntryId ?? undefined,
+        companyId,
+        patientId,
+        uniqueMedicalRecordId,
+        attendanceId,
+        uniqueRecordNumber,
+        baNumber,
+        footSide,
+        regionKey: selected.regionKey,
+        pointKey: selected.pointKey,
+        coordinates: { x, y, z },
+        sensitivityStatus,
+        notes,
+        createdBy: professionalId,
+        updatedAt: new Date().toISOString()
+      });
+      setEditingEntryId(null);
+      setSelectedCoordinates(null);
+      setNotes("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetCamera() {
@@ -191,11 +202,9 @@ export function FootSensitivityMap3D({
 
   function handleModelPointerMove(event: ThreeEvent<PointerEvent>) {
     event.stopPropagation();
-    const localPoint = readLocalPoint(event);
-    if (!localPoint) return;
     const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
-    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    hoverRegion(region);
+    if (meshMappedRegion) hoverRegion(meshMappedRegion);
+    else setHoveredKey(null);
   }
 
   function handleModelPointerDown(event: ThreeEvent<PointerEvent>) {
@@ -203,14 +212,40 @@ export function FootSensitivityMap3D({
     const localPoint = readLocalPoint(event);
     if (!localPoint) return;
     const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
-    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    selectRegion(region, localPoint);
+    if (meshMappedRegion) selectRegion(meshMappedRegion, localPoint);
   }
 
   function handleSideChange(side: FootSide) {
     setFootSide(side);
+    setEditingEntryId(null);
     setSelectedCoordinates(null);
     setHoveredKey(null);
+    setNotes("");
+  }
+
+  function editEntry(entry: FootSensitivityMap) {
+    const baseKey = getBaseKeyFromEntry(entry);
+    setFootSide(entry.footSide);
+    setSelectedKey(baseKey);
+    setSelectedCoordinates([entry.coordinates.x, entry.coordinates.y, entry.coordinates.z ?? 0]);
+    setSensitivityStatus(entry.sensitivityStatus);
+    setNotes(entry.notes || "");
+    setEditingEntryId(entry.id);
+  }
+
+  async function removeEntry(entryId: string) {
+    if (!onRemove) return;
+    setRemovingId(entryId);
+    try {
+      await onRemove(entryId);
+      if (editingEntryId === entryId) {
+        setEditingEntryId(null);
+        setNotes("");
+        setSelectedCoordinates(null);
+      }
+    } finally {
+      setRemovingId(null);
+    }
   }
 
   return (
@@ -276,9 +311,13 @@ export function FootSensitivityMap3D({
       <form className="panel-form" onSubmit={handleSubmit}>
         <div className="section-heading section-heading--compact">
           <div>
-            <h2>Sensibilidade Monofilamento</h2>
+          <h2>Sensibilidade Monofilamento</h2>
             <p>{footSide === "right" ? "Pé direito" : "Pé esquerdo"} · {selected.clinicalGroup} · {selected.displayLabel}</p>
           </div>
+        </div>
+
+        <div className="inline-info">
+          Use o campo Região do pé para uma seleção clínica precisa. O clique no 3D funciona apenas quando a região do modelo está nomeada com segurança.
         </div>
 
         <div className="foot-status-legend">
@@ -309,12 +348,12 @@ export function FootSensitivityMap3D({
 
         <label>
           Observacoes
-          <textarea name="notes" placeholder="Observacoes sobre monofilamento, dor, parestesia ou resposta do paciente" />
+          <textarea name="notes" onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes sobre monofilamento, dor, parestesia ou resposta do paciente" value={notes} />
         </label>
 
-        <button className="primary-button" type="submit">
+        <button className="primary-button" disabled={saving} type="submit">
           <Save size={18} />
-          Salvar marcação
+          {saving ? "Salvando..." : editingEntryId ? "Salvar alteração" : "Salvar marcação"}
         </button>
 
         <div className="data-panel data-panel--flat">
@@ -322,8 +361,15 @@ export function FootSensitivityMap3D({
           <ul className="compact-list compact-list--clinical">
             {currentBaEntries.length ? currentBaEntries.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.baNumber} · {regionLabel(entry.regionKey)}</strong>
+                <div>
+                  <strong>{entry.baNumber} · {regionLabel(entry.regionKey)}</strong>
+                  {entry.notes && <small>{entry.notes}</small>}
+                </div>
                 <span>{sensitivityStatusLabel(entry.sensitivityStatus)}</span>
+                <div className="compact-list__actions">
+                  <button className="ghost-action" onClick={() => editEntry(entry)} type="button"><Pencil size={14} /> Editar</button>
+                  {onRemove && <button className="danger-link" disabled={removingId === entry.id} onClick={() => removeEntry(entry.id)} type="button"><Trash2 size={14} /> {removingId === entry.id ? "Removendo..." : "Remover"}</button>}
+                </div>
               </li>
             )) : <li>Nenhum ponto salvo neste BA.</li>}
           </ul>
@@ -434,25 +480,15 @@ function configureInvisibleZoneMaterial(material: unknown) {
   });
 }
 
-function getFootRegionFromPoint(point: FootCoordinate, footSide: FootSide) {
-  const [x, y, z] = point;
-  const nearest = footRegionDefinitions.reduce<{ region: SideAwareFootRegion; score: number }>((best, definition) => {
-    const region = withFootSide(definition, footSide);
-    const [rx, ry, rz] = region.position;
-    const dx = (x - rx) / Math.max(region.zoneScale[0], 0.05);
-    const dy = (y - ry) / Math.max(region.zoneScale[1], 0.05);
-    const dz = (z - rz) / Math.max(region.zoneScale[2], 0.05);
-    const score = (dx * dx) + (dy * dy) + (dz * dz);
-    return score < best.score ? { region, score } : best;
-  }, { region: withFootSide(footRegionDefinitions[0], footSide), score: Number.POSITIVE_INFINITY });
-
-  return nearest.region;
-}
-
 function matchesFootRegion(entry: FootSensitivityMap, region: SideAwareFootRegion) {
   const normalizedPoint = normalizeFootKey(entry.pointKey || entry.regionKey, entry.footSide);
   const normalizedRegion = normalizeFootKey(entry.regionKey, entry.footSide);
   return normalizedPoint === region.pointKey || normalizedRegion === region.regionKey;
+}
+
+function getBaseKeyFromEntry(entry: FootSensitivityMap) {
+  const normalized = normalizeFootKey(entry.pointKey || entry.regionKey, entry.footSide);
+  return normalized.replace(/^(right|left)_/, "");
 }
 
 function normalizeFootKey(key: string, footSide: FootSide) {
