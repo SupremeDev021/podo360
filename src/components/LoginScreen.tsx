@@ -123,8 +123,8 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
 
       setFeedback(
         error
-          ? { tone: "danger", message: "Nao foi possivel enviar a recuperacao agora. Tente novamente em instantes." }
-          : { tone: "success", message: "Enviamos as instrucoes de recuperacao para o seu e-mail." }
+          ? { tone: "danger", message: "Nao foi possivel solicitar a redefinicao agora. Tente novamente em instantes." }
+          : { tone: "success", message: "Se o e-mail estiver cadastrado, enviaremos as instrucoes de redefinicao." }
       );
     } catch {
       setFeedback({ tone: "danger", message: "Falha de conexao ao solicitar a recuperacao de senha." });

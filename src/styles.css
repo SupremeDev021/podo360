@@ -1860,7 +1860,49 @@ textarea {
 }
 
 .user-management-dialog {
-  max-height: min(880px, calc(100vh - 32px));
+  max-height: min(920px, calc(100vh - 32px));
+}
+
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.app-upload-field {
+  position: relative;
+  min-height: 132px;
+  align-content: center;
+  justify-items: center;
+  gap: 7px !important;
+  padding: 18px;
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary), white 55%);
+  border-radius: 16px;
+  color: var(--color-primary) !important;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.07), rgba(14, 165, 233, 0.04)),
+    #fff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.app-upload-field span {
+  color: var(--color-text);
+  font-weight: 900;
+}
+
+.app-upload-field small {
+  max-width: 340px;
+  color: var(--color-muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.app-upload-field input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .financial-review-summary,
@@ -2848,7 +2890,7 @@ textarea {
 .logo-upload-field {
   align-items: center;
   background: color-mix(in srgb, var(--color-surface), white 45%);
-  border: 1px solid var(--color-border);
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary), white 58%);
   border-radius: 20px;
   display: grid;
   gap: 14px;

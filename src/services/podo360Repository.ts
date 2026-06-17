@@ -372,9 +372,24 @@ export async function manageCompanyUser(input: { action: "update" | "reset_passw
   return data;
 }
 
-export async function createCompanyUser(input: { companyId: string; fullName: string; email: string; role: string; active: boolean; modules: string[] }) {
+export async function createCompanyUser(input: { companyId: string; fullName: string; email: string; role: string; active: boolean; modules: string[]; temporaryPassword?: string; requirePasswordChange?: boolean; sendInviteEmail?: boolean }) {
   if (!isSupabaseConfigured || !supabase) return null;
   const { data, error } = await supabase.functions.invoke("admin-create-company-user", { body: input });
+  if (error) throw error;
+  return data;
+}
+
+export async function resetOwnPassword(email: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateOwnPassword(newPassword: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
   return data;
 }
@@ -447,6 +462,7 @@ function autoclavePayload(record: AutoclaveRecord) {
     sterilization_lot: record.sterilizationLot,
     responsible_user_id: record.responsibleUserId || null,
     responsible_name: record.responsibleName,
+    autoclave_product_id: record.autoclaveProductId || null,
     autoclave_name: record.autoclaveName,
     autoclave_code: record.autoclaveCode,
     temperature: record.temperature,
@@ -478,6 +494,8 @@ async function replaceAutoclaveItems(record: AutoclaveRecord) {
   const { data, error } = await supabase.from("autoclave_record_items").insert(record.items.map((item) => ({
     company_id: record.companyId,
     autoclave_record_id: record.id,
+    stock_product_id: item.stockProductId || null,
+    stock_product_code: item.stockProductCode || null,
     material_name: item.materialName,
     category: item.category,
     quantity: item.quantity,

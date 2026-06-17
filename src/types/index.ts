@@ -321,6 +321,8 @@ export type AutoclaveRecordItem = {
   id: string;
   companyId: string;
   autoclaveRecordId: string;
+  stockProductId?: string;
+  stockProductCode?: string;
   materialName: string;
   category: string;
   quantity: number;
@@ -341,6 +343,7 @@ export type AutoclaveRecord = {
   responsibleUserId?: string;
   responsibleName: string;
   unitName: string;
+  autoclaveProductId?: string;
   autoclaveName: string;
   autoclaveCode: string;
   temperature: string;

@@ -87,13 +87,17 @@ export function WoundImageModule({
         </div>
 
         <div className="form-grid form-grid--two">
-          <label>
-            Upload de imagem
-            <input accept="image/*" name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+          <label className="app-upload-field">
+            <ImagePlus size={24} />
+            <span>Clique para enviar ou arraste uma imagem</span>
+            <small>PNG, JPG, JPEG ou WEBP. Use uma imagem nítida da região acompanhada.</small>
+            <input accept="image/png,image/jpeg,image/jpg,image/webp" name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
-          <label>
-            Captura de imagem
-            <input accept="image/*" capture="environment" name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+          <label className="app-upload-field">
+            <Camera size={24} />
+            <span>Capturar com a câmera</span>
+            <small>Ideal para celular durante o atendimento.</small>
+            <input accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
           <label>
             Tipo da imagem
