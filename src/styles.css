@@ -1860,7 +1860,22 @@ textarea {
 }
 
 .user-management-dialog {
-  max-height: min(920px, calc(100vh - 32px));
+  width: min(1280px, calc(100vw - 28px));
+  min-height: calc(100vh - 40px);
+  max-height: calc(100vh - 28px);
+  align-content: start;
+  overflow: auto;
+}
+
+.user-management-dialog .dialog-card__actions {
+  position: sticky;
+  bottom: -24px;
+  z-index: 2;
+  margin: 8px -24px -24px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
 }
 
 .password-field {

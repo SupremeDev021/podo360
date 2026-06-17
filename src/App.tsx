@@ -251,6 +251,10 @@ export function App() {
     const reportPatient = patients.find((item) => item.id === patientId && item.companyId === company.id) ?? selectedPatient;
     const patientAttendances = attendances.filter((attendance) => attendance.patientId === reportPatient.id && attendance.companyId === company.id);
     const reportAttendances = attendanceId ? patientAttendances.filter((attendance) => attendance.id === attendanceId) : patientAttendances;
+    if (attendanceId && !reportAttendances.length) {
+      notify("Não foi possível gerar o relatório com IA no momento.", "O atendimento selecionado não foi encontrado para esta clínica.", "danger");
+      return;
+    }
     const relatedAttendanceIds = new Set(reportAttendances.map((attendance) => attendance.id));
     const reportAnamneses = anamneses.filter((record) => record.patientId === reportPatient.id && record.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(record.attendanceId)));
     const reportFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === reportPatient.id && entry.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(entry.attendanceId)));
@@ -262,19 +266,24 @@ export function App() {
         consent.consentStatus === "authorized"
       )
     );
-    const content = await generateReferralReport({
-      company,
-      patient: reportPatient,
-      attendances: reportAttendances,
-      anamneses: reportAnamneses,
-      footSensitivityMaps: reportFootMaps,
-      attendanceImages: reportImages,
-      integratedHistories: includeHciInReport ? reportHciHistories : [],
-      includeHci: includeHciInReport,
-      professionalName: profile.fullName,
-      reason
-    });
-    setAiReport(content);
+    try {
+      const content = await generateReferralReport({
+        company,
+        patient: reportPatient,
+        attendances: reportAttendances,
+        anamneses: reportAnamneses,
+        footSensitivityMaps: reportFootMaps,
+        attendanceImages: reportImages,
+        integratedHistories: includeHciInReport ? reportHciHistories : [],
+        includeHci: includeHciInReport,
+        professionalName: profile.fullName,
+        reason
+      });
+      setAiReport(content);
+      notify("Relatório com IA gerado", "Revise o texto antes de exportar ou compartilhar.", "success");
+    } catch {
+      notify("Não foi possível gerar o relatório com IA no momento.", "Verifique a configuração do serviço de IA.", "danger");
+    }
   }
 
   function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
@@ -692,6 +701,8 @@ export function App() {
           attendanceImages={selectedPatientImages}
           products={stock.filter((item) => item.companyId === company.id)}
           onGenerateReport={(attendanceId) => handleGenerateAiReport(selectedPatient.id, "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId)}
+          aiReport={aiReport}
+          onChangeAiReport={setAiReport}
           onCreateAttendance={handleCreateAttendance}
           onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
@@ -702,7 +713,6 @@ export function App() {
           professionalId={profile.id}
           profiles={demoProfiles}
           hciHistories={authorizedHciHistories}
-          onBack={() => setActiveView("patients")}
           onSchedule={() => setActiveView("schedule")}
           onSelectAttendance={setActiveAttendanceId}
         />
@@ -1268,6 +1278,8 @@ function PatientProfile({
   attendanceImages,
   products,
   onGenerateReport,
+  aiReport,
+  onChangeAiReport,
   onCreateAttendance,
   onFinishAttendance,
   onSaveAnamnesis,
@@ -1278,7 +1290,6 @@ function PatientProfile({
   professionalId,
   profiles,
   hciHistories,
-  onBack,
   onSchedule,
   onSelectAttendance
 }: {
@@ -1290,7 +1301,9 @@ function PatientProfile({
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
   products: StockProduct[];
-  onGenerateReport: (attendanceId?: string) => void;
+  onGenerateReport: (attendanceId?: string) => Promise<void> | void;
+  aiReport: string;
+  onChangeAiReport: (value: string) => void;
   onCreateAttendance: (patient: Patient) => void;
   onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
@@ -1301,7 +1314,6 @@ function PatientProfile({
   professionalId: string;
   profiles: typeof demoProfiles;
   hciHistories: IntegratedClinicalHistory[];
-  onBack: () => void;
   onSchedule: () => void;
   onSelectAttendance: (attendanceId: string) => void;
 }) {
@@ -1314,6 +1326,19 @@ function PatientProfile({
     attendances.find((attendance) => attendance.status === "in_progress") ??
     attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
+  const [generatingAiReport, setGeneratingAiReport] = useState(false);
+
+  async function generateCurrentAttendanceReport() {
+    if (!currentAttendance) return;
+    setGeneratingAiReport(true);
+    setActivePatientTab("reports");
+    try {
+      await onGenerateReport(currentAttendance.id);
+    } finally {
+      setGeneratingAiReport(false);
+    }
+  }
+
   const anamnesisNode = currentAttendance ? (
     <AnamnesisWizard
       patient={patient}
@@ -1368,7 +1393,6 @@ function PatientProfile({
     <div className="page-stack">
       <section className="profile-header">
         <div>
-          <button className="profile-back" onClick={onBack} type="button">Voltar para pesquisa</button>
           <span className="eyebrow">ProntuárioÚnico: {patient.uniqueRecordNumber}</span>
           <h1>{patient.fullName}</h1>
           <p>{patient.whatsapp} · {patient.profession || "Profissao nao informada"} · CPF {patient.cpf}</p>
@@ -1377,7 +1401,7 @@ function PatientProfile({
           <button className="ghost-action" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={18} /> Novo BA</button>
           <button className="ghost-action" onClick={onSchedule} type="button"><CalendarPlus size={18} /> Agendar atendimento</button>
           <button className="ghost-action" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
-          <button className="primary-button" onClick={() => onGenerateReport(currentAttendance?.id)} type="button"><Sparkles size={18} /> Gerar relatorio com IA</button>
+          <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={generateCurrentAttendanceReport} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatorio com IA"}</button>
         </div>
       </section>
 
@@ -1444,6 +1468,9 @@ function PatientProfile({
           footSensitivityMaps={footSensitivityMaps}
           attendanceImages={attendanceImages}
           onGenerateReport={onGenerateReport}
+          generatingAiReport={generatingAiReport}
+          report={aiReport}
+          onChangeReport={onChangeAiReport}
         />
       )}
       {activePatientTab === "hci" && <PatientHci patient={patient} histories={hciHistories} />}
@@ -1555,7 +1582,10 @@ function ReportsSection({
   anamneses,
   footSensitivityMaps,
   attendanceImages,
-  onGenerateReport
+  onGenerateReport,
+  generatingAiReport,
+  report,
+  onChangeReport
 }: {
   patient: Patient;
   currentAttendance?: Attendance;
@@ -1564,7 +1594,10 @@ function ReportsSection({
   anamneses: AnamnesisRecord[];
   footSensitivityMaps: FootSensitivityMap[];
   attendanceImages: AttendanceImage[];
-  onGenerateReport: (attendanceId?: string) => void;
+  onGenerateReport: (attendanceId?: string) => Promise<void> | void;
+  generatingAiReport?: boolean;
+  report: string;
+  onChangeReport: (value: string) => void;
 }) {
   return (
     <section className="split-grid">
@@ -1579,15 +1612,18 @@ function ReportsSection({
         <div className="report-list">
           <button disabled={!currentAttendance} onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
           <button onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico completo</button>
-          <button className="primary-button" onClick={() => onGenerateReport(currentAttendance?.id)} type="button"><Sparkles size={18} /> Gerar relatório médico com IA</button>
+          <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={() => currentAttendance && onGenerateReport(currentAttendance.id)} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatório médico com IA"}</button>
         </div>
       </div>
       <div className="data-panel">
-        {attendances.length ? (
-          <Table
-            headers={["BA", "Data", "Status"]}
-            rows={attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), statusLabel(attendance.status)])}
-          />
+        {generatingAiReport ? <EmptyState title="Gerando relatório com IA..." message="Buscando BA, anamnese, imagens, evolução e dados da clínica para montar a pré-visualização." /> : report ? (
+          <>
+            <div className="section-heading section-heading--compact"><div><h2>Pré-visualização do relatório</h2><p>Revise o texto antes de exportar.</p></div><Printer size={20} /></div>
+            <textarea className="report-editor" value={report} onChange={(event) => onChangeReport(event.target.value)} />
+            <div className="dialog-card__actions"><button className="ghost-action" onClick={() => navigator.clipboard?.writeText(report)} type="button">Copiar</button><button className="primary-button" onClick={() => openPrintDocument(`Relatório clínico ${patient.fullName}`, [documentHeader(company, "Relatório Clínico Podológico"), `<pre class="report-text">${report}</pre>`].join(""), company)} type="button">Exportar PDF</button></div>
+          </>
+        ) : attendances.length ? (
+          <Table headers={["BA", "Data", "Status"]} rows={attendances.map((attendance) => [attendance.baNumber, formatDateTime(attendance.openedAt ?? attendance.scheduledAt), statusLabel(attendance.status)])} />
         ) : <EmptyState title="Nenhum relatório gerado" message="Este paciente ainda não possui atendimentos para exportacao." />}
       </div>
     </section>
