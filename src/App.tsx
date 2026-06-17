@@ -2842,6 +2842,59 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
     setActionUser(null);
   }
 
+  const closeUserForm = () => {
+    setOpen(false);
+    setEditingUser(null);
+  };
+
+  const userForm = (
+    <form className="user-management-page" onSubmit={createUser}>
+      <div className="section-heading section-heading--compact">
+        <div>
+          <h2>{editingUser ? "Editar perfil e permissoes" : `Criar usuario em ${company.displayName}`}</h2>
+          <p>Dados de acesso, perfil e permissões ficam em tela dedicada para evitar campos cortados.</p>
+        </div>
+      </div>
+      <div className="form-section-title">Dados do usuário</div>
+      <div className="form-grid form-grid--three">
+        <label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label>
+        <label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label>
+        <label>Empresa<input readOnly value={company.displayName} /></label>
+        <label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+        <label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label>
+      </div>
+      {!editingUser && (
+        <>
+          <div className="form-section-title">Acesso inicial</div>
+          <div className="form-grid form-grid--three">
+            <label>Senha de primeiro acesso<span className="password-field"><input autoComplete="new-password" minLength={8} name="temporaryPassword" required type={showInitialPassword ? "text" : "password"} /><button aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"} className="icon-button" onClick={() => setShowInitialPassword((current) => !current)} type="button">{showInitialPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
+            <label>Confirmar senha<input autoComplete="new-password" minLength={8} name="confirmPassword" required type={showInitialPassword ? "text" : "password"} /></label>
+            <label className="toggle-row"><input defaultChecked name="requirePasswordChange" type="checkbox" /> Exigir troca no primeiro acesso</label>
+            <label className="toggle-row"><input defaultChecked name="sendInviteEmail" type="checkbox" /> Enviar instruções por e-mail</label>
+          </div>
+        </>
+      )}
+      <fieldset className="option-fieldset">
+        <legend>Permissoes por abas/modulos</legend>
+        <div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div>
+      </fieldset>
+      {userMessage && <div className="inline-error">{userMessage}</div>}
+      <div className="user-management-page__actions">
+        <button className="ghost-action" disabled={savingUser} onClick={closeUserForm} type="button">Cancelar</button>
+        <button className="ghost-action" disabled={savingUser} onClick={closeUserForm} type="button">Voltar para Administração da Clínica</button>
+        <button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Salvando..." : editingUser ? "Salvar usuario e permissoes" : "Salvar usuário"}</button>
+      </div>
+    </form>
+  );
+
+  if (open) {
+    return (
+      <ModulePage eyebrow="Administracao interna" title={editingUser ? "Editar usuário" : "Criar usuário"} description={`Usuários e permissões ficam vinculados somente a ${company.displayName}.`}>
+        {userForm}
+      </ModulePage>
+    );
+  }
+
   return (
     <ModulePage eyebrow="Administracao interna" title="Administração da Clínica" description="Controle usuarios, permissoes e configuracoes internas somente da sua clínica. A gestão comercial da plataforma fica em um sistema separado.">
       <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setUserMessage(""); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
@@ -2854,7 +2907,6 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
       <div className="inline-info">Dono da Clínica administra apenas {company.displayName}. A gestão comercial da plataforma será tratada em sistema externo.</div>
       {userMessage && <div className="inline-info">{userMessage}</div>}
       <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setUserMessage(""); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
-      {open && <div className="dialog-backdrop user-management-backdrop"><form className="dialog-card user-management-dialog" onSubmit={createUser}><div><h2>{editingUser ? "Editar perfil e permissoes" : `Criar usuario em ${company.displayName}`}</h2><p>Dados de acesso, perfil e permissões ficam organizados por seção para evitar campos cortados.</p></div><div className="form-section-title">Dados do usuário</div><div className="form-grid form-grid--three"><label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label><label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label><label>Empresa<input readOnly value={company.displayName} /></label><label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label><label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label></div>{!editingUser && <><div className="form-section-title">Acesso inicial</div><div className="form-grid form-grid--three"><label>Senha de primeiro acesso<span className="password-field"><input autoComplete="new-password" minLength={8} name="temporaryPassword" required type={showInitialPassword ? "text" : "password"} /><button aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"} className="icon-button" onClick={() => setShowInitialPassword((current) => !current)} type="button">{showInitialPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label><label>Confirmar senha<input autoComplete="new-password" minLength={8} name="confirmPassword" required type={showInitialPassword ? "text" : "password"} /></label><label className="toggle-row"><input defaultChecked name="requirePasswordChange" type="checkbox" /> Exigir troca no primeiro acesso</label><label className="toggle-row"><input defaultChecked name="sendInviteEmail" type="checkbox" /> Enviar instruções por e-mail</label></div></>}<fieldset className="option-fieldset"><legend>Permissoes por abas/modulos</legend><div className="checkbox-grid">{modulePermissionOptions.map(([key, label]) => <label key={key}><input checked={selectedModules.includes(key)} onChange={(event) => setSelectedModules((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} type="checkbox" />{label}</label>)}</div></fieldset>{userMessage && <div className="inline-error">{userMessage}</div>}<div className="dialog-card__actions"><button className="ghost-action" disabled={savingUser} onClick={() => { setOpen(false); setEditingUser(null); }} type="button">Cancelar</button><button className="primary-button" disabled={savingUser} type="submit">{savingUser ? "Salvando..." : editingUser ? "Salvar usuario e permissoes" : "Salvar usuário"}</button></div></form></div>}
       {actionUser && <div className="dialog-backdrop"><section className="dialog-card"><div><h2>{actionUser.action === "reset_password" ? "Resetar senha" : actionUser.action === "deactivate" ? "Desativar usuario" : "Reativar usuario"}</h2><p>{actionUser.action === "reset_password" ? "Um link seguro de redefinicao sera enviado ao e-mail do usuario." : actionUser.action === "deactivate" ? "O acesso sera bloqueado, mas historicos, BAs e auditoria permanecerao preservados." : "O usuario voltara a acessar os modulos permitidos."}</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setActionUser(null)} type="button">Cancelar</button><button className={actionUser.action === "deactivate" ? "danger-button" : "primary-button"} onClick={confirmUserAction} type="button">Confirmar</button></div></section></div>}
     </ModulePage>
   );

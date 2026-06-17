@@ -1859,33 +1859,32 @@ textarea {
   width: min(100%, 980px);
 }
 
-.user-management-backdrop {
-  align-items: stretch;
-  justify-items: stretch;
-  padding: 0;
-}
-
-.user-management-dialog {
+.user-management-page {
+  display: grid;
+  gap: 18px;
   width: 100%;
-  min-height: 100dvh;
-  max-height: 100dvh;
-  align-content: start;
-  overflow: auto;
-  border: 0;
-  border-radius: 0;
-  padding: clamp(18px, 3vw, 36px);
+  min-height: calc(100dvh - 220px);
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-soft);
 }
 
-.user-management-dialog .option-fieldset {
+.user-management-page .option-fieldset {
   max-height: none;
 }
 
-.user-management-dialog .dialog-card__actions {
+.user-management-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
   position: sticky;
   bottom: 0;
   z-index: 2;
-  margin: 12px calc(-1 * clamp(18px, 3vw, 36px)) calc(-1 * clamp(18px, 3vw, 36px));
-  padding: 14px clamp(18px, 3vw, 36px);
+  margin: 12px calc(-1 * clamp(18px, 3vw, 32px)) calc(-1 * clamp(18px, 3vw, 32px));
+  padding: 14px clamp(18px, 3vw, 32px);
   border-top: 1px solid var(--color-border);
   background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(10px);
