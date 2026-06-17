@@ -2117,18 +2117,21 @@ textarea {
   box-shadow: none;
 }
 
-.foot-hotspot-label {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  border: 1px solid rgba(56, 189, 248, 0.42);
-  border-radius: 999px;
-  padding: 5px 9px;
-  background: rgba(8, 16, 25, 0.86);
-  color: #e0f2fe;
-  font-size: 0.76rem;
-  font-weight: 800;
-  box-shadow: 0 12px 30px rgba(2, 8, 23, 0.32);
+.foot-viewer-note {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  pointer-events: none;
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(8, 16, 25, 0.72);
+  color: #dbeafe;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 14px 34px rgba(2, 8, 23, 0.28);
 }
 
 .foot-loading-card {
