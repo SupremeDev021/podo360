@@ -2,7 +2,7 @@ import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { Pencil, RefreshCw, Rotate3D, Save, Trash2 } from "lucide-react";
 import { Component, Suspense, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   footRegionDefinitions,
   legacyFootRegionMap,
@@ -150,8 +150,7 @@ export function FootSensitivityMap3D({
   const currentBaEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId === attendanceId), [attendanceId, entriesForSide]);
   const historicalEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId !== attendanceId), [attendanceId, entriesForSide]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveMarking() {
     const [x, y, z] = selectedCoordinates ?? selected.position;
     setSaving(true);
     try {
@@ -308,7 +307,7 @@ export function FootSensitivityMap3D({
         </div>
       </section>
 
-      <form className="panel-form" onSubmit={handleSubmit}>
+      <section className="panel-form foot-sensitivity-form">
         <div className="section-heading section-heading--compact">
           <div>
           <h2>Sensibilidade Monofilamento</h2>
@@ -351,7 +350,7 @@ export function FootSensitivityMap3D({
           <textarea name="notes" onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes sobre monofilamento, dor, parestesia ou resposta do paciente" value={notes} />
         </label>
 
-        <button className="primary-button" disabled={saving} type="submit">
+        <button className="primary-button" disabled={saving} onClick={saveMarking} type="button">
           <Save size={18} />
           {saving ? "Salvando..." : editingEntryId ? "Salvar alteração" : "Salvar marcação"}
         </button>
@@ -386,7 +385,7 @@ export function FootSensitivityMap3D({
             )) : <li>Nenhum historico anterior para este lado do pe.</li>}
           </ul>
         </div>
-      </form>
+      </section>
     </div>
   );
 }
