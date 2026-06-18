@@ -18,6 +18,8 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
     // Replace this block with a secure backend/serverless call. Do not expose private AI keys in the browser.
   }
 
+  await new Promise((resolve) => window.setTimeout(resolve, 250));
+
   const latest = input.attendances[0];
   const procedures = input.attendances.map((attendance) => attendance.procedure).join(", ");
   const products = Array.from(new Set(input.attendances.flatMap((attendance) => attendance.productsUsed))).join(", ");

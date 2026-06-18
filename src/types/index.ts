@@ -20,6 +20,7 @@ export type AttendanceStatus =
   | "ba_open"
   | "waiting"
   | "in_progress"
+  | "reopened"
   | "paused"
   | "completed"
   | "cancelled"
@@ -156,6 +157,13 @@ export type Attendance = {
   openedBy?: string;
   startedBy?: string;
   finishedBy?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
+  finalizationCancelledAt?: string;
+  finalizationCancelledBy?: string;
+  finalizationCancelledReason?: string;
+  previousFinishedAt?: string;
   scheduledAt: string;
   attendanceDate?: string;
   type: string;
@@ -175,6 +183,28 @@ export type Attendance = {
   value: number;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type AttendanceAuditAction =
+  | "finalized"
+  | "finalization_cancelled"
+  | "reopened_for_editing"
+  | "edited_after_reopen";
+
+export type AttendanceAuditLog = {
+  id: string;
+  companyId: string;
+  attendanceId: string;
+  baNumber: string;
+  patientId: string;
+  uniqueMedicalRecordId: string;
+  action: AttendanceAuditAction;
+  previousStatus?: AttendanceStatus;
+  newStatus?: AttendanceStatus;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ClinicalAppointment = {

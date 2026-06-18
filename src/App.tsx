@@ -62,11 +62,12 @@ import { podologyProductCatalog, podologyProductCategories } from "./data/produc
 import { supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, finishAttendanceBa, manageCompanyUser, saveAnamnesisRecord, saveAttendanceUsedProducts, saveCompanySettings, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_FINALIZED_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
   Attendance,
+  AttendanceAuditLog,
   AttendanceImage,
   AutoclaveRecord,
   AutoclaveRecordItem,
@@ -84,6 +85,15 @@ import type {
 } from "./types";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const FINALIZED_ATTENDANCE_MESSAGE = "Este atendimento já foi finalizado. Para editar, cancele a finalização na aba Gerenciamento de Atendimento.";
+
+function isAttendanceFinalized(attendance?: Pick<Attendance, "status" | "finishedAt">) {
+  return Boolean(attendance && (attendance.status === "completed" || attendance.finishedAt));
+}
+
+function canManageAttendanceReopen(profile: Profile, allowedViews: ViewKey[]) {
+  return profile.role === "super_admin" || profile.role === "company_admin" || allowedViews.includes("attendance-management");
+}
 
 function catalogStock(companyId: string, existing: StockProduct[]) {
   const names = new Set(existing.map((item) => normalizeText(item.name)));
@@ -147,7 +157,7 @@ const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
 ];
 
 const modulePermissionOptions: Array<[ViewKey, string]> = [
-  ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos / Pacientes"],
+  ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos"], ["attendance-management", "Gerenciamento de Atendimento"],
   ["schedule", "Agenda Clinica"], ["patient-profile", "ProntuárioÚnico / Anamnese / Imagens"], ["reports", "Relatorios"],
   ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["autoclave", "Registro de Autoclave / Esterilizacao"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Administracao da Clinica"]
 ];
@@ -183,6 +193,7 @@ export function App() {
   const [autoclaveRecords, setAutoclaveRecords] = useState<AutoclaveRecord[]>(demoAutoclaveRecords);
   const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
   const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
+  const [attendanceAuditLogs, setAttendanceAuditLogs] = useState<AttendanceAuditLog[]>([]);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
   const [hciQuery, setHciQuery] = useState("");
   const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
@@ -193,6 +204,8 @@ export function App() {
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const profile = demoProfiles[0];
+  const allowedViews = allowedViewsForProfile(profile);
+  const hasAttendanceManagementAccess = canManageAttendanceReopen(profile, allowedViews);
 
   function handleMaskedInput(event: FormEvent<HTMLDivElement>) {
     const input = event.target as HTMLInputElement;
@@ -247,6 +260,23 @@ export function App() {
     setNotice({ id: Date.now(), title, message, tone });
   }
 
+  function guardEditableAttendance(attendanceId: string, title = "Atendimento finalizado") {
+    const attendance = attendances.find((item) => item.id === attendanceId && item.companyId === company.id);
+    if (isAttendanceFinalized(attendance)) {
+      notify(title, FINALIZED_ATTENDANCE_MESSAGE, "warning");
+      return false;
+    }
+    return true;
+  }
+
+  function handleFinalizedWriteError(error: unknown) {
+    if (error instanceof Error && error.message === ATTENDANCE_FINALIZED_ERROR) {
+      notify("Atendimento finalizado", FINALIZED_ATTENDANCE_MESSAGE, "warning");
+      return true;
+    }
+    return false;
+  }
+
   async function handleGenerateAiReport(patientId = selectedPatient.id, reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId?: string) {
     const reportPatient = patients.find((item) => item.id === patientId && item.companyId === company.id) ?? selectedPatient;
     const patientAttendances = attendances.filter((attendance) => attendance.patientId === reportPatient.id && attendance.companyId === company.id);
@@ -286,19 +316,55 @@ export function App() {
     }
   }
 
-  function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
-    setFootSensitivityMaps((current) => [
-      {
-        ...entry,
-        id: `foot-map-${current.length + 1}`,
-        createdAt: new Date().toISOString()
-      },
-      ...current
-    ]);
-    notify("Ponto salvo", "Sensibilidade do pe 3D registrada neste BA.", "success");
+  async function handleSaveFootSensitivity(entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) {
+    if (!guardEditableAttendance(entry.attendanceId)) throw new Error(ATTENDANCE_FINALIZED_ERROR);
+    const now = new Date().toISOString();
+    if (entry.id) {
+      const existing = footSensitivityMaps.find((item) => item.id === entry.id);
+      const updated: FootSensitivityMap = { ...entry, id: entry.id, createdAt: existing?.createdAt ?? now, updatedAt: now };
+      try {
+        await updateFootSensitivityMap(updated);
+      } catch (error) {
+        if (handleFinalizedWriteError(error)) throw error;
+        throw error;
+      }
+      setFootSensitivityMaps((current) => current.map((item) => item.id === updated.id ? updated : item));
+      notify("Marcação atualizada", "Sensibilidade do pé 3D atualizada neste BA.", "success");
+      return;
+    }
+
+    const created: FootSensitivityMap = {
+      ...entry,
+      id: `foot-map-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now
+    };
+    try {
+      await saveFootSensitivityMap(created);
+    } catch (error) {
+      if (handleFinalizedWriteError(error)) throw error;
+      throw error;
+    }
+    setFootSensitivityMaps((current) => [created, ...current]);
+    notify("Marcação salva", "Sensibilidade do pé 3D registrada neste BA.", "success");
+  }
+
+  async function handleRemoveFootSensitivity(entryId: string) {
+    const entry = footSensitivityMaps.find((item) => item.id === entryId);
+    if (!entry) return;
+    if (!guardEditableAttendance(entry.attendanceId)) throw new Error(ATTENDANCE_FINALIZED_ERROR);
+    try {
+      await deleteFootSensitivityMap(entryId, entry.companyId);
+    } catch (error) {
+      if (handleFinalizedWriteError(error)) throw error;
+      throw error;
+    }
+    setFootSensitivityMaps((current) => current.filter((item) => item.id !== entryId));
+    notify("Marcação removida", "A marcação foi removida da visualização deste atendimento.", "success");
   }
 
   async function handleSaveAnamnesis(record: AnamnesisRecord) {
+    if (!guardEditableAttendance(record.attendanceId)) return;
     setAnamneses((current) => {
       const index = current.findIndex((item) => item.id === record.id);
       if (index < 0) return [record, ...current];
@@ -313,11 +379,23 @@ export function App() {
     for (const item of usedProducts.filter((entry) => entry.name.trim() && !stock.some((product) => normalizeText(product.name) === normalizeText(entry.name)))) {
       await handleCreateProduct({ id: `stock-${Date.now()}-${item.name}`, companyId: record.companyId, name: item.name.trim(), category: item.category || "Outros", internalCode: `OUT-${Date.now()}`, currentQuantity: 0, minimumQuantity: 0, unit: item.unit || "un", costValue: 0, saleValue: item.unitPrice || 0, supplier: "", active: true });
     }
-    await Promise.all([saveAnamnesisRecord(record), saveAttendanceUsedProducts(record, usedProducts)]);
+    try {
+      await Promise.all([saveAnamnesisRecord(record), saveAttendanceUsedProducts(record, usedProducts)]);
+    } catch (error) {
+      if (handleFinalizedWriteError(error)) return;
+      throw error;
+    }
     notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
   }
 
-  function handleSaveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+  async function handleSaveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+    if (!guardEditableAttendance(image.attendanceId)) return;
+    try {
+      await saveAttendanceImage(image);
+    } catch (error) {
+      if (handleFinalizedWriteError(error)) return;
+      throw error;
+    }
     setAttendanceImages((current) => [
       {
         ...image,
@@ -338,6 +416,10 @@ export function App() {
     if (selectedImages.some((image) => image.companyId !== company.id)) {
       notify("Você não tem permissão para realizar esta ação.", "As imagens selecionadas não pertencem à clínica atual.", "danger");
       throw new Error("comparison_company_mismatch");
+    }
+
+    if (selectedImages.some((image) => !guardEditableAttendance(image.attendanceId))) {
+      throw new Error(ATTENDANCE_FINALIZED_ERROR);
     }
 
     const updatedAt = new Date().toISOString();
@@ -500,6 +582,7 @@ export function App() {
         String(form.get("initialNotes") || "")
       ].filter(Boolean).join(" ")
     });
+    setActiveView("ba-opening");
     event.currentTarget.reset();
     setBaOpeningPrefill(null);
   }
@@ -573,7 +656,8 @@ export function App() {
 
   async function handleStartAttendance(attendanceId: string) {
     const now = new Date().toISOString();
-    let targetPatientId = selectedPatientId;
+    const targetAttendance = attendances.find((attendance) => attendance.id === attendanceId);
+    const targetPatientId = targetAttendance?.patientId ?? selectedPatientId;
     try {
       await startAttendanceBa(attendanceId);
     } catch {
@@ -583,7 +667,6 @@ export function App() {
     setAttendances((current) =>
       current.map((attendance) => {
         if (attendance.id !== attendanceId) return attendance;
-        targetPatientId = attendance.patientId;
         return {
           ...attendance,
           status: "in_progress",
@@ -602,6 +685,11 @@ export function App() {
 
   async function handleFinishAttendance(attendanceId: string) {
     const now = new Date().toISOString();
+    const currentAttendance = attendances.find((item) => item.id === attendanceId && item.companyId === company.id);
+    if (isAttendanceFinalized(currentAttendance)) {
+      notify("Este atendimento já está finalizado.", "Cancele a finalização na aba Gerenciamento de Atendimento antes de finalizar novamente.", "warning");
+      return;
+    }
     try {
       await finishAttendanceBa(attendanceId);
     } catch {
@@ -618,6 +706,75 @@ export function App() {
     notify("Atendimento finalizado", "Data e hora de finalizacao foram registradas no BA.", "success");
     const finished = attendances.find((item) => item.id === attendanceId);
     if (finished) setBillingAttendance({ ...finished, status: "completed", finishedAt: now });
+  }
+
+  async function handleReopenAttendance(attendanceId: string, reason: string) {
+    const attendance = attendances.find((item) => item.id === attendanceId && item.companyId === company.id);
+    const cleanReason = reason.trim();
+    if (!attendance) {
+      notify("Atendimento não encontrado", "Não foi possível localizar este BA na clínica atual.", "danger");
+      throw new Error("attendance_not_found");
+    }
+    if (!hasAttendanceManagementAccess) {
+      notify("Acesso negado", "Seu perfil não possui permissão para reabrir atendimentos finalizados.", "danger");
+      throw new Error("attendance_reopen_forbidden");
+    }
+    if (!cleanReason) {
+      notify("Informe o motivo", "O motivo da reabertura é obrigatório para auditoria.", "warning");
+      throw new Error("reopen_reason_required");
+    }
+    if (!isAttendanceFinalized(attendance)) {
+      notify("Atendimento já editável", "Este atendimento não está finalizado.", "info");
+      return;
+    }
+
+    try {
+      await reopenAttendanceBa(attendanceId, cleanReason);
+    } catch {
+      notify("Reabertura mantida localmente", "Não foi possível sincronizar a reabertura agora. A migration precisa estar aplicada no Supabase.", "warning");
+    }
+
+    const now = new Date().toISOString();
+    const auditLog: AttendanceAuditLog = {
+      id: `audit-${Date.now()}`,
+      companyId: attendance.companyId,
+      attendanceId: attendance.id,
+      baNumber: attendance.baNumber,
+      patientId: attendance.patientId,
+      uniqueMedicalRecordId: attendance.uniqueMedicalRecordId,
+      action: "finalization_cancelled",
+      previousStatus: attendance.status,
+      newStatus: "in_progress",
+      reason: cleanReason,
+      createdBy: profile.id,
+      createdAt: now,
+      metadata: {
+        previousFinishedAt: attendance.finishedAt,
+        previousFinishedBy: attendance.finishedBy
+      }
+    };
+    setAttendanceAuditLogs((current) => [auditLog, ...current]);
+    setAttendances((current) =>
+      current.map((item) =>
+        item.id === attendanceId
+          ? {
+              ...item,
+              status: "in_progress",
+              previousFinishedAt: item.finishedAt,
+              finalizationCancelledAt: now,
+              finalizationCancelledBy: profile.id,
+              finalizationCancelledReason: cleanReason,
+              reopenedAt: now,
+              reopenedBy: profile.id,
+              reopenReason: cleanReason,
+              finishedAt: undefined,
+              finishedBy: undefined,
+              updatedAt: now
+            }
+          : item
+      )
+    );
+    notify("Atendimento reaberto", "A finalização foi cancelada e o atendimento voltou a permitir edição.", "success");
   }
 
   async function handleCreateProduct(product: StockProduct) {
@@ -682,7 +839,7 @@ export function App() {
   }
 
   return (
-    <Layout allowedViews={allowedViewsForProfile(profile)} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
+    <Layout allowedViews={allowedViews} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       <div className="app-input-mask-scope" onInputCapture={handleMaskedInput}>
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
@@ -724,6 +881,7 @@ export function App() {
           onFinishAttendance={handleFinishAttendance}
           onSaveAnamnesis={handleSaveAnamnesis}
           onSaveFootSensitivity={handleSaveFootSensitivity}
+          onRemoveFootSensitivity={handleRemoveFootSensitivity}
           onSaveAttendanceImage={handleSaveAttendanceImage}
           onSaveComparativeNote={handleSaveComparativeNote}
           company={company}
@@ -752,6 +910,24 @@ export function App() {
           }}
           onStart={handleStartAttendance}
         />
+      )}
+      {activeView === "attendance-management" && (
+        hasAttendanceManagementAccess ? (
+          <AttendanceManagement
+            attendances={attendances}
+            auditLogs={attendanceAuditLogs}
+            patients={patients}
+            profiles={demoProfiles}
+            onOpenAttendance={(patientId, attendanceId) => {
+              setSelectedPatientId(patientId);
+              setActiveAttendanceId(attendanceId);
+              setActiveView("patient-profile");
+            }}
+            onReopen={handleReopenAttendance}
+          />
+        ) : (
+          <EmptyState title="Acesso restrito" message="Seu perfil não possui permissão para gerenciar reabertura de atendimentos." />
+        )
       )}
       {activeView === "schedule" && (
         <ClinicalAgendaPage
@@ -1093,7 +1269,7 @@ function BaOpening({
             <label>Telefone<input name="phone" value={patientData.phone} onChange={(event) => updatePatientField("phone", event.target.value)} /></label>
             <label>WhatsApp<input name="whatsapp" value={patientData.whatsapp} onChange={(event) => updatePatientField("whatsapp", event.target.value)} /></label>
             <label>E-mail<input name="email" type="email" value={patientData.email} onChange={(event) => updatePatientField("email", event.target.value)} /></label>
-            <label>ProntuárioÚnico<input name="uniqueRecordNumber" value={patientData.uniqueRecordNumber} onChange={(event) => updatePatientField("uniqueRecordNumber", event.target.value)} placeholder="Preenchido ao selecionar paciente existente" /></label>
+            <label>ProntuarioUnico<input name="uniqueRecordNumber" readOnly value={patientData.uniqueRecordNumber} placeholder="Gerado automaticamente na primeira entrada" /><small className="field-help">{patientData.uniqueRecordNumber ? "Numero vinculado ao paciente selecionado." : "Sera gerado automaticamente ao abrir o BA."}</small></label>
           </div>
           <label>Endereco<input name="address" value={patientData.address} onChange={(event) => updatePatientField("address", event.target.value)} /></label>
           {birthDateMessage && <p className="inline-warning">{birthDateMessage}</p>}
@@ -1301,6 +1477,7 @@ function PatientProfile({
   onFinishAttendance,
   onSaveAnamnesis,
   onSaveFootSensitivity,
+  onRemoveFootSensitivity,
   onSaveAttendanceImage,
   onSaveComparativeNote,
   company,
@@ -1324,8 +1501,9 @@ function PatientProfile({
   onCreateAttendance: (patient: Patient) => void;
   onFinishAttendance: (attendanceId: string) => void;
   onSaveAnamnesis: (record: AnamnesisRecord) => void;
-  onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
-  onSaveAttendanceImage: (image: Omit<AttendanceImage, "id" | "createdAt">) => void;
+  onSaveFootSensitivity: (entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) => Promise<void> | void;
+  onRemoveFootSensitivity: (entryId: string) => Promise<void> | void;
+  onSaveAttendanceImage: (image: Omit<AttendanceImage, "id" | "createdAt">) => Promise<void> | void;
   onSaveComparativeNote: (imageIds: string[], note: string) => Promise<void> | void;
   company: Company;
   professionalId: string;
@@ -1343,7 +1521,40 @@ function PatientProfile({
     attendances.find((attendance) => attendance.status === "in_progress") ??
     attendances[0];
   const currentAnamnesis = currentAttendance ? anamneses.find((record) => record.attendanceId === currentAttendance.id) : undefined;
+  const attendanceLocked = isAttendanceFinalized(currentAttendance);
   const [generatingAiReport, setGeneratingAiReport] = useState(false);
+  const [finishAttendanceCandidateId, setFinishAttendanceCandidateId] = useState<string | null>(null);
+
+  function handleOpenFinishModal(attendanceId: string) {
+    setFinishAttendanceCandidateId(attendanceId);
+  }
+
+  function handleCancelFinish(event?: { preventDefault?: () => void; stopPropagation?: () => void }) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    setFinishAttendanceCandidateId(null);
+  }
+
+  function handleConfirmFinish(event?: { preventDefault?: () => void; stopPropagation?: () => void }) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const attendanceId = finishAttendanceCandidateId;
+    if (!attendanceId) return;
+    setFinishAttendanceCandidateId(null);
+    onFinishAttendance(attendanceId);
+  }
+
+  useEffect(() => {
+    if (!finishAttendanceCandidateId) return;
+    function cancelOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFinishAttendanceCandidateId(null);
+    }
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [finishAttendanceCandidateId]);
 
   async function generateCurrentAttendanceReport() {
     if (!currentAttendance) return;
@@ -1368,10 +1579,13 @@ function PatientProfile({
       baNumber={currentAttendance.baNumber}
       createdBy={professionalId}
       products={products}
+      readOnly={attendanceLocked}
+      readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
       footSensitivitySlot={
         <FootSensitivityMap3D
           entries={footSensitivityMaps}
           onSave={onSaveFootSensitivity}
+          onRemove={onRemoveFootSensitivity}
           patientId={patient.id}
           companyId={company.id}
           professionalId={professionalId}
@@ -1379,6 +1593,8 @@ function PatientProfile({
           uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
           uniqueRecordNumber={patient.uniqueRecordNumber}
           baNumber={currentAttendance.baNumber}
+          readOnly={attendanceLocked}
+          readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
         />
       }
       woundImagesSlot={
@@ -1392,6 +1608,8 @@ function PatientProfile({
           uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
           uniqueRecordNumber={patient.uniqueRecordNumber}
           baNumber={currentAttendance.baNumber}
+          readOnly={attendanceLocked}
+          readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
         />
       }
       imageEvolutionSlot={
@@ -1401,6 +1619,8 @@ function PatientProfile({
           patientId={patient.id}
           uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
           onComparativeNote={onSaveComparativeNote}
+          readOnly={attendanceLocked}
+          readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
         />
       }
     />
@@ -1431,6 +1651,8 @@ function PatientProfile({
       {currentAttendance && (
         <section className="attendance-topline">
           <div><span>Paciente</span><strong>{patient.fullName}</strong></div>
+          <div><span>Nascimento</span><strong>{patient.birthDate ? formatDate(patient.birthDate) : "Nao informado"}</strong></div>
+          <div><span>Idade</span><strong>{calculateAge(patient.birthDate)}</strong></div>
           <div><span>ProntuárioÚnico</span><strong>{patient.uniqueRecordNumber}</strong></div>
           <div><span>BA atual</span><strong>{currentAttendance.baNumber}</strong></div>
           <div><span>Status</span><strong>{statusLabel(currentAttendance.status)}</strong></div>
@@ -1438,12 +1660,49 @@ function PatientProfile({
           <div><span>Inicio</span><strong>{currentAttendance.startedAt ? formatDateTime(currentAttendance.startedAt) : "Nao iniciado"}</strong></div>
           <div><span>Profissional</span><strong>{currentAttendance.professionalId ? "Dra. Marina Costa" : "A definir"}</strong></div>
           <div><span>Clinica</span><strong>{company.displayName}</strong></div>
+          {attendanceLocked && <div><span>Bloqueio</span><strong><span className="status-badge status-badge--completed">Atendimento finalizado</span></strong></div>}
           {currentAttendance.status === "in_progress" && (
-            <button className="primary-button" onClick={() => onFinishAttendance(currentAttendance.id)} type="button">
+            <button className="primary-button" onClick={() => handleOpenFinishModal(currentAttendance.id)} type="button">
               <CheckCircle2 size={17} /> Finalizar atendimento
             </button>
           )}
         </section>
+      )}
+
+      {attendanceLocked && (
+        <div className="locked-attendance-banner">
+          <strong>Atendimento finalizado</strong>
+          <span>Este atendimento está finalizado e está disponível apenas para consulta.</span>
+        </div>
+      )}
+
+      {finishAttendanceCandidateId && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={handleCancelFinish}>
+          <section
+            className="dialog-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finish-attendance-title"
+            onKeyDown={(event) => { if (event.key === "Escape") handleCancelFinish(event); }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="dialog-card__icon"><CheckCircle2 size={22} /></div>
+            <div>
+              <h2 id="finish-attendance-title">Deseja finalizar este atendimento?</h2>
+              <p>Ao confirmar, o BA sera fechado e a data/hora de finalizacao sera registrada. Agora nao apenas fecha esta confirmacao.</p>
+            </div>
+            <div className="dialog-card__actions">
+              <button className="ghost-action" onClick={handleCancelFinish} type="button">Agora nao</button>
+              <button
+                className="primary-button"
+                onClick={handleConfirmFinish}
+                type="button"
+              >
+                Sim, finalizar
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       {activePatientTab === "patient-data" && <PatientDataSection patient={patient} />}
@@ -1462,6 +1721,8 @@ function PatientProfile({
           uniqueMedicalRecordId={currentAttendance.uniqueMedicalRecordId}
           uniqueRecordNumber={patient.uniqueRecordNumber}
           baNumber={currentAttendance.baNumber}
+          readOnly={attendanceLocked}
+          readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
         />
       ) : <EmptyState title="Nenhuma imagem cadastrada" message="Abra um BA para anexar imagens da ferida, lesao, unha ou curativo." />)}
       {activePatientTab === "image-evolution" && (
@@ -1472,6 +1733,8 @@ function PatientProfile({
             patientId={patient.id}
             uniqueMedicalRecordId={patient.uniqueMedicalRecordId}
             onComparativeNote={onSaveComparativeNote}
+            readOnly={attendanceLocked}
+            readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
           />
         </div>
       )}
@@ -1647,6 +1910,168 @@ function ReportsSection({
   );
 }
 
+function AttendanceManagement({
+  attendances,
+  auditLogs,
+  patients,
+  profiles,
+  onOpenAttendance,
+  onReopen
+}: {
+  attendances: Attendance[];
+  auditLogs: AttendanceAuditLog[];
+  patients: Patient[];
+  profiles: typeof demoProfiles;
+  onOpenAttendance: (patientId: string, attendanceId: string) => void;
+  onReopen: (attendanceId: string, reason: string) => Promise<void> | void;
+}) {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("completed");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [selected, setSelected] = useState<Attendance | null>(null);
+  const [reopening, setReopening] = useState<Attendance | null>(null);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const filtered = attendances
+    .filter((attendance) => {
+      const patient = patients.find((item) => item.id === attendance.patientId);
+      const professional = profiles.find((item) => item.id === attendance.professionalId);
+      const text = normalizeText(`${patient?.fullName || ""} ${patient?.cpf || ""} ${patient?.phone || ""} ${patient?.whatsapp || ""} ${patient?.uniqueRecordNumber || ""} ${attendance.uniqueRecordNumber} ${attendance.baNumber} ${professional?.fullName || ""}`);
+      return (!query || text.includes(normalizeText(query))) &&
+        (status === "all" || attendance.status === status) &&
+        (!periodStart || new Date(attendance.openedAt ?? attendance.scheduledAt) >= new Date(`${periodStart}T00:00:00`)) &&
+        (!periodEnd || new Date(attendance.openedAt ?? attendance.scheduledAt) <= new Date(`${periodEnd}T23:59:59`));
+    })
+    .sort((a, b) => new Date(b.openedAt ?? b.scheduledAt).getTime() - new Date(a.openedAt ?? a.scheduledAt).getTime());
+
+  async function confirmReopen(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reopening) return;
+    const cleanReason = reason.trim();
+    if (!cleanReason) {
+      setError("Informe o motivo do cancelamento para auditoria.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onReopen(reopening.id, cleanReason);
+      setReopening(null);
+      setReason("");
+    } catch (caught) {
+      if (caught instanceof Error && caught.message === "reopen_reason_required") setError("Informe o motivo do cancelamento para auditoria.");
+      else setError("Não foi possível reabrir este atendimento agora.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="page-stack attendance-management">
+      <div className="hero-panel">
+        <div>
+          <span className="eyebrow">Auditoria clínica</span>
+          <h1>Gerenciamento de Atendimento</h1>
+          <p>Pesquise atendimentos finalizados e reabra para edição somente quando houver justificativa registrada.</p>
+        </div>
+        <ShieldCheck size={34} />
+      </div>
+
+      <div className="data-panel operational-filters">
+        <div className="filter-grid">
+          <label>Pesquisar paciente, CPF, telefone, BA ou ProntuárioÚnico<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite nome, CPF, telefone, BA ou PU" /></label>
+          <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="completed">Finalizados</option><option value="in_progress">Em atendimento</option><option value="waiting">Aguardando</option><option value="all">Todos</option></select></label>
+          <label>Data inicial<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
+          <label>Data final<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
+        </div>
+        <button className="ghost-action" onClick={() => { setQuery(""); setStatus("completed"); setPeriodStart(""); setPeriodEnd(""); }} type="button">Limpar filtros</button>
+      </div>
+
+      <div className="attendance-management-list">
+        {filtered.length ? filtered.map((attendance) => {
+          const patient = patients.find((item) => item.id === attendance.patientId);
+          const professional = profiles.find((item) => item.id === attendance.professionalId);
+          const logs = auditLogs.filter((log) => log.attendanceId === attendance.id);
+          return (
+            <article className="attendance-management-card" key={attendance.id}>
+              <div>
+                <span className={`status-badge status-badge--${attendance.status}`}>{statusLabel(attendance.status)}</span>
+                <h3>{patient?.fullName ?? "Paciente não encontrado"}</h3>
+                <p>BA {attendance.baNumber} · PU {attendance.uniqueRecordNumber}</p>
+              </div>
+              <dl className="definition-grid definition-grid--three">
+                <div><dt>Data</dt><dd>{formatDateTime(attendance.openedAt ?? attendance.scheduledAt)}</dd></div>
+                <div><dt>Profissional</dt><dd>{professional?.fullName ?? "A definir"}</dd></div>
+                <div><dt>Finalizado em</dt><dd>{attendance.finishedAt ? formatDateTime(attendance.finishedAt) : "-"}</dd></div>
+                <div><dt>Quem finalizou</dt><dd>{profiles.find((item) => item.id === attendance.finishedBy)?.fullName ?? "-"}</dd></div>
+                <div><dt>Última reabertura</dt><dd>{attendance.reopenedAt ? formatDateTime(attendance.reopenedAt) : "-"}</dd></div>
+                <div><dt>Auditoria</dt><dd>{logs.length} registro(s)</dd></div>
+              </dl>
+              <div className="table-actions">
+                <button className="ghost-action" onClick={() => setSelected(attendance)} type="button"><Eye size={16} /> Ver detalhes</button>
+                {patient && <button className="ghost-action" onClick={() => onOpenAttendance(patient.id, attendance.id)} type="button">Abrir atendimento</button>}
+                {isAttendanceFinalized(attendance) && <button className="primary-button" onClick={() => { setReopening(attendance); setReason(""); setError(""); }} type="button">Cancelar finalização</button>}
+              </div>
+            </article>
+          );
+        }) : <EmptyState title="Nenhum atendimento encontrado" message="Ajuste os filtros ou pesquise por nome, CPF, telefone, BA ou ProntuárioÚnico." />}
+      </div>
+
+      {selected && (
+        <div className="dialog-backdrop" onMouseDown={() => setSelected(null)}>
+          <section className="dialog-card dialog-card--wide" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <div><h2>Detalhes do BA {selected.baNumber}</h2><p>{statusLabel(selected.status)} · {formatDateTime(selected.openedAt ?? selected.scheduledAt)}</p></div>
+            <dl className="definition-grid">
+              <div><dt>Paciente</dt><dd>{patients.find((item) => item.id === selected.patientId)?.fullName ?? "-"}</dd></div>
+              <div><dt>ProntuárioÚnico</dt><dd>{selected.uniqueRecordNumber}</dd></div>
+              <div><dt>Finalizado em</dt><dd>{selected.finishedAt ? formatDateTime(selected.finishedAt) : "-"}</dd></div>
+              <div><dt>Motivo da reabertura</dt><dd>{selected.reopenReason || "-"}</dd></div>
+            </dl>
+            <div className="audit-log-list">
+              <h3>Auditoria</h3>
+              {auditLogs.filter((log) => log.attendanceId === selected.id).length ? auditLogs.filter((log) => log.attendanceId === selected.id).map((log) => (
+                <p key={log.id}><strong>{auditActionLabel(log.action)}</strong> · {formatDateTime(log.createdAt)} · {log.reason}</p>
+              )) : <p className="muted">Nenhum registro local de auditoria nesta sessão.</p>}
+            </div>
+            <div className="dialog-card__actions"><button className="ghost-action" onClick={() => setSelected(null)} type="button">Fechar</button></div>
+          </section>
+        </div>
+      )}
+
+      {reopening && (
+        <div className="dialog-backdrop" onMouseDown={() => !saving && setReopening(null)}>
+          <form className="dialog-card dialog-card--wide" noValidate onSubmit={confirmReopen} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="reopen-attendance-title">
+            <div className="dialog-card__icon"><AlertTriangle size={22} /></div>
+            <div>
+              <h2 id="reopen-attendance-title">Cancelar finalização do atendimento</h2>
+              <p>Essa ação permitirá novas edições neste atendimento. Informe o motivo para auditoria.</p>
+            </div>
+            <label>Motivo do cancelamento<textarea value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="Descreva por que este atendimento precisa ser reaberto" /></label>
+            {error && <div className="inline-error">{error}</div>}
+            <div className="dialog-card__actions">
+              <button className="ghost-action" disabled={saving} onClick={() => setReopening(null)} type="button">Cancelar</button>
+              <button className="primary-button" disabled={saving} type="submit">{saving ? "Reabrindo..." : "Confirmar reabertura"}</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function auditActionLabel(action: AttendanceAuditLog["action"]) {
+  const labels: Record<AttendanceAuditLog["action"], string> = {
+    finalized: "Finalizado",
+    finalization_cancelled: "Finalização cancelada",
+    reopened_for_editing: "Reaberto para edição",
+    edited_after_reopen: "Editado após reabertura"
+  };
+  return labels[action];
+}
+
 function Attendances({
   attendances,
   attendanceImages,
@@ -1701,7 +2126,7 @@ function Attendances({
   return (
     <div className="page-stack">
       <div className="section-heading">
-        <div><span className="eyebrow">Atendimentos / Pacientes</span><h1>Fila operacional</h1><p>Acompanhe BAs da clinica, inicie atendimentos e retome fichas modulares.</p></div>
+        <div><span className="eyebrow">Atendimentos</span><h1>Fila operacional</h1><p>Acompanhe BAs da clinica, inicie atendimentos e retome fichas modulares.</p></div>
       </div>
       <section className="queue-summary">
         {(["waiting", "in_progress", "completed", "cancelled", "no_show"] as const).map((item) => (
@@ -1733,7 +2158,7 @@ function Attendances({
           return (
             <article className="attendance-queue__item" key={attendance.id}>
               <div><span className={`status-badge status-badge--${attendance.status}`}>{statusLabel(attendance.status)}</span><h3>{patient?.fullName ?? "Paciente nao localizado"}</h3><p>{patient?.uniqueRecordNumber} · {attendance.baNumber}</p></div>
-              <dl><div><dt>Abertura</dt><dd>{formatDateTime(attendance.openedAt)}</dd></div><div><dt>Inicio</dt><dd>{attendance.startedAt ? formatDateTime(attendance.startedAt) : "-"}</dd></div><div><dt>Profissional</dt><dd>{professionalName}</dd></div><div><dt>Tipo</dt><dd>{attendance.type}</dd></div></dl>
+              <dl><div><dt>Nascimento</dt><dd>{patient?.birthDate ? formatDate(patient.birthDate) : "Nao informado"}</dd></div><div><dt>Idade</dt><dd>{calculateAge(patient?.birthDate)}</dd></div><div><dt>Abertura</dt><dd>{formatDateTime(attendance.openedAt)}</dd></div><div><dt>Inicio</dt><dd>{attendance.startedAt ? formatDateTime(attendance.startedAt) : "-"}</dd></div><div><dt>Profissional</dt><dd>{professionalName}</dd></div><div><dt>Tipo</dt><dd>{attendance.type}</dd></div></dl>
               <div className="table-actions">
                 {attendance.status === "waiting" && <button className="primary-button" onClick={() => onStart(attendance.id)} type="button"><PlayCircle size={17} /> Iniciar atendimento</button>}
                 {["in_progress", "paused"].includes(attendance.status) && <button className="primary-button" onClick={() => onContinue(attendance.id)} type="button"><ClipboardEdit size={17} /> Continuar atendimento</button>}
@@ -2057,7 +2482,7 @@ function FinancialReviewDialog({ attendance, patient, products, onCancel, onConf
   const [saving, setSaving] = useState(false);
   const total = items.reduce((sum, item) => sum + item.value, 0);
 
-  return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · ProntuárioÚnico {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Agora não</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, payerType: attendance.payerType, insuranceName: attendance.insuranceName, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
+  return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · ProntuárioÚnico {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Nao gerar lancamento agora</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, payerType: attendance.payerType, insuranceName: attendance.insuranceName, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
 }
 
 function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct, onUpdateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void>; onUpdateProduct: (product: StockProduct) => Promise<void> }) {
@@ -2896,7 +3321,7 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
   }
 
   return (
-    <ModulePage eyebrow="Administracao interna" title="Administração da Clínica" description="Controle usuarios, permissoes e configuracoes internas somente da sua clínica. A gestão comercial da plataforma fica em um sistema separado.">
+    <ModulePage eyebrow="Administracao interna" title="Administração da Clínica" description="Controle usuarios, permissoes e configuracoes internas da clinica.">
       <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setUserMessage(""); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
       <section className="metrics-grid">
         <MetricCard icon={<BuildingIcon />} label="Clínica atual" value="1" detail="Escopo administrativo limitado à empresa logada" tone="primary" />
@@ -2904,7 +3329,6 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
         <MetricCard icon={<ShieldCheck />} label="Ativos" value={String(users.filter((item) => item.active).length)} detail="Com acesso liberado" tone="success" />
         <MetricCard icon={<AlertTriangle />} label="Desativados" value={String(users.filter((item) => !item.active).length)} detail="Sem acesso ao sistema" />
       </section>
-      <div className="inline-info">Dono da Clínica administra apenas {company.displayName}. A gestão comercial da plataforma será tratada em sistema externo.</div>
       {userMessage && <div className="inline-info">{userMessage}</div>}
       <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setUserMessage(""); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
       {actionUser && <div className="dialog-backdrop"><section className="dialog-card"><div><h2>{actionUser.action === "reset_password" ? "Resetar senha" : actionUser.action === "deactivate" ? "Desativar usuario" : "Reativar usuario"}</h2><p>{actionUser.action === "reset_password" ? "Um link seguro de redefinicao sera enviado ao e-mail do usuario." : actionUser.action === "deactivate" ? "O acesso sera bloqueado, mas historicos, BAs e auditoria permanecerao preservados." : "O usuario voltara a acessar os modulos permitidos."}</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setActionUser(null)} type="button">Cancelar</button><button className={actionUser.action === "deactivate" ? "danger-button" : "primary-button"} onClick={confirmUserAction} type="button">Confirmar</button></div></section></div>}
@@ -2979,6 +3403,7 @@ function statusLabel(status: Attendance["status"]) {
     ba_open: "BA aberto",
     waiting: "Aguardando atendimento",
     in_progress: "Em atendimento",
+    reopened: "Reaberto para edição",
     paused: "Atendimento pausado",
     completed: "Finalizado",
     cancelled: "Cancelado",

@@ -28,6 +28,7 @@ export type ViewKey =
   | "patients"
   | "patient-profile"
   | "attendances"
+  | "attendance-management"
   | "schedule"
   | "financial"
   | "stock"
@@ -53,6 +54,7 @@ const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = 
   { key: "ba-opening", label: "Abertura de BA", icon: <ClipboardPlus size={18} /> },
   { key: "patients", label: "Pacientes", icon: <Users size={18} /> },
   { key: "attendances", label: "Atendimentos", icon: <Stethoscope size={18} /> },
+  { key: "attendance-management", label: "Gerenciamento de Atendimento", icon: <ShieldCheck size={18} /> },
   { key: "schedule", label: "Agenda Clínica", icon: <CalendarDays size={18} /> },
   { key: "financial", label: "Financeiro", icon: <CreditCard size={18} /> },
   { key: "stock", label: "Estoque", icon: <Boxes size={18} /> },
@@ -74,6 +76,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
   });
   const visibleItems = navItems.filter((item) => {
     if (item.key === "super-admin") return profile.role === "super_admin";
+    if (item.key === "attendance-management") return profile.role === "super_admin" || profile.role === "company_admin" || Boolean(allowedViews?.includes("attendance-management"));
     return profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key);
   });
 
@@ -82,6 +85,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
   }, [sidebarCollapsed]);
 
   function navigate(view: ViewKey) {
+    if (view === "attendance-management" && profile.role !== "super_admin" && profile.role !== "company_admin" && !allowedViews?.includes("attendance-management")) return;
     if (profile.role !== "super_admin" && allowedViews && !allowedViews.includes(view)) return;
     onViewChange(view);
     setMobileMenuOpen(false);

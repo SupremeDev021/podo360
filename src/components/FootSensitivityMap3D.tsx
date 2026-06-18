@@ -1,28 +1,23 @@
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
-import { RefreshCw, Rotate3D, Save } from "lucide-react";
+import { Pencil, RefreshCw, Rotate3D, Save, Trash2 } from "lucide-react";
 import { Component, Suspense, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Euler, Vector3 } from "three";
 import {
   footRegionDefinitions,
   legacyFootRegionMap,
-  meshNameFootRegionMap,
   withFootSide,
-  type FootCoordinate,
-  type SideAwareFootRegion
 } from "../data/footRegionMap";
+import type { FootCoordinate } from "../data/footRegionMap";
 import type { FootSensitivityMap, FootSide, SensitivityStatus } from "../types";
 
-const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-segmented.glb`;
-
-type RaycastPoint = ThreeEvent<PointerEvent>["point"];
-type RaycastGroup = {
-  worldToLocal: (point: RaycastPoint) => RaycastPoint;
-};
+const FOOT_MODEL_URL = `${import.meta.env.BASE_URL}models/podo360-foot-clickable.glb?v=20260617-clickable-5`;
 
 type FootSensitivityMap3DProps = {
   entries: FootSensitivityMap[];
-  onSave: (entry: Omit<FootSensitivityMap, "id" | "createdAt">) => void;
+  onSave: (entry: Omit<FootSensitivityMap, "id" | "createdAt"> & { id?: string }) => Promise<void> | void;
+  onRemove?: (entryId: string) => Promise<void> | void;
   patientId: string;
   companyId: string;
   professionalId: string;
@@ -30,6 +25,8 @@ type FootSensitivityMap3DProps = {
   uniqueMedicalRecordId: string;
   uniqueRecordNumber: string;
   baNumber: string;
+  readOnly?: boolean;
+  readOnlyMessage?: string;
 };
 
 const statusColor: Record<SensitivityStatus, string> = {
@@ -37,6 +34,14 @@ const statusColor: Record<SensitivityStatus, string> = {
   reduced: "#f59e0b",
   absent: "#ef4444",
   not_tested: "#94a3b8"
+};
+
+type FootMarker = {
+  id: string;
+  position: FootCoordinate;
+  color: string;
+  label: string;
+  selected?: boolean;
 };
 
 class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
@@ -51,31 +56,33 @@ class FootModelErrorBoundary extends Component<{ children: ReactNode; fallback: 
   }
 }
 
-function FootGlbModel({
-  footSide,
-  onModelPointerDown,
-  onModelPointerMove,
-  onModelPointerOut
-}: {
+type FootGlbModelProps = {
   footSide: FootSide;
-  onModelPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  onModelPointerMove: (event: ThreeEvent<PointerEvent>) => void;
-  onModelPointerOut: () => void;
-}) {
+  onRegionClick: (event: ThreeEvent<PointerEvent>) => void;
+};
+
+function FootGlbModel({ footSide, onRegionClick }: FootGlbModelProps) {
   const { scene } = useGLTF(FOOT_MODEL_URL);
   const model = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((object) => {
-      const clickable = object as {
+      const modelObject = object as {
         name: string;
         visible: boolean;
+        raycast?: (...args: unknown[]) => void;
         material?: unknown;
         userData?: Record<string, unknown>;
       };
-      const zoneSide = getClickZoneSide(clickable.name, clickable.userData);
-      if (!zoneSide) return;
-      clickable.visible = zoneSide === footSide;
-      configureInvisibleZoneMaterial(clickable.material);
+      if (isFootClickZone(modelObject.name, modelObject.userData)) {
+        const region = getFootRegionFromObjectName(modelObject.name, footSide, modelObject.userData);
+        if (region) {
+          modelObject.visible = true;
+          configureInvisibleClickMaterial(modelObject.material);
+        } else {
+          modelObject.raycast = () => undefined;
+          modelObject.visible = false;
+        }
+      }
     });
     return clone;
   }, [footSide, scene]);
@@ -83,9 +90,7 @@ function FootGlbModel({
   return (
     <primitive
       object={model}
-      onPointerDown={onModelPointerDown}
-      onPointerMove={onModelPointerMove}
-      onPointerOut={onModelPointerOut}
+      onPointerDown={onRegionClick}
       position={[0, 0, 0]}
       scale={1.05}
     />
@@ -119,98 +124,173 @@ function FallbackFootMesh() {
   );
 }
 
+function FootMarkers({ markers }: { markers: FootMarker[] }) {
+  return (
+    <group>
+      {markers.map((marker) => (
+        <group key={marker.id} position={marker.position}>
+          <mesh renderOrder={20}>
+            <sphereGeometry args={[marker.selected ? 0.045 : 0.032, 24, 16]} />
+            <meshStandardMaterial color={marker.color} emissive={marker.color} emissiveIntensity={marker.selected ? 0.65 : 0.32} transparent opacity={marker.selected ? 0.96 : 0.72} depthTest={false} />
+          </mesh>
+          {marker.selected && (
+            <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={19}>
+              <torusGeometry args={[0.075, 0.006, 10, 36]} />
+              <meshStandardMaterial color={marker.color} emissive={marker.color} emissiveIntensity={0.45} transparent opacity={0.82} depthTest={false} />
+            </mesh>
+          )}
+        </group>
+      ))}
+    </group>
+  );
+}
+
 export function FootSensitivityMap3D({
   entries,
   onSave,
+  onRemove,
   patientId,
   companyId,
   professionalId,
   attendanceId,
   uniqueMedicalRecordId,
   uniqueRecordNumber,
-  baNumber
+  baNumber,
+  readOnly = false,
+  readOnlyMessage = "Não é possível editar atendimento finalizado."
 }: FootSensitivityMap3DProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null);
-  const modelGroupRef = useRef<RaycastGroup | null>(null);
   const [footSide, setFootSide] = useState<FootSide>("right");
   const [selectedKey, setSelectedKey] = useState("hallux");
-  const [selectedCoordinates, setSelectedCoordinates] = useState<FootCoordinate | null>(null);
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [sensitivityStatus, setSensitivityStatus] = useState<SensitivityStatus>("present");
+  const [notes, setNotes] = useState("");
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<FootCoordinate | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [viewerMessage, setViewerMessage] = useState<string | null>(null);
   const sideRegions = useMemo(() => footRegionDefinitions.map((region) => withFootSide(region, footSide)), [footSide]);
   const selected = useMemo(() => sideRegions.find((region) => region.baseKey === selectedKey) ?? sideRegions[0], [selectedKey, sideRegions]);
-  const hovered = useMemo(() => sideRegions.find((region) => region.baseKey === hoveredKey) ?? null, [hoveredKey, sideRegions]);
   const entriesForSide = useMemo(() => entries.filter((entry) => entry.footSide === footSide), [entries, footSide]);
   const currentBaEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId === attendanceId), [attendanceId, entriesForSide]);
   const historicalEntries = useMemo(() => entriesForSide.filter((entry) => entry.attendanceId !== attendanceId), [attendanceId, entriesForSide]);
+  const selectedMarkerPoint = useMemo(
+    () => selectedCoordinates ?? toWorldFootPoint(selected.position, footSide),
+    [footSide, selected.position, selectedCoordinates]
+  );
+  const footMarkers = useMemo<FootMarker[]>(() => {
+    const savedMarkers = currentBaEntries
+      .filter((entry) => entry.coordinates)
+      .map((entry) => ({
+        id: entry.id,
+        position: [entry.coordinates!.x, entry.coordinates!.y, entry.coordinates!.z ?? 0] as FootCoordinate,
+        color: statusColor[entry.sensitivityStatus],
+        label: `${regionLabel(entry.regionKey)} - ${sensitivityStatusLabel(entry.sensitivityStatus)}`
+      }));
+    return [
+      ...savedMarkers,
+      {
+        id: "selected-foot-region",
+        position: selectedMarkerPoint,
+        color: "#f97316",
+        label: selected.displayLabel,
+        selected: true
+      }
+    ];
+  }, [currentBaEntries, selected.displayLabel, selectedMarkerPoint]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const [x, y, z] = selectedCoordinates ?? selected.position;
-
-    onSave({
-      companyId,
-      patientId,
-      uniqueMedicalRecordId,
-      attendanceId,
-      uniqueRecordNumber,
-      baNumber,
-      footSide,
-      regionKey: selected.regionKey,
-      pointKey: selected.pointKey,
-      coordinates: { x, y, z },
-      sensitivityStatus,
-      notes: String(data.get("notes") || ""),
-      createdBy: professionalId,
-      updatedAt: new Date().toISOString()
-    });
-
-    event.currentTarget.reset();
+  async function saveMarking() {
+    if (readOnly) {
+      setViewerMessage(readOnlyMessage);
+      return;
+    }
+    const [x, y, z] = selectedMarkerPoint;
+    setSaving(true);
+    try {
+      await onSave({
+        id: editingEntryId ?? undefined,
+        companyId,
+        patientId,
+        uniqueMedicalRecordId,
+        attendanceId,
+        uniqueRecordNumber,
+        baNumber,
+        footSide,
+        regionKey: selected.regionKey,
+        pointKey: selected.pointKey,
+        coordinates: { x, y, z },
+        sensitivityStatus,
+        notes,
+        createdBy: professionalId,
+        updatedAt: new Date().toISOString()
+      });
+      setEditingEntryId(null);
+      setNotes("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetCamera() {
     controlsRef.current?.reset();
   }
 
-  function readLocalPoint(event: ThreeEvent<PointerEvent>) {
-    if (!modelGroupRef.current) return null;
-    const localPoint = modelGroupRef.current.worldToLocal(event.point.clone());
-    return [localPoint.x, localPoint.y, localPoint.z] as FootCoordinate;
-  }
-
-  function selectRegion(region: SideAwareFootRegion, point: FootCoordinate) {
-    setSelectedKey(region.baseKey);
-    setSelectedCoordinates(point);
-    setHoveredKey(region.baseKey);
-  }
-
-  function hoverRegion(region: SideAwareFootRegion) {
-    setHoveredKey(region.baseKey);
-  }
-
-  function handleModelPointerMove(event: ThreeEvent<PointerEvent>) {
-    event.stopPropagation();
-    const localPoint = readLocalPoint(event);
-    if (!localPoint) return;
-    const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
-    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    hoverRegion(region);
-  }
-
-  function handleModelPointerDown(event: ThreeEvent<PointerEvent>) {
-    event.stopPropagation();
-    const localPoint = readLocalPoint(event);
-    if (!localPoint) return;
-    const meshMappedRegion = getFootRegionFromMeshName(event.object.name, footSide);
-    const region = meshMappedRegion ?? getFootRegionFromPoint(localPoint, footSide);
-    selectRegion(region, localPoint);
-  }
-
   function handleSideChange(side: FootSide) {
     setFootSide(side);
+    setEditingEntryId(null);
     setSelectedCoordinates(null);
-    setHoveredKey(null);
+    setViewerMessage(null);
+    setNotes("");
+  }
+
+  function editEntry(entry: FootSensitivityMap) {
+    if (readOnly) {
+      setViewerMessage(readOnlyMessage);
+      return;
+    }
+    const baseKey = getBaseKeyFromEntry(entry);
+    setFootSide(entry.footSide);
+    setSelectedKey(baseKey);
+    setSensitivityStatus(entry.sensitivityStatus);
+    setNotes(entry.notes || "");
+    setSelectedCoordinates(entry.coordinates ? [entry.coordinates.x, entry.coordinates.y, entry.coordinates.z ?? 0] : null);
+    setEditingEntryId(entry.id);
+  }
+
+  function handleRegionClick(event: ThreeEvent<PointerEvent>) {
+    const hit = event.intersections.find((intersection) =>
+      getFootRegionFromObjectName(intersection.object.name, footSide, intersection.object.userData as Record<string, unknown> | undefined)
+    );
+    if (!hit) {
+      if (event.intersections.length) {
+        setViewerMessage("Essa area ainda nao esta mapeada. Use o campo Regiao do pe para registrar com seguranca.");
+      }
+      return;
+    }
+    const region = getFootRegionFromObjectName(hit.object.name, footSide, hit.object.userData as Record<string, unknown> | undefined);
+    if (!region) return;
+    event.stopPropagation();
+    setSelectedKey(region.baseKey);
+    setSelectedCoordinates([hit.point.x, hit.point.y, hit.point.z]);
+    setViewerMessage(`${region.displayLabel} selecionado no modelo 3D.`);
+  }
+
+  async function removeEntry(entryId: string) {
+    if (!onRemove) return;
+    if (readOnly) {
+      setViewerMessage(readOnlyMessage);
+      return;
+    }
+    setRemovingId(entryId);
+    try {
+      await onRemove(entryId);
+      if (editingEntryId === entryId) {
+        setEditingEntryId(null);
+        setNotes("");
+      }
+    } finally {
+      setRemovingId(null);
+    }
   }
 
   return (
@@ -234,51 +314,37 @@ export function FootSensitivityMap3D({
         </div>
 
         <div className="foot-canvas" aria-label="Pé 3D para monofilamento">
-          <Canvas camera={{ position: [0, -4.2, 2.4], fov: 42 }}>
+          <Canvas camera={{ position: [0, -4.2, 2.4], fov: 42 }} onWheel={(event) => event.stopPropagation()} style={{ touchAction: "none" }}>
             <ambientLight intensity={0.95} />
             <directionalLight position={[2, -3, 4]} intensity={1.2} />
             <directionalLight position={[-4, 2, 2]} intensity={0.45} />
-            <group ref={(node) => { modelGroupRef.current = node; }} scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
+            <group scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
               <FootModelErrorBoundary fallback={<FallbackFootMesh />}>
                 <Suspense fallback={<FootLoading />}>
-                  <FootGlbModel
-                    footSide={footSide}
-                    onModelPointerDown={handleModelPointerDown}
-                    onModelPointerMove={handleModelPointerMove}
-                    onModelPointerOut={() => {
-                      setHoveredKey(null);
-                    }}
-                  />
+                  <FootGlbModel footSide={footSide} onRegionClick={handleRegionClick} />
                 </Suspense>
               </FootModelErrorBoundary>
-              {renderSavedMarkers(currentBaEntries, sideRegions, true)}
-              {renderSavedMarkers(historicalEntries, sideRegions, false)}
-              <RegionHighlight
-                color="#67e8f9"
-                label={selected.displayLabel}
-                region={selected}
-                visible
-              />
-              {hovered && hovered.baseKey !== selected.baseKey ? (
-                <RegionHighlight
-                  color="#bae6fd"
-                  label={hovered.displayLabel}
-                  region={hovered}
-                  visible
-                />
-              ) : null}
             </group>
-            <OrbitControls ref={(node) => { controlsRef.current = node; }} enableDamping enablePan minDistance={2.6} maxDistance={7} />
+            <FootMarkers markers={footMarkers} />
+            <Html fullscreen>
+              <div className="foot-viewer-note">Clique na região do pé ou use o campo Região do pé para registrar a sensibilidade.</div>
+            </Html>
+            <OrbitControls ref={(node) => { controlsRef.current = node; }} enableDamping enablePan={false} enableZoom minDistance={2.6} maxDistance={7} />
           </Canvas>
+          {viewerMessage && <div className="foot-viewer-inline-message">{viewerMessage}</div>}
         </div>
       </section>
 
-      <form className="panel-form" onSubmit={handleSubmit}>
+      <section className="panel-form foot-sensitivity-form">
         <div className="section-heading section-heading--compact">
           <div>
-            <h2>Sensibilidade Monofilamento</h2>
+          <h2>Sensibilidade Monofilamento</h2>
             <p>{footSide === "right" ? "Pé direito" : "Pé esquerdo"} · {selected.clinicalGroup} · {selected.displayLabel}</p>
           </div>
+        </div>
+
+        <div className="inline-info">
+          {readOnly ? "Este atendimento está finalizado e o mapa está disponível apenas para consulta." : "Clique diretamente no modelo quando a região estiver clara. Se preferir, use o campo Região do pé para registrar com segurança."}
         </div>
 
         <div className="foot-status-legend">
@@ -292,7 +358,11 @@ export function FootSensitivityMap3D({
 
         <label>
           Região do pé
-          <select value={selectedKey} onChange={(event) => { setSelectedKey(event.target.value); setSelectedCoordinates(null); }}>
+          <select disabled={readOnly} value={selectedKey} onChange={(event) => {
+            setSelectedKey(event.target.value);
+            setSelectedCoordinates(null);
+            setViewerMessage(null);
+          }}>
             {sideRegions.map((region) => (
               <option key={region.pointKey} value={region.baseKey}>{region.clinicalGroup} · {region.displayLabel}</option>
             ))}
@@ -301,7 +371,7 @@ export function FootSensitivityMap3D({
 
         <div className="segmented segmented--status segmented--status-four">
           {(["present", "reduced", "absent", "not_tested"] as const).map((status) => (
-            <button className={sensitivityStatus === status ? "is-active" : ""} key={status} onClick={() => setSensitivityStatus(status)} type="button">
+            <button className={sensitivityStatus === status ? "is-active" : ""} disabled={readOnly} key={status} onClick={() => setSensitivityStatus(status)} type="button">
               {sensitivityStatusLabel(status)}
             </button>
           ))}
@@ -309,12 +379,12 @@ export function FootSensitivityMap3D({
 
         <label>
           Observacoes
-          <textarea name="notes" placeholder="Observacoes sobre monofilamento, dor, parestesia ou resposta do paciente" />
+          <textarea disabled={readOnly} name="notes" onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes sobre monofilamento, dor, parestesia ou resposta do paciente" value={notes} />
         </label>
 
-        <button className="primary-button" type="submit">
+        <button className="primary-button" disabled={saving || readOnly} onClick={saveMarking} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button">
           <Save size={18} />
-          Salvar marcação
+          {saving ? "Salvando..." : editingEntryId ? "Salvar alteração" : "Salvar marcação"}
         </button>
 
         <div className="data-panel data-panel--flat">
@@ -322,8 +392,16 @@ export function FootSensitivityMap3D({
           <ul className="compact-list compact-list--clinical">
             {currentBaEntries.length ? currentBaEntries.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.baNumber} · {regionLabel(entry.regionKey)}</strong>
+                <div>
+                  <strong>{footSideLabel(entry.footSide)} · {regionLabel(entry.regionKey)}</strong>
+                  <small>{entry.baNumber} · {formatFootEntryDate(entry.updatedAt ?? entry.createdAt)}</small>
+                  {entry.notes && <small>{entry.notes}</small>}
+                </div>
                 <span>{sensitivityStatusLabel(entry.sensitivityStatus)}</span>
+                <div className="compact-list__actions">
+                  <button className="ghost-action" disabled={readOnly} onClick={() => editEntry(entry)} type="button"><Pencil size={14} /> Editar</button>
+                  {onRemove && <button className="danger-link" disabled={readOnly || removingId === entry.id} onClick={() => removeEntry(entry.id)} type="button"><Trash2 size={14} /> {removingId === entry.id ? "Removendo..." : "Remover"}</button>}
+                </div>
               </li>
             )) : <li>Nenhum ponto salvo neste BA.</li>}
           </ul>
@@ -334,13 +412,16 @@ export function FootSensitivityMap3D({
           <ul className="compact-list compact-list--clinical">
             {historicalEntries.length ? historicalEntries.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.baNumber} · {regionLabel(entry.regionKey)}</strong>
+                <div>
+                  <strong>{footSideLabel(entry.footSide)} · {regionLabel(entry.regionKey)}</strong>
+                  <small>{entry.baNumber} · {formatFootEntryDate(entry.updatedAt ?? entry.createdAt)}</small>
+                </div>
                 <span>{sensitivityStatusLabel(entry.sensitivityStatus)}</span>
               </li>
             )) : <li>Nenhum historico anterior para este lado do pe.</li>}
           </ul>
         </div>
-      </form>
+      </section>
     </div>
   );
 }
@@ -356,103 +437,68 @@ function FootLoading() {
   );
 }
 
-function RegionHighlight({ color, label, region, visible }: { color: string; label?: string; region: SideAwareFootRegion; visible: boolean }) {
-  if (!visible) return null;
-  return (
-    <group position={region.position}>
-      <mesh scale={region.zoneScale}>
-        <sphereGeometry args={[1, 32, 18]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.24} opacity={0.24} transparent depthWrite={false} />
-      </mesh>
-      <mesh scale={[region.zoneScale[0] * 1.08, region.zoneScale[1] * 1.08, region.zoneScale[2] * 1.08]}>
-        <sphereGeometry args={[1, 32, 18]} />
-        <meshBasicMaterial color={color} wireframe opacity={0.32} transparent depthWrite={false} />
-      </mesh>
-      {label ? (
-        <Html center distanceFactor={8} position={[0, 0, Math.max(region.zoneScale[2] + 0.08, 0.18)]}>
-          <span className="foot-hotspot-label">{label}</span>
-        </Html>
-      ) : null}
-    </group>
-  );
+function isFootClickZone(name: string, userData?: Record<string, unknown>) {
+  const normalized = name.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
+  return Boolean(getFootRegionKeyFromObjectName(name)) || normalized.includes("click_zone") || userData?.purpose === "foot_click_zone" || userData?.isClickZone === true;
 }
 
-function renderSavedMarkers(entries: FootSensitivityMap[], sideRegions: SideAwareFootRegion[], currentAttendance: boolean) {
-  return entries.map((entry) => {
-    const region = sideRegions.find((item) => matchesFootRegion(entry, item));
-    if (!region) return null;
-    const color = currentAttendance ? statusColor[entry.sensitivityStatus] : "#38bdf8";
-    return (
-      <RegionHighlight
-        color={color}
-        key={entry.id}
-        region={region}
-        visible
-      />
-    );
-  });
+function getFootRegionFromObjectName(name: string, footSide: FootSide, userData?: Record<string, unknown>) {
+  const regionKey = getFootRegionKeyFromObjectName(name) ?? (typeof userData?.regionKey === "string" ? userData.regionKey : null);
+  if (!regionKey) return null;
+  const sidePrefix = footSide === "right" ? "right_" : "left_";
+  if (!regionKey.startsWith(sidePrefix)) return null;
+  const baseKey = regionKey.replace(/^(right|left)_/, "");
+  const definition = footRegionDefinitions.find((region) => region.baseKey === baseKey);
+  return definition ? withFootSide(definition, footSide) : null;
 }
 
-function getFootRegionFromMeshName(meshName: string, footSide: FootSide) {
-  const normalized = meshName.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
-  if (!normalized) return null;
-
-  const sideMatch = normalized.match(/^(right|left)_(.+?)(?:_click_zone)?$/);
-  if (sideMatch) {
-    const [, side, rawBaseKey] = sideMatch;
-    if (side !== footSide) return null;
-    const baseKey = rawBaseKey.replace(/_click_zone$/, "");
-    const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
-    return region ? withFootSide(region, footSide) : null;
-  }
-
-  const baseKey = Object.entries(meshNameFootRegionMap)
-    .sort(([a], [b]) => b.length - a.length)
-    .find(([meshKey]) => normalized.includes(meshKey))?.[1];
-  if (!baseKey) return null;
-  const region = footRegionDefinitions.find((item) => item.baseKey === baseKey);
-  return region ? withFootSide(region, footSide) : null;
+function getFootRegionKeyFromObjectName(name: string) {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/\.\d+$/, "")
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_")
+    .replace(/_mesh$/, "")
+    .replace(/_click_zone$/, "");
+  const match = normalized.match(/^(right|left)_(.+)$/);
+  if (!match) return null;
+  const baseKey = match[2];
+  return footRegionDefinitions.some((region) => region.baseKey === baseKey) ? `${match[1]}_${baseKey}` : null;
 }
 
-function getClickZoneSide(name: string, userData?: Record<string, unknown>): FootSide | null {
-  const explicitSide = userData?.footSide;
-  if (explicitSide === "right" || explicitSide === "left") return explicitSide;
-  if (name.startsWith("right_")) return "right";
-  if (name.startsWith("left_")) return "left";
-  return null;
-}
-
-function configureInvisibleZoneMaterial(material: unknown) {
+function configureInvisibleClickMaterial(material: unknown) {
   const materials = Array.isArray(material) ? material : [material];
-  materials.forEach((entry) => {
-    const materialLike = entry as { transparent?: boolean; opacity?: number; depthWrite?: boolean; colorWrite?: boolean } | undefined;
-    if (!materialLike) return;
-    materialLike.transparent = true;
-    materialLike.opacity = 0;
-    materialLike.depthWrite = false;
-    materialLike.colorWrite = false;
+  materials.forEach((item) => {
+    const mat = item as {
+      transparent?: boolean;
+      opacity?: number;
+      depthWrite?: boolean;
+      colorWrite?: boolean;
+      visible?: boolean;
+      needsUpdate?: boolean;
+    } | null | undefined;
+    if (!mat) return;
+    mat.transparent = true;
+    mat.opacity = 0;
+    mat.depthWrite = false;
+    mat.colorWrite = false;
+    mat.visible = true;
+    mat.needsUpdate = true;
   });
 }
 
-function getFootRegionFromPoint(point: FootCoordinate, footSide: FootSide) {
-  const [x, y, z] = point;
-  const nearest = footRegionDefinitions.reduce<{ region: SideAwareFootRegion; score: number }>((best, definition) => {
-    const region = withFootSide(definition, footSide);
-    const [rx, ry, rz] = region.position;
-    const dx = (x - rx) / Math.max(region.zoneScale[0], 0.05);
-    const dy = (y - ry) / Math.max(region.zoneScale[1], 0.05);
-    const dz = (z - rz) / Math.max(region.zoneScale[2], 0.05);
-    const score = (dx * dx) + (dy * dy) + (dz * dz);
-    return score < best.score ? { region, score } : best;
-  }, { region: withFootSide(footRegionDefinitions[0], footSide), score: Number.POSITIVE_INFINITY });
-
-  return nearest.region;
+function toWorldFootPoint(point: FootCoordinate, footSide: FootSide): FootCoordinate {
+  const vector = new Vector3(point[0], point[1], point[2] ?? 0);
+  vector.multiplyScalar(1.05);
+  if (footSide === "left") vector.x *= -1;
+  vector.applyEuler(new Euler(0.12, 0.04, -0.08));
+  return [vector.x, vector.y, vector.z];
 }
 
-function matchesFootRegion(entry: FootSensitivityMap, region: SideAwareFootRegion) {
-  const normalizedPoint = normalizeFootKey(entry.pointKey || entry.regionKey, entry.footSide);
-  const normalizedRegion = normalizeFootKey(entry.regionKey, entry.footSide);
-  return normalizedPoint === region.pointKey || normalizedRegion === region.regionKey;
+function getBaseKeyFromEntry(entry: FootSensitivityMap) {
+  const normalized = normalizeFootKey(entry.pointKey || entry.regionKey, entry.footSide);
+  return normalized.replace(/^(right|left)_/, "");
 }
 
 function normalizeFootKey(key: string, footSide: FootSide) {
@@ -476,6 +522,23 @@ function regionLabel(key: string) {
   const compatibleKey = legacyFootRegionMap[baseKey] ?? baseKey;
   const region = footRegionDefinitions.find((item) => item.baseKey === compatibleKey);
   return region ? withFootSide(region, side).displayLabel : key;
+}
+
+function footSideLabel(side: FootSide) {
+  return side === "right" ? "Pé direito" : "Pé esquerdo";
+}
+
+function formatFootEntryDate(value?: string) {
+  if (!value) return "Data não informada";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Data não informada";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function sensitivityStatusLabel(status: SensitivityStatus) {
