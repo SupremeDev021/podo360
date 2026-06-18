@@ -9,9 +9,11 @@ type ImageEvolutionComparisonProps = {
   patientId: string;
   uniqueMedicalRecordId: string;
   onComparativeNote?: (imageIds: string[], note: string) => Promise<void> | void;
+  readOnly?: boolean;
+  readOnlyMessage?: string;
 };
 
-export function ImageEvolutionComparison({ images, attendances, patientId, uniqueMedicalRecordId, onComparativeNote }: ImageEvolutionComparisonProps) {
+export function ImageEvolutionComparison({ images, attendances, patientId, uniqueMedicalRecordId, onComparativeNote, readOnly = false, readOnlyMessage = "Não é possível editar atendimento finalizado." }: ImageEvolutionComparisonProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [regionFilter, setRegionFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -42,6 +44,10 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
   }
 
   async function saveNote() {
+    if (readOnly) {
+      setFeedback(readOnlyMessage);
+      return;
+    }
     if (!note.trim()) {
       setFeedback("Digite uma observacao antes de salvar.");
       return;
@@ -72,6 +78,13 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
         </div>
         <GitCompare size={20} />
       </div>
+
+      {readOnly && (
+        <div className="locked-attendance-banner">
+          <strong>Atendimento finalizado</strong>
+          <span>{readOnlyMessage}</span>
+        </div>
+      )}
 
       <div className="filter-row filter-row--dense">
         <select value={regionFilter} onChange={(event) => setRegionFilter(event.target.value)} aria-label="Filtrar por regiao">
@@ -122,8 +135,8 @@ export function ImageEvolutionComparison({ images, attendances, patientId, uniqu
 
       {onComparativeNote && (
         <div className="comparison-note">
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observacao comparativa para as imagens selecionadas" />
-          <button className="ghost-action" disabled={saving} onClick={saveNote} type="button">
+          <textarea disabled={readOnly} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observacao comparativa para as imagens selecionadas" />
+          <button className="ghost-action" disabled={saving || readOnly} onClick={saveNote} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button">
             {saving ? <LoaderCircle className="spin-icon" size={17} /> : <GitCompare size={17} />}
             {saving ? "Salvando observacao..." : "Salvar observacao comparativa"}
           </button>

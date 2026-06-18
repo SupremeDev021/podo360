@@ -29,15 +29,15 @@ export function can(role: Role, permission: string) {
 
 export function roleLabel(role: Role) {
   const labels: Record<Role, string> = {
-    super_admin: "Dono da Clínica",
+    super_admin: "Administrador da clinica",
     company_admin: "Administrador da empresa",
-    professional: "Profissional / Podólogo",
-    reception: "Recepção",
+    professional: "Profissional / Podologo",
+    reception: "Recepcao",
     financial: "Financeiro",
     stock: "Estoque",
     schedule: "Agenda",
-    reports: "Relatórios",
-    custom: "Usuário personalizado"
+    reports: "Relatorios",
+    custom: "Usuario personalizado"
   };
   return labels[role];
 }

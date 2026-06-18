@@ -1,6 +1,23 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
+export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
+
+async function assertAttendanceEditable(attendanceId: string | undefined, companyId: string | undefined) {
+  if (!attendanceId || !companyId || !isSupabaseConfigured || !supabase) return;
+  const { data, error } = await supabase
+    .from("attendances")
+    .select("status, finished_at")
+    .eq("id", attendanceId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data && (data.status === "completed" || Boolean(data.finished_at))) {
+    throw new Error(ATTENDANCE_FINALIZED_ERROR);
+  }
+}
+
 export async function listPatients(companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
 
@@ -131,6 +148,7 @@ export async function uploadCompanyLogo(companyId: string, file: File) {
 
 export async function saveAnamnesisRecord(record: AnamnesisRecord) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(record.attendanceId, record.companyId);
 
   const { data, error } = await supabase
     .from("anamnesis_records")
@@ -157,6 +175,7 @@ export async function saveAnamnesisRecord(record: AnamnesisRecord) {
 
 export async function saveAttendanceUsedProducts(record: AnamnesisRecord, products: UsedProduct[]) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(record.attendanceId, record.companyId);
   const { error: deleteError } = await supabase.from("attendance_used_products").delete().eq("company_id", record.companyId).eq("anamnesis_record_id", record.id);
   if (deleteError) throw deleteError;
   if (!products.length) return [];
@@ -183,6 +202,7 @@ export async function saveAttendanceUsedProducts(record: AnamnesisRecord, produc
 
 export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id" | "createdAt">) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(entry.attendanceId, entry.companyId);
 
   const { data, error } = await supabase
     .from("foot_sensitivity_maps")
@@ -210,6 +230,7 @@ export async function saveFootSensitivityMap(entry: Omit<FootSensitivityMap, "id
 
 export async function updateFootSensitivityMap(entry: FootSensitivityMap) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(entry.attendanceId, entry.companyId);
 
   const { data, error } = await supabase
     .from("foot_sensitivity_maps")
@@ -233,6 +254,15 @@ export async function updateFootSensitivityMap(entry: FootSensitivityMap) {
 
 export async function deleteFootSensitivityMap(entryId: string, companyId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
+  const { data: entry, error: entryError } = await supabase
+    .from("foot_sensitivity_maps")
+    .select("attendance_id")
+    .eq("id", entryId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (entryError) throw entryError;
+  await assertAttendanceEditable(entry?.attendance_id, companyId);
 
   const { error } = await supabase
     .from("foot_sensitivity_maps")
@@ -246,6 +276,7 @@ export async function deleteFootSensitivityMap(entryId: string, companyId: strin
 
 export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(image.attendanceId, image.companyId);
 
   const { data, error } = await supabase
     .from("attendance_images")
@@ -275,6 +306,16 @@ export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "c
 
 export async function updateAttendanceImageComparativeNotes(companyId: string, imageIds: string[], note: string) {
   if (!isSupabaseConfigured || !supabase) return null;
+  const { data: images, error: imagesError } = await supabase
+    .from("attendance_images")
+    .select("attendance_id")
+    .eq("company_id", companyId)
+    .in("id", imageIds);
+
+  if (imagesError) throw imagesError;
+  for (const image of images ?? []) {
+    await assertAttendanceEditable(image.attendance_id, companyId);
+  }
 
   const { data, error } = await supabase
     .from("attendance_images")
@@ -341,6 +382,17 @@ export async function finishAttendanceBa(attendanceId: string) {
   if (!isSupabaseConfigured || !supabase) return null;
 
   const { data, error } = await supabase.rpc("mark_attendance_finished", { target_attendance_id: attendanceId });
+  if (error) throw error;
+  return data;
+}
+
+export async function reopenAttendanceBa(attendanceId: string, reason: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase.rpc("cancel_attendance_finalization", {
+    target_attendance_id: attendanceId,
+    reopen_reason: reason
+  });
   if (error) throw error;
   return data;
 }
@@ -577,6 +629,7 @@ export async function updateAutoclaveRecord(record: AutoclaveRecord) {
 
 export async function saveBodyMapEntry(entry: Omit<BodyMapEntry, "id" | "createdAt">) {
   if (!isSupabaseConfigured || !supabase) return null;
+  await assertAttendanceEditable(entry.attendanceId, entry.companyId);
 
   const { data, error } = await supabase
     .from("patient_body_maps")

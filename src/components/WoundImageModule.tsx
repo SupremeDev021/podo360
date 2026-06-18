@@ -5,7 +5,7 @@ import type { AttendanceImage, FootSide } from "../types";
 
 type WoundImageModuleProps = {
   images: AttendanceImage[];
-  onSave: (image: Omit<AttendanceImage, "id" | "createdAt">) => void;
+  onSave: (image: Omit<AttendanceImage, "id" | "createdAt">) => Promise<void> | void;
   companyId: string;
   patientId: string;
   attendanceId: string;
@@ -13,6 +13,8 @@ type WoundImageModuleProps = {
   uniqueRecordNumber: string;
   baNumber: string;
   createdBy: string;
+  readOnly?: boolean;
+  readOnlyMessage?: string;
 };
 
 const imageTypes: Array<{ value: AttendanceImage["imageType"]; label: string }> = [
@@ -35,24 +37,28 @@ export function WoundImageModule({
   uniqueMedicalRecordId,
   uniqueRecordNumber,
   baNumber,
-  createdBy
+  createdBy,
+  readOnly = false,
+  readOnlyMessage = "Não é possível editar atendimento finalizado."
 }: WoundImageModuleProps) {
   const [previewUrl, setPreviewUrl] = useState("");
   const currentImages = useMemo(() => images.filter((image) => image.attendanceId === attendanceId), [attendanceId, images]);
 
   function handleFileChange(file?: File) {
+    if (readOnly) return;
     if (!file) return;
     setPreviewUrl(URL.createObjectURL(file));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) return;
     const form = new FormData(event.currentTarget);
     const file = form.get("woundImage") as File | null;
     const fileUrl = previewUrl || (file?.name ? `supabase://attendance-images/${patientId}/${attendanceId}/${file.name}` : String(form.get("fileUrl") || ""));
     const region = String(form.get("footRegion") || "Outra");
 
-    onSave({
+    await onSave({
       companyId,
       patientId,
       uniqueMedicalRecordId,
@@ -86,41 +92,48 @@ export function WoundImageModule({
           <ImagePlus size={20} />
         </div>
 
+        {readOnly && (
+          <div className="locked-attendance-banner">
+            <strong>Atendimento finalizado</strong>
+            <span>{readOnlyMessage}</span>
+          </div>
+        )}
+
         <div className="form-grid form-grid--two">
           <label className="app-upload-field">
             <ImagePlus size={24} />
             <span>Clique para enviar ou arraste uma imagem</span>
             <small>PNG, JPG, JPEG ou WEBP. Use uma imagem nítida da região acompanhada.</small>
-            <input accept="image/png,image/jpeg,image/jpg,image/webp" name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+            <input accept="image/png,image/jpeg,image/jpg,image/webp" disabled={readOnly} name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
           <label className="app-upload-field">
             <Camera size={24} />
             <span>Capturar com a câmera</span>
             <small>Ideal para celular durante o atendimento.</small>
-            <input accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+            <input accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" disabled={readOnly} name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
           <label>
             Tipo da imagem
-            <select name="imageType" defaultValue="current_state">
+            <select name="imageType" defaultValue="current_state" disabled={readOnly}>
               {imageTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
           </label>
           <label>
             Regiao relacionada
-            <select name="footRegion" defaultValue="Pe direito">
+            <select name="footRegion" defaultValue="Pe direito" disabled={readOnly}>
               {footRegions.map((region) => <option key={region} value={region}>{region}</option>)}
             </select>
           </label>
         </div>
 
-        <label>URL do arquivo seguro<input name="fileUrl" placeholder="Preenchido automaticamente apos o envio seguro da imagem" /></label>
-        <label>Descricao da imagem<textarea name="description" /></label>
-        <label>Observacoes clinicas<textarea name="clinicalNotes" /></label>
-        <label>Observacao comparativa<textarea name="comparativeNotes" placeholder="Ex.: menor hiperemia comparado ao BA anterior" /></label>
+        <label>URL do arquivo seguro<input disabled={readOnly} name="fileUrl" placeholder="Preenchido automaticamente apos o envio seguro da imagem" /></label>
+        <label>Descricao da imagem<textarea disabled={readOnly} name="description" /></label>
+        <label>Observacoes clinicas<textarea disabled={readOnly} name="clinicalNotes" /></label>
+        <label>Observacao comparativa<textarea disabled={readOnly} name="comparativeNotes" placeholder="Ex.: menor hiperemia comparado ao BA anterior" /></label>
 
         {previewUrl && <img className="wound-preview" alt="Previa da imagem selecionada" src={previewUrl} />}
 
-        <button className="primary-button" type="submit"><Save size={18} /> Salvar imagem da ferida</button>
+        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit"><Save size={18} /> Salvar imagem da ferida</button>
       </form>
 
       <section className="data-panel data-panel--flat">

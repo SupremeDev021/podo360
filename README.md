@@ -56,16 +56,20 @@ O servico `src/services/aiReferralReportService.ts` monta o contexto clinico e h
 
 ```bash
 npm run lint
+npm run typecheck
 npm run build
+npm run test:e2e
 ```
 
 Para publicar em producao:
 
-1. Execute a migration do Supabase.
+1. Execute e revise as migrations do Supabase no projeto correto.
 2. Configure as variaveis de ambiente no provedor de deploy.
 3. Defina as URLs permitidas no Supabase Auth.
 4. Crie buckets privados/publicos conforme necessidade: logos, anexos de pacientes e fotos de curativos.
 5. Mantenha qualquer chave secreta de IA em uma Function ou backend, nunca em `VITE_*`.
+
+Este repositorio nao inclui chaves reais. Use `.env.example` como base e mantenha `.env` fora do Git.
 
 ## Mobile
 

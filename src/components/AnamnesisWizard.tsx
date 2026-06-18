@@ -1,7 +1,9 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Plus, Save, SkipForward, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, Patient, StockProduct, UsedProduct } from "../types";
+import { footRegionDefinitions, withFootSide } from "../data/footRegionMap";
+import type { SideAwareFootRegion } from "../data/footRegionMap";
+import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, FootSide, Patient, StockProduct, UsedProduct } from "../types";
 
 type Field =
   | { name: string; label: string; type: "text" | "date" | "number" | "textarea" }
@@ -28,6 +30,8 @@ type AnamnesisWizardProps = {
   woundImagesSlot?: ReactNode;
   imageEvolutionSlot?: ReactNode;
   products?: StockProduct[];
+  readOnly?: boolean;
+  readOnlyMessage?: string;
 };
 
 const modules: Module[] = [
@@ -137,11 +141,14 @@ export function AnamnesisWizard({
   footSensitivitySlot,
   woundImagesSlot,
   imageEvolutionSlot,
-  products = []
+  products = [],
+  readOnly = false,
+  readOnlyMessage = "Não é possível editar atendimento finalizado."
 }: AnamnesisWizardProps) {
   const [step, setStep] = useState(record?.currentStep ?? 1);
   const [formData, setFormData] = useState<AnamnesisFormData>({
     identification_name: patient.fullName,
+    identification_age: calculateAgeValue(patient.birthDate),
     identification_profession: patient.profession,
     ...record?.formData
   });
@@ -154,6 +161,10 @@ export function AnamnesisWizard({
   });
   const currentModule = modules[step - 1];
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
+  const dressingLocationOptions = useMemo(
+    () => (["right", "left"] as FootSide[]).flatMap((side) => footRegionDefinitions.map((region) => withFootSide(region, side))),
+    []
+  );
 
   function moduleHasValue(module: Module) {
     return module.fields.some((field) => {
@@ -163,6 +174,7 @@ export function AnamnesisWizard({
   }
 
   function save(nextStep = step, completed = false, overrideStatuses = stepStatuses) {
+    if (readOnly) return;
     const selectedProducts = usedProducts.filter((item) => item.name.trim());
     onSave({
       id: record?.id ?? `anamnesis-${attendanceId}`,
@@ -184,6 +196,7 @@ export function AnamnesisWizard({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) return;
     const nextStep = Math.min(step + 1, modules.length);
     const nextStatuses: Record<string, AnamnesisStepStatus> = {
       ...stepStatuses,
@@ -195,6 +208,7 @@ export function AnamnesisWizard({
   }
 
   function handleSkip() {
+    if (readOnly) return;
     const nextStep = Math.min(modules.length, step + 1);
     const nextStatuses = { ...stepStatuses, [currentModule.key]: "skipped" as const };
     setStepStatuses(nextStatuses);
@@ -203,7 +217,14 @@ export function AnamnesisWizard({
   }
 
   function updateField(name: string, value: string | number | boolean | string[]) {
+    if (readOnly) return;
     setFormData((current) => ({ ...current, [name]: value }));
+    setStepStatuses((current) => ({ ...current, [currentModule.key]: current[currentModule.key] === "completed" ? "completed" : "in_progress" }));
+  }
+
+  function updateFields(patch: AnamnesisFormData) {
+    if (readOnly) return;
+    setFormData((current) => ({ ...current, ...patch }));
     setStepStatuses((current) => ({ ...current, [currentModule.key]: current[currentModule.key] === "completed" ? "completed" : "in_progress" }));
   }
 
@@ -216,6 +237,7 @@ export function AnamnesisWizard({
   }, [products]);
 
   function updateUsedProduct(index: number, patch: Partial<UsedProduct>) {
+    if (readOnly) return;
     setUsedProducts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
     setStepStatuses((current) => ({ ...current, [currentModule.key]: "in_progress" }));
   }
@@ -230,6 +252,13 @@ export function AnamnesisWizard({
         </div>
         <strong className="progress-pill">{step}/{modules.length} · {progress}%</strong>
       </div>
+
+      {readOnly && (
+        <div className="locked-attendance-banner">
+          <strong>Atendimento finalizado</strong>
+          <span>{readOnlyMessage}</span>
+        </div>
+      )}
 
       <div className="stepper">
         {modules.map((item, index) => (
@@ -249,16 +278,16 @@ export function AnamnesisWizard({
                 const registered = products.find((item) => item.name === usedProduct.name);
                 const isOther = Boolean(usedProduct.name) && !registered;
                 return <div className="used-product-row" key={`${index}-${usedProduct.productId || "new"}`}>
-                  <label>Produto<select onChange={(event) => { const selected = products.find((item) => item.id === event.target.value); updateUsedProduct(index, selected ? { productId: selected.id, name: selected.name, category: selected.category, unit: selected.unit, unitPrice: selected.saleValue } : { productId: undefined, name: event.target.value === "__other__" ? " " : "" }); }} value={registered?.id || (isOther ? "__other__" : "")}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{isOther && <input onChange={(event) => updateUsedProduct(index, { name: event.target.value })} placeholder="Nome do outro produto" value={usedProduct.name.trimStart()} />}</label>
-                  <label>Quantidade<input min="0.001" onChange={(event) => updateUsedProduct(index, { quantity: Number(event.target.value) })} step="0.001" type="number" value={usedProduct.quantity} /></label>
-                  <label>Unidade<input onChange={(event) => updateUsedProduct(index, { unit: event.target.value })} value={usedProduct.unit} /></label>
+                  <label>Produto<select disabled={readOnly} onChange={(event) => { const selected = products.find((item) => item.id === event.target.value); updateUsedProduct(index, selected ? { productId: selected.id, name: selected.name, category: selected.category, unit: selected.unit, unitPrice: selected.saleValue } : { productId: undefined, name: event.target.value === "__other__" ? " " : "" }); }} value={registered?.id || (isOther ? "__other__" : "")}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{isOther && <input disabled={readOnly} onChange={(event) => updateUsedProduct(index, { name: event.target.value })} placeholder="Nome do outro produto" value={usedProduct.name.trimStart()} />}</label>
+                  <label>Quantidade<input disabled={readOnly} min="0.001" onChange={(event) => updateUsedProduct(index, { quantity: Number(event.target.value) })} step="0.001" type="number" value={usedProduct.quantity} /></label>
+                  <label>Unidade<input disabled={readOnly} onChange={(event) => updateUsedProduct(index, { unit: event.target.value })} value={usedProduct.unit} /></label>
                   <label>Observação<input onChange={(event) => updateUsedProduct(index, { notes: event.target.value })} value={usedProduct.notes || ""} /></label>
-                  <button aria-label="Remover produto" className="icon-button" disabled={usedProducts.length === 1} onClick={() => setUsedProducts((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><Trash2 size={16} /></button>
+                  <button aria-label="Remover produto" className="icon-button" disabled={readOnly || usedProducts.length === 1} onClick={() => setUsedProducts((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><Trash2 size={16} /></button>
                 </div>;
               })}
-              <button className="ghost-action used-products-add" onClick={() => setUsedProducts((current) => [...current, { name: "", quantity: 1, unit: "un" }])} type="button"><Plus size={16} /> Adicionar produto</button>
+              <button className="ghost-action used-products-add" disabled={readOnly} onClick={() => setUsedProducts((current) => [...current, { name: "", quantity: 1, unit: "un" }])} type="button"><Plus size={16} /> Adicionar produto</button>
             </div>
-          ) : <FieldRenderer field={field} formData={formData} key={field.name} onChange={updateField} />
+          ) : <FieldRenderer disabled={readOnly} field={field} footRegionOptions={dressingLocationOptions} formData={formData} key={field.name} onChange={updateField} onPatch={updateFields} />
         ))}
 
         {currentModule.key === "monofilament_3d" && footSensitivitySlot}
@@ -269,13 +298,13 @@ export function AnamnesisWizard({
           <button className="ghost-action" disabled={step === 1} onClick={() => setStep((current) => Math.max(1, current - 1))} type="button">
             <ArrowLeft size={17} /> Voltar
           </button>
-          <button className="ghost-action" onClick={() => save(step, false)} type="button">
+          <button className="ghost-action" disabled={readOnly} onClick={() => save(step, false)} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button">
             <Save size={17} /> Salvar rascunho
           </button>
-          <button className="ghost-action" onClick={handleSkip} type="button">
+          <button className="ghost-action" disabled={readOnly} onClick={handleSkip} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button">
             <SkipForward size={17} /> Pular modulo
           </button>
-          <button className="primary-button" type="submit">
+          <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit">
             {step === modules.length ? <CheckCircle2 size={17} /> : <ArrowRight size={17} />}
             {step === modules.length ? "Finalizar" : "Avancar"}
           </button>
@@ -296,12 +325,30 @@ function stepStatusLabel(status: AnamnesisStepStatus) {
   return labels[status];
 }
 
-function FieldRenderer({ field, formData, onChange }: { field: Field; formData: AnamnesisFormData; onChange: (name: string, value: string | number | boolean | string[]) => void }) {
+function FieldRenderer({
+  field,
+  footRegionOptions,
+  formData,
+  onChange,
+  onPatch,
+  disabled = false
+}: {
+  field: Field;
+  footRegionOptions: SideAwareFootRegion[];
+  formData: AnamnesisFormData;
+  onChange: (name: string, value: string | number | boolean | string[]) => void;
+  onPatch: (patch: AnamnesisFormData) => void;
+  disabled?: boolean;
+}) {
+  if (field.name === "dressing_location") {
+    return <DressingLocationField disabled={disabled} field={field} footRegionOptions={footRegionOptions} formData={formData} onPatch={onPatch} />;
+  }
+
   if (field.type === "textarea") {
     return (
       <label>
         {field.label}
-        <textarea value={String(formData[field.name] || "")} onChange={(event) => onChange(field.name, event.target.value)} />
+        <textarea disabled={disabled} value={String(formData[field.name] || "")} onChange={(event) => onChange(field.name, event.target.value)} />
       </label>
     );
   }
@@ -320,6 +367,7 @@ function FieldRenderer({ field, formData, onChange }: { field: Field; formData: 
                   const next = event.target.checked ? [...selected, option] : selected.filter((item) => item !== option);
                   onChange(field.name, next);
                 }}
+                disabled={disabled}
                 type="checkbox"
               />
               {option}
@@ -337,7 +385,7 @@ function FieldRenderer({ field, formData, onChange }: { field: Field; formData: 
         <div className="checkbox-grid">
           {field.options.map((option) => (
             <label key={option}>
-              <input checked={formData[field.name] === option} onChange={() => onChange(field.name, option)} type="radio" />
+              <input checked={formData[field.name] === option} disabled={disabled} onChange={() => onChange(field.name, option)} type="radio" />
               {option}
             </label>
           ))}
@@ -351,9 +399,80 @@ function FieldRenderer({ field, formData, onChange }: { field: Field; formData: 
       {field.label}
       <input
         type={field.type}
+        disabled={disabled}
         value={String(formData[field.name] || "")}
         onChange={(event) => onChange(field.name, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
       />
     </label>
   );
+}
+
+function DressingLocationField({
+  disabled = false,
+  field,
+  footRegionOptions,
+  formData,
+  onPatch
+}: {
+  disabled?: boolean;
+  field: Field;
+  footRegionOptions: SideAwareFootRegion[];
+  formData: AnamnesisFormData;
+  onPatch: (patch: AnamnesisFormData) => void;
+}) {
+  const currentText = getTextValue(formData.dressing_location);
+  const savedRegionKey = getTextValue(formData.dressing_location_region_key);
+  const selectedRegionKey = savedRegionKey || (footRegionOptions.some((region) => region.regionKey === currentText) ? currentText : "");
+  const selectedRegion = footRegionOptions.find((region) => region.regionKey === selectedRegionKey);
+  const legacyText = !selectedRegion && currentText ? currentText : getTextValue(formData.dressing_location_legacy_text);
+
+  function handleRegionChange(regionKey: string) {
+    const region = footRegionOptions.find((item) => item.regionKey === regionKey);
+    if (!region) {
+      onPatch({
+        dressing_location: "",
+        dressing_location_label: "",
+        dressing_location_region_key: "",
+        dressing_location_foot_side: ""
+      });
+      return;
+    }
+
+    onPatch({
+      dressing_location: region.displayLabel,
+      dressing_location_label: region.displayLabel,
+      dressing_location_region_key: region.regionKey,
+      dressing_location_foot_side: region.regionKey.startsWith("right_") ? "right" : "left",
+      ...(legacyText && !getTextValue(formData.dressing_location_legacy_text) ? { dressing_location_legacy_text: legacyText } : {})
+    });
+  }
+
+  return (
+    <label>
+      {field.label}
+      <select disabled={disabled} value={selectedRegion?.regionKey ?? ""} onChange={(event) => handleRegionChange(event.target.value)}>
+        <option value="">Selecione a regiao do pe</option>
+        {footRegionOptions.map((region) => (
+          <option key={region.regionKey} value={region.regionKey}>{region.clinicalGroup} - {region.displayLabel}</option>
+        ))}
+      </select>
+      {selectedRegion && <small className="field-help">Selecionado: {selectedRegion.displayLabel} ({selectedRegion.sideLabel})</small>}
+      {legacyText && <small className="field-help">Local informado anteriormente: {legacyText}</small>}
+    </label>
+  );
+}
+
+function getTextValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function calculateAgeValue(birthDate?: string) {
+  if (!birthDate) return "";
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 ? age : "";
 }
