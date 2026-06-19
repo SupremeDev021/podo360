@@ -3749,7 +3749,8 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Diagnostico ungueal", [
       ["Pe direito", getAnamnesisObjectEntry(data.block_14, "right_foot")],
       ["Pe esquerdo", getAnamnesisObjectEntry(data.block_14, "left_foot")],
-      ["Local marcado no pe 3D", formatWoundLocationForPrint(getAnamnesisObjectEntry(data.block_14, "wound_location"))],
+      ["Local marcado no pe direito", formatWoundLocationForPrint(getAnamnesisObjectEntry(getAnamnesisObjectEntry(data.block_14, "right_foot"), "wound_location"))],
+      ["Local marcado no pe esquerdo", formatWoundLocationForPrint(getAnamnesisObjectEntry(getAnamnesisObjectEntry(data.block_14, "left_foot"), "wound_location"))],
       ["Registros anteriores", data.nail_anatomy || data.pathologies || data.structural_changes || data.podology_diagnosis_notes]
     ]],
     ["Procedimento", [

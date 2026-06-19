@@ -23,6 +23,7 @@ export type FootRegionSelection = {
 };
 
 type FootRegionSelector3DProps = {
+  footSide: FootSide;
   value?: FootRegionSelection | null;
   onChange: (selection: FootRegionSelection) => void;
   disabled?: boolean;
@@ -105,6 +106,7 @@ function FootRegionMarker({ position, label }: { position: FootCoordinate; label
 }
 
 export function FootRegionSelector3D({
+  footSide,
   value,
   onChange,
   disabled = false,
@@ -112,7 +114,6 @@ export function FootRegionSelector3D({
   helperText = "Clique diretamente no pé 3D ou use o fallback por seleção."
 }: FootRegionSelector3DProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null);
-  const [footSide, setFootSide] = useState<FootSide>(value?.foot_side ?? "right");
   const [message, setMessage] = useState<string | null>(null);
   const regions = useMemo(() => footRegionDefinitions.map((region) => withFootSide(region, footSide)), [footSide]);
   const selectedRegion = useMemo(() => {
@@ -126,8 +127,8 @@ export function FootRegionSelector3D({
   }, [footSide, selectedRegion, value?.coordinates]);
 
   useEffect(() => {
-    if (value?.foot_side && value.foot_side !== footSide) setFootSide(value.foot_side);
-  }, [footSide, value?.foot_side]);
+    setMessage(null);
+  }, [footSide]);
 
   function resetCamera() {
     controlsRef.current?.reset();
@@ -171,13 +172,7 @@ export function FootRegionSelector3D({
       </div>
 
       <div className="body-map__toolbar">
-        <div className="segmented">
-          {(["right", "left"] as const).map((side) => (
-            <button className={footSide === side ? "is-active" : ""} disabled={disabled} key={side} onClick={() => setFootSide(side)} type="button">
-              {side === "right" ? "Pé direito" : "Pé esquerdo"}
-            </button>
-          ))}
-        </div>
+        <strong className="foot-region-selector__side">{footSide === "right" ? "Pé direito" : "Pé esquerdo"}</strong>
         <div className="foot-map-actions">
           <span className="foot-map-hint"><Rotate3D size={16} /> Girar e aproximar</span>
           <button className="ghost-button ghost-button--dark" onClick={resetCamera} type="button">
@@ -209,13 +204,6 @@ export function FootRegionSelector3D({
       </div>
 
       <div className="foot-region-selector__fallback">
-        <label>
-          Pé
-          <select disabled={disabled} value={footSide} onChange={(event) => setFootSide(event.target.value as FootSide)}>
-            <option value="right">Pé direito</option>
-            <option value="left">Pé esquerdo</option>
-          </select>
-        </label>
         <label>
           Região do pé
           <select disabled={disabled} value={selectedRegion?.regionKey ?? ""} onChange={(event) => selectRegion(event.target.value)}>

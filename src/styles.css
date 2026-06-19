@@ -2919,8 +2919,8 @@ textarea {
 
 .foot-region-selector {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid rgba(249, 115, 22, 0.24);
   border-radius: 14px;
   background: linear-gradient(180deg, #fff7ed, #ffffff);
@@ -2930,9 +2930,19 @@ textarea {
   margin-bottom: 0;
 }
 
+.foot-region-selector__side {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgba(249, 115, 22, 0.12);
+  color: #9a3412;
+  font-size: 13px;
+}
+
 .foot-canvas--compact {
-  min-height: 340px;
-  height: min(52vh, 440px);
+  min-height: 260px;
+  height: min(40vh, 340px);
 }
 
 .foot-region-marker-label {
@@ -2950,7 +2960,7 @@ textarea {
 
 .foot-region-selector__fallback {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -3500,6 +3510,11 @@ td {
   .foot-canvas {
     height: min(58vh, 460px);
     min-height: 380px;
+  }
+
+  .foot-canvas.foot-canvas--compact {
+    height: min(36vh, 300px);
+    min-height: 220px;
   }
 
   .queue-summary {
