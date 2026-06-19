@@ -1,6 +1,8 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Plus, Save, SkipForward, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { FootRegionSelector3D } from "./FootRegionSelector3D";
+import type { FootRegionSelection } from "./FootRegionSelector3D";
 import { footRegionDefinitions, withFootSide } from "../data/footRegionMap";
 import type { SideAwareFootRegion } from "../data/footRegionMap";
 import type { AnamnesisFormData, AnamnesisRecord, AnamnesisStepStatus, FootSide, Patient, StockProduct, UsedProduct } from "../types";
@@ -14,6 +16,7 @@ type Module = {
   title: string;
   description: string;
   fields: Field[];
+  displayStep?: number;
 };
 
 type AnamnesisWizardProps = {
@@ -62,66 +65,59 @@ const modules: Module[] = [
   { key: "edema", title: "Edema", description: "Grau de edema.", fields: [
     { name: "edema", label: "Edema", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
   ] },
-  { key: "vascular_exams", title: "Exames Vasculares", description: "Sensibilidades e exames complementares sem mapa 3D.", fields: [
-    { name: "monofilament_right", label: "Sensibilidade Monofilamento - Pe D", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
-    { name: "monofilament_left", label: "Sensibilidade Monofilamento - Pe E", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
-    { name: "vibration_sensitivity", label: "Sensibilidade vibratoria com Diapasao", type: "radio", options: ["Presente", "Ausente"] },
-    { name: "thermal_sensitivity", label: "Sensibilidade termica", type: "radio", options: ["Positivo", "Negativo"] },
-    { name: "monofilament_notes", label: "Observacoes de sensibilidade", type: "textarea" }
-  ] },
-  { key: "monofilament_3d", title: "Pe 3D / Sensibilidade Monofilamento", description: "Registro visual complementar separado dos exames vasculares.", fields: [] },
-  { key: "itb", title: "ITB", description: "Indice tornozelo-braco com calculo automatico.", fields: [
+  { key: "monofilament_3d", title: "Sensibilidade Monofilamento", description: "Mapa tecnico do pe para pontos de monofilamento.", fields: [], displayStep: 8 },
+  { key: "itb", title: "ITB", description: "Indice tornozelo-braco com calculo automatico.", displayStep: 10, fields: [
     { name: "itb_right_foot", label: "Pe D mmHg", type: "number" },
     { name: "itb_left_foot", label: "Pe E mmHg", type: "number" },
     { name: "itb_right_arm", label: "Braco D mmHg", type: "number" },
     { name: "itb_left_arm", label: "Braco E mmHg", type: "number" }
   ] },
-  { key: "ihb", title: "IHB", description: "Indice halux-braco com calculo automatico.", fields: [
+  { key: "ihb", title: "IHB", description: "Indice halux-braco com calculo automatico.", displayStep: 11, fields: [
     { name: "ihb_right_hallux", label: "Halux D mmHg", type: "number" },
     { name: "ihb_left_hallux", label: "Halux E mmHg", type: "number" },
     { name: "ihb_right_arm", label: "Braco D mmHg", type: "number" },
     { name: "ihb_left_arm", label: "Braco E mmHg", type: "number" }
   ] },
-  { key: "glycemia", title: "Glicemia", description: "Resultado em mg/dL.", fields: [
+  { key: "glycemia", title: "Glicemia", description: "Resultado em mg/dL.", displayStep: 12, fields: [
     { name: "glycemia_result", label: "Resultado em mg/dL", type: "number" },
     { name: "glycemia_context", label: "Contexto", type: "radio", options: ["Em jejum", "Apos alimentacao"] }
   ] },
-  { key: "eva", title: "Escala EVA", description: "Dor de 0 a 10.", fields: [
+  { key: "eva", title: "Escala EVA", description: "Dor de 0 a 10.", displayStep: 13, fields: [
     { name: "eva_scale", label: "Valor EVA", type: "number" },
     { name: "eva_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { key: "podology_diagnosis", title: "Diagnostico ungueal", description: "Alteracoes ungueais separadas por pe e local da ferida.", fields: [
+  { key: "podology_diagnosis", title: "Diagnostico ungueal", description: "Alteracoes ungueais separadas por pe e local da ferida.", displayStep: 14, fields: [
     { name: "nail_anatomy", label: "Anatomico laminar", type: "checkbox", options: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil", "Curvatura", "Plana", "Normal / fisiologica", "Telha", "Gancho / Uncinada", "Caracol / Em pinca"] },
     { name: "pathologies", label: "Patologias", type: "checkbox", options: ["Onicomicose", "Paroniquia / Unheiro", "Sindrome da unha verde", "Onicocriptose / Unha encravada", "Onicogrifose", "Hematoma subungueal", "Outras"] },
     { name: "structural_changes", label: "Alteracoes estruturais e distrofias", type: "checkbox", options: ["Onicolise", "Coiloniquia", "Linhas de Beau", "Psoriase ungueal", "Paroniquia", "Onicogrifose", "Coloníquia / Unha em colher", "Unhas de Hipocrates / Baqueteamento digital", "Onicosquizia"] },
     { name: "podology_diagnosis_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { key: "procedure", title: "Procedimento", description: "Procedimentos, instrumentos, cuidados, lixas e brocas.", fields: [
+  { key: "procedure", title: "Procedimento", description: "Procedimentos, instrumentos, cuidados, lixas e brocas.", displayStep: 15, fields: [
     { name: "procedure", label: "Procedimento", type: "checkbox", options: ["Debaste plantar", "Realizado", "Nao realizado", "Lixa", "Laminar", "Plantar", "Instrumentos", "Kit diabetico", "Kit nao diabetico", "Cuidados", "Higienizante", "Emoliente", "Creme hidratante", "Finalizador"] },
     { name: "sandpaper", label: "Gramatura de lixa", type: "checkbox", options: ["80g", "180g", "220g", "400g"] },
     { name: "drills", label: "Brocas", type: "checkbox", options: ["Diamantadas", "718g", "720g", "Ceramica", "Azul", "Vermelha", "Preta", "Esferica bolinha", "1014g", "1016g", "1018g"] },
     { name: "procedure_notes", label: "Observacoes do procedimento", type: "textarea" }
   ] },
-  { key: "dressing", title: "Curativo", description: "Curativo e local de aplicacao.", fields: [
+  { key: "dressing", title: "Curativo", description: "Curativo e local de aplicacao.", displayStep: 16, fields: [
     { name: "dressing_type", label: "Tipo de curativo", type: "checkbox", options: ["Curativo oclusivo", "Curativo nao oclusivo"] },
     { name: "dressing_location", label: "Local do curativo", type: "text" },
     { name: "dressing_description", label: "Descricao", type: "textarea" },
     { name: "dressing_products", label: "Produtos utilizados", type: "textarea" },
     { name: "dressing_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para armazenamento seguro.", fields: [
+  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para armazenamento seguro.", displayStep: 17, fields: [
     { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
   ] },
-  { key: "image_evolution", title: "Comparativo de evolucao", description: "Compare imagens por BA, regiao e momento do tratamento.", fields: [
+  { key: "image_evolution", title: "Comparativo de evolucao", description: "Compare imagens por BA, regiao e momento do tratamento.", displayStep: 18, fields: [
     { name: "image_evolution_notes", label: "Observacao comparativa geral", type: "textarea" }
   ] },
-  { key: "return", title: "Retorno", description: "Retorno sugerido.", fields: [
+  { key: "return", title: "Retorno", description: "Retorno sugerido.", displayStep: 19, fields: [
     { name: "return_date", label: "Data sugerida de retorno", type: "date" },
     { name: "return_needed", label: "Necessita retorno?", type: "radio", options: ["Sim", "Nao"] },
     { name: "return_priority", label: "Prioridade do retorno", type: "radio", options: ["Baixa", "Media", "Alta"] },
     { name: "return_notes", label: "Observacoes", type: "textarea" }
   ] },
-  { key: "evolution", title: "Evolucao e observacoes finais", description: "Evolucao, orientacoes e fechamento do atendimento.", fields: [
+  { key: "evolution", title: "Evolucao e observacoes finais", description: "Evolucao, orientacoes e fechamento do atendimento.", displayStep: 20, fields: [
     { name: "evolution_notes", label: "Evolucao e observacoes finais", type: "textarea" },
     { name: "home_care_guidance", label: "Orientacoes domiciliares", type: "textarea" }
   ] }
@@ -162,6 +158,7 @@ type FootDiagnosisSide = {
 type NailBlockData = {
   right_foot: FootDiagnosisSide;
   left_foot: FootDiagnosisSide;
+  wound_location?: FootRegionSelection;
 };
 
 type ProcedureBlockData = {
@@ -210,6 +207,8 @@ export function AnamnesisWizard({
   });
   const currentModule = modules[step - 1];
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
+  const currentDisplayStep = currentModule.displayStep ?? step;
+  const lastDisplayStep = modules[modules.length - 1].displayStep ?? modules.length;
   const dressingLocationOptions = useMemo(
     () => (["right", "left"] as FootSide[]).flatMap((side) => footRegionDefinitions.map((region) => withFootSide(region, side))),
     []
@@ -306,7 +305,7 @@ export function AnamnesisWizard({
           <h2>{currentModule.title}</h2>
           <p>{currentModule.description}</p>
         </div>
-        <strong className="progress-pill">{step}/{modules.length} · {progress}%</strong>
+        <strong className="progress-pill">{currentDisplayStep}/{lastDisplayStep} · {progress}%</strong>
       </div>
 
       {readOnly && (
@@ -319,7 +318,7 @@ export function AnamnesisWizard({
       <div className="stepper">
         {modules.map((item, index) => (
           <button className={`${step === index + 1 ? "is-active" : ""} stepper__${stepStatuses[item.key] ?? "not_started"}`} key={item.title} onClick={() => setStep(index + 1)} title={`${item.title}: ${stepStatusLabel(stepStatuses[item.key] ?? "not_started")}`} type="button">
-            <small>{index + 1}</small>
+            <small>{item.displayStep ?? index + 1}</small>
             <span>{item.title}</span>
             <em>{stepStatusLabel(stepStatuses[item.key] ?? "not_started")}</em>
           </button>
@@ -328,7 +327,7 @@ export function AnamnesisWizard({
 
       <form className="wizard-form" onSubmit={handleSubmit}>
         {currentModule.key === "podology_diagnosis" && (
-          <NailDiagnosisBlock disabled={readOnly} footRegionOptions={dressingLocationOptions} formData={formData} onPatch={updateFields} />
+          <NailDiagnosisBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
         )}
         {currentModule.key === "procedure" && (
           <ProcedureBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
@@ -380,20 +379,16 @@ export function AnamnesisWizard({
 
 function NailDiagnosisBlock({
   disabled,
-  footRegionOptions,
   formData,
   onPatch
 }: {
   disabled: boolean;
-  footRegionOptions: SideAwareFootRegion[];
   formData: AnamnesisFormData;
   onPatch: (patch: AnamnesisFormData) => void;
 }) {
   const [activeFoot, setActiveFoot] = useState<"right_foot" | "left_foot">("right_foot");
   const block = getNailBlockData(formData);
   const current = block[activeFoot];
-  const side: FootSide = activeFoot === "right_foot" ? "right" : "left";
-  const sideOptions = footRegionOptions.filter((region) => region.regionKey.startsWith(`${side}_`));
 
   function patchSide(patch: Partial<FootDiagnosisSide>) {
     const next: NailBlockData = {
@@ -411,14 +406,20 @@ function NailDiagnosisBlock({
     patchSide({ [group]: checked ? [...selected, option] : selected.filter((item) => item !== option) });
   }
 
-  function selectWoundRegion(regionKey: string) {
-    const region = sideOptions.find((item) => item.regionKey === regionKey);
-    patchSide({
-      wound_location: region?.displayLabel ?? "",
-      foot_side: region ? side : undefined,
-      region_key: region?.regionKey ?? "",
-      region_label: region?.displayLabel ?? ""
-    });
+  function selectWoundLocation(selection: FootRegionSelection) {
+    const footKey: "right_foot" | "left_foot" = selection.foot_side === "right" ? "right_foot" : "left_foot";
+    const next: NailBlockData = {
+      ...block,
+      wound_location: selection,
+      [footKey]: {
+        ...block[footKey],
+        wound_location: selection.region_label,
+        foot_side: selection.foot_side,
+        region_key: selection.region_key,
+        region_label: selection.region_label
+      }
+    };
+    onPatch({ block_14: next as unknown as Record<string, unknown> });
   }
 
   return (
@@ -440,26 +441,13 @@ function NailDiagnosisBlock({
         <textarea disabled={disabled} value={current.observations} onChange={(event) => patchSide({ observations: event.target.value })} />
       </label>
 
-      <div className="foot-region-picker">
-        <div>
-          <strong>Local da ferida / alteração acompanhada</strong>
-          <small>Selecione a região do {side === "right" ? "pé direito" : "pé esquerdo"} usando a mesma base de regiões do sistema.</small>
-        </div>
-        <div className="foot-region-cards">
-          {sideOptions.map((region) => (
-            <button
-              className={current.region_key === region.regionKey ? "is-selected" : ""}
-              disabled={disabled}
-              key={region.regionKey}
-              onClick={() => selectWoundRegion(region.regionKey)}
-              type="button"
-            >
-              <span>{region.sideLabel}</span>
-              {region.displayLabel}
-            </button>
-          ))}
-        </div>
-      </div>
+      <FootRegionSelector3D
+        disabled={disabled}
+        value={block.wound_location ?? null}
+        onChange={selectWoundLocation}
+        title="Local da ferida / alteração acompanhada"
+        helperText="Marque no pé 3D a região acompanhada neste diagnóstico ungueal. O fallback por seleção continua disponível."
+      />
     </div>
   );
 }
@@ -726,7 +714,7 @@ function getTextValue(value: unknown) {
 function getInitialStepStatus(key: string, statuses?: Record<string, AnamnesisStepStatus>) {
   if (!statuses) return "not_started";
   if (statuses[key]) return statuses[key];
-  if (key === "vascular_exams") return statuses.vibration_thermal ?? statuses.monofilament_3d ?? "not_started";
+  if (key === "monofilament_3d") return statuses.vascular_exams ?? statuses.monofilament_3d ?? "not_started";
   if (key === "itb") return statuses.eco_itb ?? "not_started";
   if (key === "ihb") return statuses.eco_ihb ?? "not_started";
   return "not_started";
@@ -761,7 +749,7 @@ function hasNailBlockValue(data: AnamnesisFormData) {
     foot.structural_changes.length ||
     foot.observations ||
     foot.region_key
-  );
+  ) || Boolean(block.wound_location?.region_key);
 }
 
 function hasProcedureBlockValue(data: AnamnesisFormData) {
@@ -780,9 +768,12 @@ function hasProcedureBlockValue(data: AnamnesisFormData) {
 
 function getNailBlockData(data: AnamnesisFormData): NailBlockData {
   const block = getObjectValue(data.block_14);
+  const rightFoot = getFootDiagnosisSide(getObjectValue(block.right_foot), "right", data);
+  const leftFoot = getFootDiagnosisSide(getObjectValue(block.left_foot), "left", data);
   return {
-    right_foot: getFootDiagnosisSide(getObjectValue(block.right_foot), "right", data),
-    left_foot: getFootDiagnosisSide(getObjectValue(block.left_foot), "left", data)
+    right_foot: rightFoot,
+    left_foot: leftFoot,
+    wound_location: getWoundLocationSelection(block.wound_location, rightFoot, leftFoot)
   };
 }
 
@@ -798,6 +789,34 @@ function getFootDiagnosisSide(value: Record<string, unknown>, side: FootSide, da
     foot_side: side,
     region_key: getTextValue(value.region_key),
     region_label: getTextValue(value.region_label)
+  };
+}
+
+function getWoundLocationSelection(value: unknown, rightFoot: FootDiagnosisSide, leftFoot: FootDiagnosisSide): FootRegionSelection | undefined {
+  const current = getObjectValue(value);
+  const footSide = getTextValue(current.foot_side) as FootSide;
+  const regionKey = getTextValue(current.region_key);
+  const regionLabel = getTextValue(current.region_label);
+  if ((footSide === "right" || footSide === "left") && regionKey && regionLabel) {
+    const coordinates = getObjectValue(current.coordinates);
+    const x = Number(coordinates.x);
+    const y = Number(coordinates.y);
+    const z = Number(coordinates.z);
+    return {
+      foot_side: footSide,
+      region_key: regionKey,
+      region_label: regionLabel,
+      mesh_name: getTextValue(current.mesh_name) || undefined,
+      coordinates: Number.isFinite(x) && Number.isFinite(y) ? { x, y, z: Number.isFinite(z) ? z : 0 } : undefined
+    };
+  }
+
+  const legacy = rightFoot.region_key ? rightFoot : leftFoot.region_key ? leftFoot : null;
+  if (!legacy?.region_key || !legacy.region_label || !legacy.foot_side) return undefined;
+  return {
+    foot_side: legacy.foot_side,
+    region_key: legacy.region_key,
+    region_label: legacy.region_label
   };
 }
 

@@ -2917,6 +2917,43 @@ textarea {
   background: rgba(15, 118, 110, 0.12);
 }
 
+.foot-region-selector {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(249, 115, 22, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff7ed, #ffffff);
+}
+
+.foot-region-selector .section-heading {
+  margin-bottom: 0;
+}
+
+.foot-canvas--compact {
+  min-height: 340px;
+  height: min(52vh, 440px);
+}
+
+.foot-region-marker-label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: rgba(249, 115, 22, 0.92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(154, 52, 18, 0.22);
+}
+
+.foot-region-selector__fallback {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 12px;
+}
+
 .index-result-panel {
   display: grid;
   gap: 12px;
@@ -3455,6 +3492,7 @@ td {
   .nail-block-grid,
   .procedure-block,
   .index-result-grid,
+  .foot-region-selector__fallback,
   .foot-tabs {
     grid-template-columns: 1fr;
   }

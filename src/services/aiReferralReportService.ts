@@ -160,6 +160,7 @@ function textValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(", ");
   if (typeof value === "object") {
+    if ("region_label" in value && typeof value.region_label === "string" && "region_key" in value) return value.region_label;
     if ("name" in value && typeof value.name === "string") return value.name;
     return Object.entries(value)
       .map(([key, entry]) => {

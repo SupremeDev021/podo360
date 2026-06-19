@@ -3740,11 +3740,7 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
   ];
   sections.push(
-    ["Exames vasculares", [
-      ["Monofilamento pe D", data.monofilament_right],
-      ["Monofilamento pe E", data.monofilament_left],
-      ["Sensibilidade vibratoria", data.vibration_sensitivity || data.vibratory_sensitivity],
-      ["Sensibilidade termica", data.thermal_sensitivity],
+    ["ITB e IHB", [
       ["ITB direito", formatIndexForPrint(data.itb_right_result, data.itb_right_classification)],
       ["ITB esquerdo", formatIndexForPrint(data.itb_left_result, data.itb_left_classification)],
       ["IHB direito", formatIndexForPrint(data.ihb_right_result, data.ihb_right_classification)],
@@ -3753,6 +3749,7 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Diagnostico ungueal", [
       ["Pe direito", getAnamnesisObjectEntry(data.block_14, "right_foot")],
       ["Pe esquerdo", getAnamnesisObjectEntry(data.block_14, "left_foot")],
+      ["Local marcado no pe 3D", formatWoundLocationForPrint(getAnamnesisObjectEntry(data.block_14, "wound_location"))],
       ["Registros anteriores", data.nail_anatomy || data.pathologies || data.structural_changes || data.podology_diagnosis_notes]
     ]],
     ["Procedimento", [
@@ -3787,10 +3784,17 @@ function getAnamnesisObjectEntry(value: unknown, key: string) {
   return (value as Record<string, unknown>)[key];
 }
 
+function formatWoundLocationForPrint(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const location = value as Record<string, unknown>;
+  return humanizeAnamnesisValue(location.region_label || location.region_key);
+}
+
 function humanizeAnamnesisValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (Array.isArray(value)) return value.map(humanizeAnamnesisValue).filter(Boolean).join(", ");
   if (typeof value === "object") {
+    if ("region_label" in value && typeof value.region_label === "string" && "region_key" in value) return fixClinicalText(value.region_label);
     if ("name" in value && typeof value.name === "string") return fixClinicalText(value.name);
     return Object.entries(value).map(([key, entry]) => `${anamnesisLabel(key)}: ${humanizeAnamnesisValue(entry)}`).join("; ");
   }
