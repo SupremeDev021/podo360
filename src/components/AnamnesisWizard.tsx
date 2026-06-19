@@ -64,10 +64,12 @@ const modules: Module[] = [
   { key: "edema", title: "Edema", description: "Grau de edema.", fields: [
     { name: "edema", label: "Edema", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
   ] },
-  { key: "monofilament_3d", title: "Sensibilidade Monofilamento", description: "Mapa tecnico do pe para pontos de monofilamento.", fields: [] },
-  { key: "vibration_thermal", title: "Sensibilidade vibratoria e termica", description: "Diapasao e temperatura.", fields: [
+  { key: "vascular_exams", title: "Sensibilidade Monofilamento", description: "Monofilamento, sensibilidade vibratoria e termica sem mapa 3D.", fields: [
+    { name: "monofilament_right", label: "Sensibilidade Monofilamento - Pe D", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
+    { name: "monofilament_left", label: "Sensibilidade Monofilamento - Pe E", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
     { name: "vibration_sensitivity", label: "Sensibilidade vibratoria com Diapasao", type: "radio", options: ["Presente", "Ausente"] },
-    { name: "thermal_sensitivity", label: "Sensibilidade termica", type: "radio", options: ["Positivo", "Negativo"] }
+    { name: "thermal_sensitivity", label: "Sensibilidade termica", type: "radio", options: ["Positivo", "Negativo"] },
+    { name: "monofilament_notes", label: "Observacoes de sensibilidade", type: "textarea" }
   ] },
   { key: "itb", title: "ITB", description: "Indice tornozelo-braco com calculo automatico.", fields: [
     { name: "itb_right_foot", label: "Pe D mmHg", type: "number" },
@@ -187,7 +189,6 @@ export function AnamnesisWizard({
   uniqueRecordNumber,
   baNumber,
   createdBy,
-  footSensitivitySlot,
   woundImagesSlot,
   imageEvolutionSlot,
   products = [],
@@ -354,7 +355,6 @@ export function AnamnesisWizard({
 
         {currentModule.key === "itb" && <IndexResultPanel type="itb" formData={formData} />}
         {currentModule.key === "ihb" && <IndexResultPanel type="ihb" formData={formData} />}
-        {currentModule.key === "monofilament_3d" && footSensitivitySlot}
         {currentModule.key === "wound_images" && woundImagesSlot}
         {currentModule.key === "image_evolution" && imageEvolutionSlot}
 
@@ -717,7 +717,7 @@ function getTextValue(value: unknown) {
 function getInitialStepStatus(key: string, statuses?: Record<string, AnamnesisStepStatus>) {
   if (!statuses) return "not_started";
   if (statuses[key]) return statuses[key];
-  if (key === "vibration_thermal") return statuses.vascular_exams ?? statuses.vibration_thermal ?? "not_started";
+  if (key === "vascular_exams") return statuses.vascular_exams ?? statuses.monofilament_3d ?? statuses.vibration_thermal ?? "not_started";
   if (key === "itb") return statuses.eco_itb ?? "not_started";
   if (key === "ihb") return statuses.eco_ihb ?? "not_started";
   return "not_started";

@@ -3740,6 +3740,13 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
   ];
   sections.push(
+    ["Sensibilidade Monofilamento", [
+      ["Monofilamento pe D", data.monofilament_right],
+      ["Monofilamento pe E", data.monofilament_left],
+      ["Sensibilidade vibratoria", data.vibration_sensitivity || data.vibratory_sensitivity],
+      ["Sensibilidade termica", data.thermal_sensitivity],
+      ["Observacoes", data.monofilament_notes]
+    ]],
     ["ITB e IHB", [
       ["ITB direito", formatIndexForPrint(data.itb_right_result, data.itb_right_classification)],
       ["ITB esquerdo", formatIndexForPrint(data.itb_left_result, data.itb_left_classification)],
