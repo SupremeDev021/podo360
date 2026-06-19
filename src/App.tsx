@@ -3739,6 +3739,29 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Exame clínico", [["Exame de pele", data.skin_exam], ["Edema", data.edema], ["Sensibilidade vibratória", data.vibratory_sensitivity], ["Sensibilidade térmica", data.thermal_sensitivity], ["Glicemia", data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
     ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
   ];
+  sections.push(
+    ["Exames vasculares", [
+      ["Monofilamento pe D", data.monofilament_right],
+      ["Monofilamento pe E", data.monofilament_left],
+      ["Sensibilidade vibratoria", data.vibration_sensitivity || data.vibratory_sensitivity],
+      ["Sensibilidade termica", data.thermal_sensitivity],
+      ["ITB direito", formatIndexForPrint(data.itb_right_result, data.itb_right_classification)],
+      ["ITB esquerdo", formatIndexForPrint(data.itb_left_result, data.itb_left_classification)],
+      ["IHB direito", formatIndexForPrint(data.ihb_right_result, data.ihb_right_classification)],
+      ["IHB esquerdo", formatIndexForPrint(data.ihb_left_result, data.ihb_left_classification)]
+    ]],
+    ["Diagnostico ungueal", [
+      ["Pe direito", getAnamnesisObjectEntry(data.block_14, "right_foot")],
+      ["Pe esquerdo", getAnamnesisObjectEntry(data.block_14, "left_foot")],
+      ["Registros anteriores", data.nail_anatomy || data.pathologies || data.structural_changes || data.podology_diagnosis_notes]
+    ]],
+    ["Procedimento", [
+      ["Itens do procedimento", data.block_15 || data.procedure || data.performed_procedure],
+      ["Produtos/curativos utilizados", data.used_products],
+      ["Conduta", data.conduct],
+      ["Retorno", data.return_date || data.follow_up_date]
+    ]]
+  );
   const rendered = sections
     .map(([title, fields]) => {
       const items = fields
@@ -3752,6 +3775,18 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
   return rendered || "<p>Anamnese registrada sem campos clínicos preenchidos.</p>";
 }
 
+function formatIndexForPrint(value: unknown, classification: unknown) {
+  const result = humanizeAnamnesisValue(value);
+  const label = humanizeAnamnesisValue(classification);
+  if (!result && !label) return "";
+  return [result, label ? `(${label})` : ""].filter(Boolean).join(" ");
+}
+
+function getAnamnesisObjectEntry(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
 function humanizeAnamnesisValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (Array.isArray(value)) return value.map(humanizeAnamnesisValue).filter(Boolean).join(", ");
@@ -3763,7 +3798,29 @@ function humanizeAnamnesisValue(value: unknown): string {
 }
 
 function anamnesisLabel(key: string) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const labels: Record<string, string> = {
+    right_foot: "Pe direito",
+    left_foot: "Pe esquerdo",
+    anatomical_laminar: "Anatomico laminar",
+    curvature: "Curvatura",
+    pathologies: "Patologias",
+    structural_changes: "Alteracoes estruturais e distrofias",
+    observations: "Observacoes",
+    wound_location: "Local da ferida",
+    foot_side: "Lado",
+    region_key: "Chave da regiao",
+    region_label: "Regiao",
+    plantar_debridement: "Debaste plantar",
+    sandpaper: "Lixa",
+    instruments: "Instrumentos",
+    care: "Cuidados",
+    sandpaper_grit: "Gramatura de lixa",
+    burs: "Brocas",
+    diamond: "Diamantadas",
+    ceramic: "Ceramica",
+    spherical_ball: "Esferica bolinha"
+  };
+  return labels[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function fixClinicalText(value: string) {

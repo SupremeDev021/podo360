@@ -27,9 +27,13 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
   const anamnesisSummary = input.anamneses?.length
     ? input.anamneses
         .map((record) => {
-          const complaint = record.formData.main_complaint || record.formData.chief_complaint || "queixa nao informada";
+          const complaint = textValue(record.formData.main_complaint || record.formData.chief_complaint) || "queixa nao informada";
           const eva = record.formData.eva_scale ? `EVA ${record.formData.eva_scale}` : "EVA nao informada";
-          return `${record.baNumber}: ${complaint}; ${eva}.`;
+          const itb = indexSummary(record.formData, "itb", "ITB");
+          const ihb = indexSummary(record.formData, "ihb", "IHB");
+          const nail = compactSummary(record.formData.block_14, "diagnostico ungueal");
+          const procedure = compactSummary(record.formData.block_15 || record.formData.procedure || record.formData.performed_procedure, "procedimento");
+          return [`${record.baNumber}: ${complaint}; ${eva}`, itb, ihb, nail, procedure].filter(Boolean).join("; ") + ".";
         })
         .join(" ")
     : "Nao ha ficha modular de anamnese registrada.";
@@ -133,4 +137,60 @@ function sensitivityLabel(status: FootSensitivityMap["sensitivityStatus"]) {
     not_tested: "nao testado"
   };
   return labels[status];
+}
+
+function indexSummary(formData: AnamnesisRecord["formData"], prefix: "itb" | "ihb", label: string) {
+  const right = textValue(formData[`${prefix}_right_result`]);
+  const rightClass = textValue(formData[`${prefix}_right_classification`]);
+  const left = textValue(formData[`${prefix}_left_result`]);
+  const leftClass = textValue(formData[`${prefix}_left_classification`]);
+  const parts = [
+    right ? `direito ${right}${rightClass ? ` (${rightClass})` : ""}` : "",
+    left ? `esquerdo ${left}${leftClass ? ` (${leftClass})` : ""}` : ""
+  ].filter(Boolean);
+  return parts.length ? `${label}: ${parts.join(", ")}` : "";
+}
+
+function compactSummary(value: unknown, label: string) {
+  const summary = textValue(value);
+  return summary ? `${label}: ${summary}` : "";
+}
+
+function textValue(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    if ("name" in value && typeof value.name === "string") return value.name;
+    return Object.entries(value)
+      .map(([key, entry]) => {
+        const rendered = textValue(entry);
+        return rendered ? `${clinicalLabel(key)}: ${rendered}` : "";
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  return String(value);
+}
+
+function clinicalLabel(key: string) {
+  const labels: Record<string, string> = {
+    right_foot: "pe direito",
+    left_foot: "pe esquerdo",
+    anatomical_laminar: "anatomico laminar",
+    curvature: "curvatura",
+    pathologies: "patologias",
+    structural_changes: "alteracoes estruturais e distrofias",
+    observations: "observacoes",
+    region_label: "regiao",
+    plantar_debridement: "debaste plantar",
+    sandpaper: "lixa",
+    instruments: "instrumentos",
+    care: "cuidados",
+    sandpaper_grit: "gramatura de lixa",
+    burs: "brocas",
+    diamond: "diamantadas",
+    ceramic: "ceramica",
+    spherical_ball: "esferica bolinha"
+  };
+  return labels[key] ?? key.replace(/_/g, " ");
 }
