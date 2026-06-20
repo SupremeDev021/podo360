@@ -183,11 +183,11 @@ export function FootRegionSelector3D({
       </div>
 
       <div className="foot-canvas foot-canvas--compact" aria-label="Pé 3D para local da ferida">
-        <Canvas camera={{ position: [0, -4.2, 2.4], fov: 42 }} onWheel={(event) => event.stopPropagation()} style={{ touchAction: "none" }}>
+        <Canvas camera={{ position: [0, -4.55, 2.55], fov: 44 }} onWheel={(event) => event.stopPropagation()} style={{ touchAction: "none" }}>
           <ambientLight intensity={0.95} />
           <directionalLight position={[2, -3, 4]} intensity={1.2} />
           <directionalLight position={[-4, 2, 2]} intensity={0.45} />
-          <group scale={footSide === "left" ? [-1, 1, 1] : [1, 1, 1]} rotation={[0.12, 0.04, -0.08]}>
+          <group scale={footSide === "left" ? [-0.92, 0.92, 0.92] : [0.92, 0.92, 0.92]} rotation={[0.12, 0.04, -0.08]}>
             <FootRegionSelectorErrorBoundary fallback={<SelectorFallbackFoot />}>
               <Suspense fallback={<FootRegionSelectorLoading />}>
                 <SelectorFootModel footSide={footSide} onRegionClick={handleRegionClick} />
@@ -198,7 +198,7 @@ export function FootRegionSelector3D({
           <Html fullscreen>
             <div className="foot-viewer-note">Clique na região da ferida ou selecione abaixo.</div>
           </Html>
-          <OrbitControls ref={(node) => { controlsRef.current = node; }} enableDamping enablePan={false} enableZoom minDistance={2.6} maxDistance={7} />
+          <OrbitControls ref={(node) => { controlsRef.current = node; }} enableDamping enablePan={false} enableZoom minDistance={2.8} maxDistance={6.6} />
         </Canvas>
         {message && <div className="foot-viewer-inline-message">{message}</div>}
       </div>

@@ -387,10 +387,20 @@ function NailDiagnosisBlock({
   formData: AnamnesisFormData;
   onPatch: (patch: AnamnesisFormData) => void;
 }) {
-  const [activeFoot, setActiveFoot] = useState<"right_foot" | "left_foot">("right_foot");
+  const [activeFoot, setActiveFoot] = useState<"right_foot" | "left_foot">(() => getNailBlockData(formData).selectedFoot === "left" ? "left_foot" : "right_foot");
   const block = getNailBlockData(formData);
   const current = block[activeFoot];
   const activeSide: FootSide = activeFoot === "right_foot" ? "right" : "left";
+
+  function handleSelectFoot(nextFoot: "right_foot" | "left_foot") {
+    setActiveFoot(nextFoot);
+    onPatch({
+      block_14: {
+        ...block,
+        selectedFoot: nextFoot === "right_foot" ? "right" : "left"
+      } as unknown as Record<string, unknown>
+    });
+  }
 
   function patchSide(patch: Partial<FootDiagnosisSide>) {
     const next: NailBlockData = {
@@ -427,8 +437,8 @@ function NailDiagnosisBlock({
   return (
     <div className="clinical-block">
       <div className="foot-tabs" role="tablist" aria-label="Selecionar pe">
-        <button className={activeFoot === "right_foot" ? "is-active" : ""} onClick={() => setActiveFoot("right_foot")} type="button">Pé Direito</button>
-        <button className={activeFoot === "left_foot" ? "is-active" : ""} onClick={() => setActiveFoot("left_foot")} type="button">Pé Esquerdo</button>
+        <button className={activeFoot === "right_foot" ? "is-active" : ""} onClick={() => handleSelectFoot("right_foot")} type="button">Pé Direito</button>
+        <button className={activeFoot === "left_foot" ? "is-active" : ""} onClick={() => handleSelectFoot("left_foot")} type="button">Pé Esquerdo</button>
       </div>
 
       <div className="nail-block-grid">
