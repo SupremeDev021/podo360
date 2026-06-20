@@ -21,6 +21,7 @@ import {
 import { useEffect, useState } from "react";
 import type { Company, Profile } from "../types";
 import { roleLabel } from "../services/rbac";
+import { SystemNoticeBanner } from "./SystemNoticeBanner";
 
 export type ViewKey =
   | "dashboard"
@@ -167,7 +168,10 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
           </div>
         </header>
 
-        <main className="content">{children}</main>
+        <main className="content">
+          <SystemNoticeBanner />
+          {children}
+        </main>
       </div>
       {logoutOpen && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => !loggingOut && setLogoutOpen(false)}>

@@ -62,7 +62,7 @@ import { podologyProductCatalog, podologyProductCategories } from "./data/produc
 import { supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
 import { roleLabel } from "./services/rbac";
-import { ATTENDANCE_FINALIZED_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -86,9 +86,20 @@ import type {
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const FINALIZED_ATTENDANCE_MESSAGE = "Este atendimento já foi finalizado. Para editar, cancele a finalização na aba Gerenciamento de Atendimento.";
+const OPEN_BA_EXISTS_MESSAGE = "Este paciente já possui um BA aberto. Finalize o atendimento atual antes de abrir um novo BA.";
+const OPEN_ATTENDANCE_STATUSES: Attendance["status"][] = ["ba_open", "waiting", "in_progress", "reopened", "paused"];
 
 function isAttendanceFinalized(attendance?: Pick<Attendance, "status" | "finishedAt">) {
   return Boolean(attendance && (attendance.status === "completed" || attendance.finishedAt));
+}
+
+function findOpenAttendanceForPatient(attendances: Attendance[], patientId: string, companyId: string) {
+  return attendances.find((attendance) =>
+    attendance.companyId === companyId &&
+    attendance.patientId === patientId &&
+    OPEN_ATTENDANCE_STATUSES.includes(attendance.status) &&
+    !attendance.finishedAt
+  );
 }
 
 function canManageAttendanceReopen(profile: Profile, allowedViews: ViewKey[]) {
@@ -203,6 +214,7 @@ export function App() {
   const [aiReport, setAiReport] = useState("");
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
+  const [baSubmitting, setBaSubmitting] = useState(false);
   const profile = demoProfiles[0];
   const allowedViews = allowedViewsForProfile(profile);
   const hasAttendanceManagementAccess = canManageAttendanceReopen(profile, allowedViews);
@@ -439,7 +451,16 @@ export function App() {
     }
   }
 
-  function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
+  async function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
+    if (baSubmitting) return false;
+    const openAttendance = findOpenAttendanceForPatient(attendances, patient.id, company.id);
+    if (openAttendance) {
+      setSelectedPatientId(patient.id);
+      setActiveAttendanceId(openAttendance.id);
+      notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
+      return false;
+    }
+
     const nextBaNumber = generateBaNumber(company.id, attendances);
     const openedAt = new Date().toISOString();
     const attendance: Attendance = {
@@ -470,10 +491,21 @@ export function App() {
       value: 0
     };
 
-    setAttendances((current) => [attendance, ...current]);
-    void createAttendanceBa(attendance).catch(() => {
+    setBaSubmitting(true);
+    try {
+      await createAttendanceBa(attendance);
+    } catch (error) {
+      if (error instanceof Error && error.message === OPEN_ATTENDANCE_EXISTS_ERROR) {
+        notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
+        setBaSubmitting(false);
+        return false;
+      }
       notify("BA salvo apenas localmente", "Nao foi possivel sincronizar o novo BA com o ambiente online.", "warning");
-    });
+    } finally {
+      setBaSubmitting(false);
+    }
+
+    setAttendances((current) => [attendance, ...current]);
     if (attendance.appointmentId) {
       setAppointments((current) =>
         current.map((appointment) =>
@@ -495,9 +527,10 @@ export function App() {
     setActiveAttendanceId(attendance.id);
     notify("BA aberto com sucesso", `${attendance.baNumber} entrou como Aguardando atendimento.`, "success");
     setActiveView("patients");
+    return true;
   }
 
-  function handleOpenBa(event: FormEvent<HTMLFormElement>) {
+  async function handleOpenBa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const fullName = String(form.get("fullName"));
@@ -545,6 +578,36 @@ export function App() {
       }
     };
 
+    if (existingPatient) {
+      const openAttendance = findOpenAttendanceForPatient(attendances, existingPatient.id, company.id);
+      if (openAttendance) {
+        setSelectedPatientId(existingPatient.id);
+        setActiveAttendanceId(openAttendance.id);
+        notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
+        return false;
+      }
+    }
+
+    const created = await handleCreateAttendance(patient, {
+      professionalId: String(form.get("professionalId") || "") || undefined,
+      type: "Atendimento podologico",
+      visitKind: String(form.get("visitKind")) === "return" ? "return" : "first_evaluation",
+      complaint: String(form.get("chiefComplaint") || ""),
+      initialNotes: String(form.get("initialNotes") || ""),
+      priority: String(form.get("priority") || "normal") as Attendance["priority"],
+      payerType: String(form.get("payerType") || "private") as Attendance["payerType"],
+      insuranceName: String(form.get("insuranceName") || "") || undefined,
+      appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
+      notes: [
+        `Clinica vinculada: ${company.displayName}.`,
+        String(form.get("payerType") || "") ? `Pagamento: ${String(form.get("payerType"))}.` : "",
+        String(form.get("openingReason") || "") ? `Motivo: ${String(form.get("openingReason"))}.` : "",
+        String(form.get("initialNotes") || "")
+      ].filter(Boolean).join(" ")
+    });
+
+    if (!created) return false;
+
     if (!existingPatient) {
       setPatients((current) => [patient, ...current]);
     }
@@ -565,26 +628,9 @@ export function App() {
         ...current
       ]);
     }
-    handleCreateAttendance(patient, {
-      professionalId: String(form.get("professionalId") || "") || undefined,
-      type: "Atendimento podologico",
-      visitKind: String(form.get("visitKind")) === "return" ? "return" : "first_evaluation",
-      complaint: String(form.get("chiefComplaint") || ""),
-      initialNotes: String(form.get("initialNotes") || ""),
-      priority: String(form.get("priority") || "normal") as Attendance["priority"],
-      payerType: String(form.get("payerType") || "private") as Attendance["payerType"],
-      insuranceName: String(form.get("insuranceName") || "") || undefined,
-      appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
-      notes: [
-        `Clinica vinculada: ${company.displayName}.`,
-        String(form.get("payerType") || "") ? `Pagamento: ${String(form.get("payerType"))}.` : "",
-        String(form.get("openingReason") || "") ? `Motivo: ${String(form.get("openingReason"))}.` : "",
-        String(form.get("initialNotes") || "")
-      ].filter(Boolean).join(" ")
-    });
     setActiveView("ba-opening");
-    event.currentTarget.reset();
     setBaOpeningPrefill(null);
+    return true;
   }
 
   function handleSaveAppointment(appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) {
@@ -852,6 +898,7 @@ export function App() {
           attendances={attendances}
           prefill={baOpeningPrefill}
           onOpenBa={handleOpenBa}
+          opening={baSubmitting}
           onNotify={notify}
         />
       )}
@@ -1097,6 +1144,7 @@ function BaOpening({
   attendances,
   prefill,
   onOpenBa,
+  opening,
   onNotify
 }: {
   company: Company;
@@ -1104,7 +1152,8 @@ function BaOpening({
   patients: Patient[];
   attendances: Attendance[];
   prefill: BaOpeningPrefill | null;
-  onOpenBa: (event: FormEvent<HTMLFormElement>) => void;
+  onOpenBa: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  opening: boolean;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
   const [patientData, setPatientData] = useState({
@@ -1219,8 +1268,9 @@ function BaOpening({
     onNotify("Paciente encontrado", "Dados do paciente preenchidos automaticamente. Preencha os Dados do BA manualmente.", "success");
   }
 
-  function handleBaSubmit(event: FormEvent<HTMLFormElement>) {
-    onOpenBa(event);
+  async function handleBaSubmit(event: FormEvent<HTMLFormElement>) {
+    const opened = await onOpenBa(event);
+    if (!opened) return;
     setPatientData({
       fullName: "",
       cpf: "",
@@ -1340,7 +1390,7 @@ function BaOpening({
           <label>Motivo da abertura do BA<textarea name="openingReason" /></label>
         </section>
 
-        <button className="primary-button" type="submit"><ClipboardPlus size={18} /> Abrir BA</button>
+        <button className="primary-button" disabled={opening} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : "Abrir BA"}</button>
       </form>
     </div>
   );
@@ -1581,6 +1631,9 @@ function PatientProfile({
       products={products}
       readOnly={attendanceLocked}
       readOnlyMessage={FINALIZED_ATTENDANCE_MESSAGE}
+      onFinishAttendanceRequest={() => {
+        if (currentAttendance.status === "in_progress") handleOpenFinishModal(currentAttendance.id);
+      }}
       footSensitivitySlot={
         <FootSensitivityMap3D
           entries={footSensitivityMaps}
@@ -3739,6 +3792,34 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
     ["Exame clínico", [["Exame de pele", data.skin_exam], ["Edema", data.edema], ["Sensibilidade vibratória", data.vibratory_sensitivity], ["Sensibilidade térmica", data.thermal_sensitivity], ["Glicemia", data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
     ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
   ];
+  sections.push(
+    ["Sensibilidade Monofilamento", [
+      ["Monofilamento pe D", data.monofilament_right],
+      ["Monofilamento pe E", data.monofilament_left],
+      ["Sensibilidade vibratoria", data.vibration_sensitivity || data.vibratory_sensitivity],
+      ["Sensibilidade termica", data.thermal_sensitivity],
+      ["Observacoes", data.monofilament_notes]
+    ]],
+    ["ITB e IHB", [
+      ["ITB direito", formatIndexForPrint(data.itb_right_result, data.itb_right_classification)],
+      ["ITB esquerdo", formatIndexForPrint(data.itb_left_result, data.itb_left_classification)],
+      ["IHB direito", formatIndexForPrint(data.ihb_right_result, data.ihb_right_classification)],
+      ["IHB esquerdo", formatIndexForPrint(data.ihb_left_result, data.ihb_left_classification)]
+    ]],
+    ["Diagnostico ungueal", [
+      ["Pe direito", getAnamnesisObjectEntry(data.block_14, "right_foot")],
+      ["Pe esquerdo", getAnamnesisObjectEntry(data.block_14, "left_foot")],
+      ["Local marcado no pe direito", formatWoundLocationForPrint(getAnamnesisObjectEntry(getAnamnesisObjectEntry(data.block_14, "right_foot"), "wound_location"))],
+      ["Local marcado no pe esquerdo", formatWoundLocationForPrint(getAnamnesisObjectEntry(getAnamnesisObjectEntry(data.block_14, "left_foot"), "wound_location"))],
+      ["Registros anteriores", data.nail_anatomy || data.pathologies || data.structural_changes || data.podology_diagnosis_notes]
+    ]],
+    ["Procedimento", [
+      ["Itens do procedimento", data.block_15 || data.procedure || data.performed_procedure],
+      ["Produtos/curativos utilizados", data.used_products],
+      ["Conduta", data.conduct],
+      ["Retorno", data.return_date || data.follow_up_date]
+    ]]
+  );
   const rendered = sections
     .map(([title, fields]) => {
       const items = fields
@@ -3752,10 +3833,29 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
   return rendered || "<p>Anamnese registrada sem campos clínicos preenchidos.</p>";
 }
 
+function formatIndexForPrint(value: unknown, classification: unknown) {
+  const result = humanizeAnamnesisValue(value);
+  const label = humanizeAnamnesisValue(classification);
+  if (!result && !label) return "";
+  return [result, label ? `(${label})` : ""].filter(Boolean).join(" ");
+}
+
+function getAnamnesisObjectEntry(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+function formatWoundLocationForPrint(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const location = value as Record<string, unknown>;
+  return humanizeAnamnesisValue(location.region_label || location.region_key);
+}
+
 function humanizeAnamnesisValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (Array.isArray(value)) return value.map(humanizeAnamnesisValue).filter(Boolean).join(", ");
   if (typeof value === "object") {
+    if ("region_label" in value && typeof value.region_label === "string" && "region_key" in value) return fixClinicalText(value.region_label);
     if ("name" in value && typeof value.name === "string") return fixClinicalText(value.name);
     return Object.entries(value).map(([key, entry]) => `${anamnesisLabel(key)}: ${humanizeAnamnesisValue(entry)}`).join("; ");
   }
@@ -3763,7 +3863,29 @@ function humanizeAnamnesisValue(value: unknown): string {
 }
 
 function anamnesisLabel(key: string) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const labels: Record<string, string> = {
+    right_foot: "Pe direito",
+    left_foot: "Pe esquerdo",
+    anatomical_laminar: "Anatomico laminar",
+    curvature: "Curvatura",
+    pathologies: "Patologias",
+    structural_changes: "Alteracoes estruturais e distrofias",
+    observations: "Observacoes",
+    wound_location: "Local da ferida",
+    foot_side: "Lado",
+    region_key: "Chave da regiao",
+    region_label: "Regiao",
+    plantar_debridement: "Debaste plantar",
+    sandpaper: "Lixa",
+    instruments: "Instrumentos",
+    care: "Cuidados",
+    sandpaper_grit: "Gramatura de lixa",
+    burs: "Brocas",
+    diamond: "Diamantadas",
+    ceramic: "Ceramica",
+    spherical_ball: "Esferica bolinha"
+  };
+  return labels[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function fixClinicalText(value: string) {
