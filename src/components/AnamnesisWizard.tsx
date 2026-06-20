@@ -327,7 +327,7 @@ export function AnamnesisWizard({
         ))}
       </div>
 
-      <form className="wizard-form" onSubmit={handleSubmit}>
+      <form className={`wizard-form wizard-form--${currentModule.key}`} onSubmit={handleSubmit}>
         {currentModule.key === "podology_diagnosis" && (
           <NailDiagnosisBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
         )}
@@ -546,20 +546,43 @@ function IndexResultPanel({ type, formData }: { type: "itb" | "ihb"; formData: A
         <p>Preencha os valores para calcular.</p>
       ) : (
         <div className="index-result-grid">
-          <div>
-            <span>{label} Direito</span>
-            <strong>{result.right?.value ?? "-"}</strong>
-            <small>{result.right?.classification ?? "Preencha os valores"}</small>
-          </div>
-          <div>
-            <span>{label} Esquerdo</span>
-            <strong>{result.left?.value ?? "-"}</strong>
-            <small>{result.left?.classification ?? "Preencha os valores"}</small>
-          </div>
+          <IndexResultCard
+            classification={result.right?.classification}
+            label={`${label} Direito`}
+            value={result.right?.value}
+          />
+          <IndexResultCard
+            classification={result.left?.classification}
+            label={`${label} Esquerdo`}
+            value={result.left?.value}
+          />
         </div>
       )}
     </div>
   );
+}
+
+function IndexResultCard({ classification, label, value }: { classification?: string; label: string; value?: string }) {
+  const tone = getIndexResultTone(classification);
+  return (
+    <div className={`index-result-card index-result-card--${tone}`}>
+      <span>{label}</span>
+      <strong>{value ?? "-"}</strong>
+      <small className={`index-result-badge index-result-badge--${tone}`}>
+        {classification ?? "Preencha os valores"}
+      </small>
+    </div>
+  );
+}
+
+function getIndexResultTone(classification?: string) {
+  if (!classification) return "empty";
+  const normalized = classification.toLowerCase();
+  if (normalized.includes("lim")) return "warning";
+  if (classification === "Normal") return "normal";
+  if (classification === "LimÃ­trofe" || classification === "Alterado" || classification === "Anormal / Alto") return "warning";
+  if (classification === "Severo / Grave" || classification === "Grave") return "severe";
+  return "danger";
 }
 
 function stepStatusLabel(status: AnamnesisStepStatus) {
@@ -642,8 +665,10 @@ function FieldRenderer({
     );
   }
 
+  const isCompactIndexField = field.type === "number" && /^(itb|ihb)_/.test(field.name);
+
   return (
-    <label>
+    <label className={isCompactIndexField ? "index-number-field" : undefined}>
       {field.label}
       <input
         type={field.type}

@@ -2526,6 +2526,19 @@ textarea {
   gap: 14px;
 }
 
+.wizard-form--itb,
+.wizard-form--ihb {
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  align-items: start;
+}
+
+.wizard-form--itb .index-result-panel,
+.wizard-form--ihb .index-result-panel,
+.wizard-form--itb .wizard-actions,
+.wizard-form--ihb .wizard-actions {
+  grid-column: 1 / -1;
+}
+
 .wound-module-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.65fr);
@@ -2941,8 +2954,28 @@ textarea {
 }
 
 .foot-canvas--compact {
-  min-height: 260px;
-  height: min(40vh, 340px);
+  min-height: 150px;
+  height: min(24vh, 190px);
+  max-height: 200px;
+}
+
+.foot-canvas--compact .foot-viewer-note {
+  font-size: 10px;
+  padding: 5px 8px;
+}
+
+.foot-region-selector .body-map__toolbar {
+  padding: 8px 10px;
+}
+
+.foot-region-selector .foot-map-hint {
+  font-size: 11px;
+}
+
+.foot-region-selector .ghost-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 0.74rem;
 }
 
 .foot-region-marker-label {
@@ -2966,11 +2999,11 @@ textarea {
 
 .index-result-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   border: 1px solid rgba(15, 118, 110, 0.18);
   border-radius: 12px;
-  background: #ecfdf5;
-  padding: 14px;
+  background: linear-gradient(135deg, #f8fafc, #ecfdf5);
+  padding: 12px;
 }
 
 .index-result-panel p {
@@ -2981,21 +3014,90 @@ textarea {
 .index-result-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
-.index-result-grid div {
+.index-result-card {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   background: #fff;
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
 }
 
-.index-result-grid span,
-.index-result-grid small {
+.index-result-card--normal {
+  border-color: rgba(4, 120, 87, 0.24);
+  background: #f0fdf4;
+}
+
+.index-result-card--warning {
+  border-color: rgba(217, 119, 6, 0.3);
+  background: #fffbeb;
+}
+
+.index-result-card--danger {
+  border-color: rgba(220, 38, 38, 0.26);
+  background: #fef2f2;
+}
+
+.index-result-card--severe {
+  border-color: rgba(153, 27, 27, 0.32);
+  background: #fee2e2;
+}
+
+.index-result-grid span {
   color: var(--color-muted);
+}
+
+.index-result-card strong {
+  color: var(--color-text);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.index-result-badge {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.index-result-badge--normal {
+  background: #dcfce7;
+  color: #047857;
+}
+
+.index-result-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.index-result-badge--danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.index-result-badge--severe {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.index-result-badge--empty {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.index-number-field {
+  max-width: 260px;
+}
+
+.index-number-field input {
+  min-height: 38px;
+  padding: 8px 11px;
+  font-size: 0.92rem;
 }
 
 .hci-search {
@@ -3503,7 +3605,9 @@ td {
   .procedure-block,
   .index-result-grid,
   .foot-region-selector__fallback,
-  .foot-tabs {
+  .foot-tabs,
+  .wizard-form--itb,
+  .wizard-form--ihb {
     grid-template-columns: 1fr;
   }
 
@@ -3513,8 +3617,12 @@ td {
   }
 
   .foot-canvas.foot-canvas--compact {
-    height: min(36vh, 300px);
-    min-height: 220px;
+    height: min(30vh, 240px);
+    min-height: 190px;
+  }
+
+  .index-number-field {
+    max-width: none;
   }
 
   .queue-summary {
