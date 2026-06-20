@@ -2,6 +2,9 @@ import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
 export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
+export const OPEN_ATTENDANCE_EXISTS_ERROR = "open_attendance_exists";
+
+const openAttendanceStatuses = ["ba_open", "waiting", "in_progress", "reopened", "paused"];
 
 async function assertAttendanceEditable(attendanceId: string | undefined, companyId: string | undefined) {
   if (!attendanceId || !companyId || !isSupabaseConfigured || !supabase) return;
@@ -333,6 +336,19 @@ export async function updateAttendanceImageComparativeNotes(companyId: string, i
 
 export async function createAttendanceBa(attendance: Attendance) {
   if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data: openAttendance, error: openAttendanceError } = await supabase
+    .from("attendances")
+    .select("id, ba_number, status, finished_at")
+    .eq("company_id", attendance.companyId)
+    .eq("patient_id", attendance.patientId)
+    .in("status", openAttendanceStatuses)
+    .is("finished_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (openAttendanceError) throw openAttendanceError;
+  if (openAttendance) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
 
   const { data, error } = await supabase
     .from("attendances")

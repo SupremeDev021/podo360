@@ -34,6 +34,7 @@ type AnamnesisWizardProps = {
   products?: StockProduct[];
   readOnly?: boolean;
   readOnlyMessage?: string;
+  onFinishAttendanceRequest?: () => void;
 };
 
 const modules: Module[] = [
@@ -193,7 +194,8 @@ export function AnamnesisWizard({
   imageEvolutionSlot,
   products = [],
   readOnly = false,
-  readOnlyMessage = "Não é possível editar atendimento finalizado."
+  readOnlyMessage = "Não é possível editar atendimento finalizado.",
+  onFinishAttendanceRequest
 }: AnamnesisWizardProps) {
   const [step, setStep] = useState(record?.currentStep ?? 1);
   const [formData, setFormData] = useState<AnamnesisFormData>({
@@ -262,6 +264,7 @@ export function AnamnesisWizard({
     setStepStatuses(nextStatuses);
     save(nextStep, step === modules.length, nextStatuses);
     setStep(nextStep);
+    if (step === modules.length) onFinishAttendanceRequest?.();
   }
 
   function handleSkip() {
@@ -370,7 +373,7 @@ export function AnamnesisWizard({
           </button>
           <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit">
             {step === modules.length ? <CheckCircle2 size={17} /> : <ArrowRight size={17} />}
-            {step === modules.length ? "Finalizar" : "Avancar"}
+            {step === modules.length ? "Finalizar atendimento" : "Avancar"}
           </button>
         </div>
       </form>
@@ -675,10 +678,11 @@ function FieldRenderer({
     );
   }
 
-  const isCompactIndexField = field.type === "number" && /^(itb|ihb)_/.test(field.name);
+  const isNumberField = field.type === "number";
+  const isCompactIndexField = isNumberField && /^(itb|ihb)_/.test(field.name);
 
   return (
-    <label className={isCompactIndexField ? "index-number-field" : undefined}>
+    <label className={isNumberField ? `clinical-number-field${isCompactIndexField ? " index-number-field" : ""}` : undefined}>
       {field.label}
       <input
         type={field.type}

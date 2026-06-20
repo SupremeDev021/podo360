@@ -251,6 +251,11 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
         </form>
 
         <p className="login-access__help">Precisa de ajuda? Entre em contato com o administrador da sua clinica.</p>
+        <footer className="login-signature">
+          <span>Desenvolvido por: <strong>SupremeTech</strong></span>
+          <a href="https://www.instagram.com/supremetech.digital" rel="noreferrer" target="_blank">Instagram: @supremetech.digital</a>
+          <span>Versão 1.0.0</span>
+        </footer>
       </section>
     </main>
   );

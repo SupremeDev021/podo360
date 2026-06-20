@@ -154,6 +154,19 @@ test("Curativo usa regioes do pe e cancelar finalizacao mantem atendimento abert
   await expect(page.getByRole("heading", { name: /Gerar lan/i })).toBeVisible();
 });
 
+test("Finalizar no fim da Anamnese abre confirmacao e respeita cancelamento", async ({ page }) => {
+  await enterDemo(page);
+  await openActiveAttendance(page);
+
+  await page.locator(".stepper").getByRole("button", { name: /Evolucao e observacoes finais/i }).click();
+  await page.locator(".wizard-form").getByRole("button", { name: /Finalizar atendimento/i }).click();
+  await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toBeVisible();
+  await page.getByRole("button", { name: /Agora nao/i }).click();
+  await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toHaveCount(0);
+  await expect(page.locator(".toast")).not.toContainText(/Atendimento finalizado/i);
+  await expect(page.locator(".wizard-form").getByRole("button", { name: /Finalizar atendimento/i })).toBeVisible();
+});
+
 test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo obrigatorio", async ({ page }) => {
   await enterDemo(page);
   await openActiveAttendance(page);
@@ -206,4 +219,14 @@ test("Abertura de BA permanece na tela e PU fica somente leitura", async ({ page
   await expect(page.getByRole("heading", { name: /Pesquisar paciente/i })).toHaveCount(0);
   await expect(page.locator('input[name="fullName"]')).toHaveValue("");
   await expect(puField).toHaveValue("");
+
+  await page.locator('input[name="fullName"]').fill("Paciente Novo BA");
+  await page.locator('input[name="cpf"]').fill("12345678909");
+  await page.locator('input[name="birthDate"]').fill("1980-06-09");
+  await page.locator('input[name="phone"]').fill("11988887777");
+  await page.locator('input[name="whatsapp"]').fill("11988887777");
+  await page.locator('textarea[name="chiefComplaint"]').fill("Tentativa de novo BA sem finalizar anterior");
+  await page.getByRole("button", { name: /Abrir BA/i }).click();
+  await expect(page.locator(".toast")).toContainText(/Este paciente ja possui um BA aberto|Este paciente já possui um BA aberto/i);
+  await expect(page.locator('input[name="fullName"]')).toHaveValue("Paciente Novo BA");
 });
