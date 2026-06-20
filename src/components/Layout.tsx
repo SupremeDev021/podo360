@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -19,6 +20,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SUPPORT_WHATSAPP_URL } from "../config/support";
 import type { Company, Profile } from "../types";
 import { roleLabel } from "../services/rbac";
 import { SystemNoticeBanner } from "./SystemNoticeBanner";
@@ -155,6 +157,10 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
           </div>
           <div className="topbar__actions">
             <span className="status-dot">Sistema conectado</span>
+            <a className="support-topbar-link" href={SUPPORT_WHATSAPP_URL} rel="noreferrer" target="_blank">
+              <MessageCircle size={16} />
+              <span>Suporte</span>
+            </a>
             <div className="user-chip">
               <span>{profile.fullName.slice(0, 2).toUpperCase()}</span>
               <div>
