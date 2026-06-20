@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function enterDemo(page: Page) {
   await page.goto("/");
+  await expect(page.getByText(/Desenvolvido por: SupremeTech/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Site: https:\/\/www\.supremetechdev\.com\//i })).toHaveAttribute("href", "https://www.supremetechdev.com/");
+  await expect(page.getByRole("link", { name: /Falar com suporte/i })).toHaveAttribute("href", "https://wa.me/5511999999999");
+  await expect(page.getByText(/@supremetech\.digital/i)).toHaveCount(0);
   await page.getByRole("button", { name: /^Entrar$/i }).click();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Podo360/i })).toBeVisible();
@@ -17,7 +21,8 @@ async function openActiveAttendance(page: Page) {
     await startButton.click();
   }
   await page.getByRole("button", { name: /^Anamnese$/i }).click();
-  await expect(page.getByRole("heading", { name: /Anamneses do paciente/i })).toBeVisible();
+  await expect(page.locator(".wizard-form")).toBeVisible();
+  await expect(page.getByText(/Consulte fichas anteriores por BA/i)).toHaveCount(0);
 }
 
 async function openMonofilament(page: Page) {

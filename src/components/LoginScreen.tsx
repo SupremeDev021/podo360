@@ -12,12 +12,14 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  MessageCircle,
   Network,
   ShieldCheck,
   Sparkles
 } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { SUPPORT_WHATSAPP_URL, SUPREME_TECH_SITE_URL } from "../config/support";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type { Company } from "../types";
 
@@ -250,10 +252,18 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
           <div className="login-card__trust"><LockKeyhole size={15} /><span>Ambiente seguro e protegido</span></div>
         </form>
 
-        <p className="login-access__help">Precisa de ajuda? Entre em contato com o administrador da sua clinica.</p>
+        <div className="login-support-card">
+          <div>
+            <strong>Precisa de ajuda?</strong>
+            <span>Fale com o suporte da Podo360 pelo WhatsApp.</span>
+          </div>
+          <a href={SUPPORT_WHATSAPP_URL} rel="noreferrer" target="_blank">
+            <MessageCircle size={16} /> Falar com suporte
+          </a>
+        </div>
         <footer className="login-signature">
           <span>Desenvolvido por: <strong>SupremeTech</strong></span>
-          <a href="https://www.instagram.com/supremetech.digital" rel="noreferrer" target="_blank">Instagram: @supremetech.digital</a>
+          <a href={SUPREME_TECH_SITE_URL} rel="noreferrer" target="_blank">Site: https://www.supremetechdev.com/</a>
           <span>Versão 1.0.0</span>
         </footer>
       </section>

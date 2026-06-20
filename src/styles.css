@@ -563,6 +563,59 @@ body {
   text-align: center;
 }
 
+.login-support-card {
+  width: min(100%, 430px);
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.08);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.login-support-card strong,
+.login-support-card span {
+  display: block;
+}
+
+.login-support-card strong {
+  color: #385560;
+  font-size: 0.78rem;
+}
+
+.login-support-card span {
+  margin-top: 2px;
+  color: #7b9099;
+  font-size: 0.7rem;
+}
+
+.login-support-card a,
+.support-topbar-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, #16a34a, #0f766e);
+  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.18);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.login-support-card a:hover,
+.support-topbar-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(22, 163, 74, 0.24);
+}
+
 .login-signature {
   width: min(100%, 430px);
   display: flex;
@@ -1606,6 +1659,66 @@ button {
   border-color: var(--color-primary);
   color: #fff;
   font-weight: 700;
+}
+
+.export-action {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--color-primary), white 64%) !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 253, 245, 0.88)),
+    #fff !important;
+  color: var(--color-primary) !important;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.09);
+  font-weight: 800;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.export-action::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-120%);
+  transition: transform 420ms ease;
+}
+
+.export-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-primary), white 36%) !important;
+  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.14);
+}
+
+.export-action:hover:not(:disabled)::after {
+  transform: translateX(120%);
+}
+
+.export-action > svg,
+.export-action > span {
+  position: relative;
+  z-index: 1;
+}
+
+.export-action--pdf,
+.export-action--print {
+  background:
+    linear-gradient(135deg, var(--color-primary), #0e7490),
+    var(--color-primary) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+.export-icon-button {
+  border-color: rgba(15, 118, 110, 0.22);
+  color: var(--color-primary);
+  background: linear-gradient(135deg, #ffffff, #ecfdf5);
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.1);
+}
+
+.export-icon-button--pdf {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--color-primary), #0e7490);
 }
 
 .ghost-button {
@@ -3927,6 +4040,10 @@ td {
     flex-wrap: wrap;
   }
 
+  .support-topbar-link span {
+    display: none;
+  }
+
   .content {
     padding: 18px;
   }
@@ -4086,6 +4203,16 @@ td {
   .primary-button,
   .ghost-action,
   .danger-button {
+    width: 100%;
+  }
+
+  .login-support-card {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .login-support-card a,
+  .support-topbar-link {
     width: 100%;
   }
 
