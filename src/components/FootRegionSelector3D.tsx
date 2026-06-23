@@ -110,7 +110,7 @@ export function FootRegionSelector3D({
   value,
   onChange,
   disabled = false,
-  title = "Local da ferida / alteração acompanhada",
+  title = "Local de alteração acompanhada",
   helperText = "Clique diretamente no pé 3D ou use o fallback por seleção."
 }: FootRegionSelector3DProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null);

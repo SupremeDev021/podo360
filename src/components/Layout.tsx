@@ -54,10 +54,10 @@ type LayoutProps = {
 
 const navItems: Array<{ key: ViewKey; label: string; icon: React.ReactNode }> = [
   { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
-  { key: "ba-opening", label: "Abertura de BA", icon: <ClipboardPlus size={18} /> },
-  { key: "patients", label: "Pacientes", icon: <Users size={18} /> },
-  { key: "attendances", label: "Atendimentos", icon: <Stethoscope size={18} /> },
+  { key: "ba-opening", label: "Abertura de atendimento", icon: <ClipboardPlus size={18} /> },
+  { key: "attendances", label: "Atendimento", icon: <Stethoscope size={18} /> },
   { key: "attendance-management", label: "Gerenciamento de Atendimento", icon: <ShieldCheck size={18} /> },
+  { key: "patients", label: "Pacientes", icon: <Users size={18} /> },
   { key: "schedule", label: "Agenda Clínica", icon: <CalendarDays size={18} /> },
   { key: "financial", label: "Financeiro", icon: <CreditCard size={18} /> },
   { key: "stock", label: "Estoque", icon: <Boxes size={18} /> },

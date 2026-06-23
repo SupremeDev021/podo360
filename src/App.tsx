@@ -157,19 +157,19 @@ type BaOpeningPrefill = {
 
 const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
   { key: "patient-data", label: "Dados do paciente" },
-  { key: "unique-record", label: "ProntuárioÚnico" },
+  { key: "unique-record", label: "Prontuário de Evolução" },
   { key: "history", label: "Histórico de atendimentos" },
   { key: "bas", label: "BAs" },
   { key: "anamnesis", label: "Anamnese" },
-  { key: "wound-images", label: "Imagens da ferida" },
+  { key: "wound-images", label: "Evolução por Imagem" },
   { key: "image-evolution", label: "Comparativo de evolução" },
   { key: "reports", label: "Relatórios" },
   { key: "hci", label: "HCI" }
 ];
 
 const modulePermissionOptions: Array<[ViewKey, string]> = [
-  ["dashboard", "Dashboard"], ["patients", "Pacientes"], ["ba-opening", "Abertura de BA"], ["attendances", "Atendimentos"], ["attendance-management", "Gerenciamento de Atendimento"],
-  ["schedule", "Agenda Clinica"], ["patient-profile", "ProntuárioÚnico / Anamnese / Imagens"], ["reports", "Relatorios"],
+  ["dashboard", "Dashboard"], ["ba-opening", "Abertura de atendimento"], ["attendances", "Atendimento"], ["attendance-management", "Gerenciamento de Atendimento"], ["patients", "Pacientes"],
+  ["schedule", "Agenda Clínica"], ["patient-profile", "Prontuário de Evolução / Anamnese / Evolução por Imagem"], ["reports", "Relatórios"],
   ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["autoclave", "Registro de Autoclave / Esterilizacao"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Administracao da Clinica"]
 ];
 
@@ -416,7 +416,7 @@ export function App() {
       },
       ...current
     ]);
-    notify("Imagem da ferida salva", "Registro visual vinculado ao BA e ao ProntuárioÚnico.", "success");
+      notify("Evolução por imagem salva", "Registro visual vinculado ao BA e ao Prontuário de Evolução.", "success");
   }
 
   async function handleSaveComparativeNote(imageIds: string[], note: string) {
@@ -444,7 +444,7 @@ export function App() {
             : image
         )
       );
-      notify("Observação comparativa salva com sucesso.", "O comparativo ficou vinculado ao atendimento, BA e ProntuárioÚnico.", "success");
+      notify("Observação comparativa salva com sucesso.", "O comparativo ficou vinculado ao atendimento, BA e Prontuário de Evolução.", "success");
     } catch (error) {
       notify("Não foi possível salvar agora. Tente novamente.", "A sessão foi preservada; revise permissões ou conexão.", "danger");
       throw error;
@@ -481,6 +481,8 @@ export function App() {
       visitKind: options?.visitKind ?? "first_evaluation",
       initialNotes: options?.initialNotes ?? "",
       priority: options?.priority ?? "normal",
+      payerType: options?.payerType ?? "private",
+      insuranceName: options?.insuranceName,
       procedure: "BA aberto",
       complaint: options?.complaint ?? patient.clinical.chiefComplaint,
       clinicalEvaluation: "",
@@ -521,7 +523,7 @@ export function App() {
             : appointment
         )
       );
-      notify("Agendamento convertido em BA", `${attendance.baNumber} foi gerado pela Abertura de BA.`, "success");
+      notify("Agendamento convertido em BA", `${attendance.baNumber} foi gerado pela abertura de atendimento.`, "success");
     }
     setSelectedPatientId(patient.id);
     setActiveAttendanceId(attendance.id);
@@ -547,7 +549,7 @@ export function App() {
     );
 
     if (existingUniqueRecord) {
-      notify("Paciente ja possui ProntuárioÚnico", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
+      notify("Paciente ja possui Prontuário de Evolução", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
     }
 
     const patient: Patient = existingPatient ?? {
@@ -592,16 +594,15 @@ export function App() {
       professionalId: String(form.get("professionalId") || "") || undefined,
       type: "Atendimento podologico",
       visitKind: String(form.get("visitKind")) === "return" ? "return" : "first_evaluation",
-      complaint: String(form.get("chiefComplaint") || ""),
+      complaint: "",
       initialNotes: String(form.get("initialNotes") || ""),
-      priority: String(form.get("priority") || "normal") as Attendance["priority"],
+      priority: "normal",
       payerType: String(form.get("payerType") || "private") as Attendance["payerType"],
       insuranceName: String(form.get("insuranceName") || "") || undefined,
       appointmentId: String(form.get("sourceAppointmentId") || "") || undefined,
       notes: [
         `Clinica vinculada: ${company.displayName}.`,
         String(form.get("payerType") || "") ? `Pagamento: ${String(form.get("payerType"))}.` : "",
-        String(form.get("openingReason") || "") ? `Motivo: ${String(form.get("openingReason"))}.` : "",
         String(form.get("initialNotes") || "")
       ].filter(Boolean).join(" ")
     });
@@ -645,7 +646,7 @@ export function App() {
       };
     setAppointments((current) => [created, ...current]);
     void createClinicalAppointment(created).catch(() => notify("Agendamento salvo apenas localmente", "Nao foi possivel sincronizar com o ambiente online.", "warning"));
-    notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou ProntuárioÚnico.", "success");
+    notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou Prontuário de Evolução.", "success");
   }
 
   function handleUpdateAppointmentStatus(appointmentId: string, status: ClinicalAppointment["status"]) {
@@ -660,7 +661,7 @@ export function App() {
       rescheduled: "Agendamento reagendado"
     };
     setAppointments((current) => current.map((appointment) => appointment.id === appointmentId ? { ...appointment, status, updatedAt: new Date().toISOString() } : appointment));
-    notify(labels[status], status === "arrived" ? "Continue pela Abertura de BA para gerar BA e ProntuárioÚnico se necessario." : "Status atualizado na Agenda Clínica.", "success");
+    notify(labels[status], status === "arrived" ? "Continue pela Abertura de atendimento para gerar BA e Prontuário de Evolução se necessário." : "Status atualizado na Agenda Clínica.", "success");
   }
 
   function handleUpdateAppointment(appointment: ClinicalAppointment) {
@@ -670,7 +671,7 @@ export function App() {
     });
     notify(
       appointment.status === "no_show" ? "Paciente marcado como falta." : "Agendamento atualizado com sucesso.",
-      appointment.status === "no_show" ? "A falta foi registrada sem criar BA ou ProntuárioÚnico." : "Data, horario e dados da agenda foram atualizados.",
+      appointment.status === "no_show" ? "A falta foi registrada sem criar BA ou Prontuário de Evolução." : "Data, horario e dados da agenda foram atualizados.",
       "success"
     );
   }
@@ -696,7 +697,7 @@ export function App() {
       , insuranceName: appointment.insuranceName
     });
     setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, status: item.status === "converted_to_ba" ? item.status : "arrived", updatedAt: new Date().toISOString() } : item));
-    notify("Não é possível gerar BA diretamente pela Agenda", "Dados enviados para Abertura de BA. Confirme a entrada para criar BA.", "info");
+      notify("Não é possível gerar BA diretamente pela Agenda", "Dados enviados para Abertura de atendimento. Confirme a entrada para criar BA.", "info");
     setActiveView("ba-opening");
   }
 
@@ -978,6 +979,7 @@ export function App() {
       )}
       {activeView === "schedule" && (
         <ClinicalAgendaPage
+          company={company}
           appointments={appointments}
           patients={patients}
           profiles={demoProfiles}
@@ -1178,6 +1180,7 @@ function BaOpening({
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [payerType, setPayerType] = useState<"private" | "insurance">("private");
+  const showInsuranceType = Boolean(company.enableInsuranceType);
 
   useEffect(() => {
     if (!prefill) return;
@@ -1224,7 +1227,7 @@ function BaOpening({
     const record = normalizeText(patientData.uniqueRecordNumber);
 
     if (!query && !cpf && !phone && !record) {
-      onNotify("Informe um dado para busca", "Digite nome, CPF, telefone, WhatsApp ou ProntuárioÚnico.", "warning");
+      onNotify("Informe um dado para busca", "Digite nome, CPF, telefone, WhatsApp ou Prontuário de Evolução.", "warning");
       return;
     }
 
@@ -1246,7 +1249,7 @@ function BaOpening({
     setSearchResults(results);
     setSearchOpen(true);
     if (!results.length) {
-      onNotify("Nenhum paciente encontrado", "Continue o cadastro para criar um novo ProntuárioÚnico.", "info");
+      onNotify("Nenhum paciente encontrado", "Continue o cadastro para criar um novo Prontuário de Evolução.", "info");
     }
   }
 
@@ -1292,9 +1295,9 @@ function BaOpening({
     <div className="page-stack">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Recepcao · ponto inicial do atendimento</span>
-          <h1>Abertura de BA</h1>
-          <p>Identifique ou crie o ProntuárioÚnico, gere o BA e coloque o paciente em Aguardando atendimento.</p>
+          <span className="eyebrow">Recepção · ponto inicial do atendimento</span>
+          <h1>Abertura de atendimento</h1>
+          <p>Identifique ou crie o Prontuário de Evolução, gere o BA e coloque o paciente em Aguardando atendimento.</p>
         </div>
         <ClipboardPlus size={28} />
       </div>
@@ -1303,7 +1306,7 @@ function BaOpening({
         <section>
           <h2>Dados do Paciente</h2>
           {prefill && !prefill.uniqueRecordNumber && (
-            <p className="inline-info">Este paciente veio da Agenda Clínica e ainda não possui ProntuárioÚnico. Ele será criado somente ao confirmar a Abertura de BA.</p>
+            <p className="inline-info">Este paciente veio da Agenda Clínica e ainda não possui Prontuário de Evolução. Ele será criado somente ao confirmar a abertura de atendimento.</p>
           )}
           <div className="form-grid">
             <label className="field-with-action">Nome completo
@@ -1316,10 +1319,10 @@ function BaOpening({
             <label>Data de nascimento<input name="birthDate" type="date" value={patientData.birthDate} onChange={(event) => updatePatientField("birthDate", event.target.value)} /></label>
             <label>Idade<input name="age" min="0" readOnly value={patientData.age} /></label>
             <label>Profissao<input name="profession" value={patientData.profession} onChange={(event) => updatePatientField("profession", event.target.value)} /></label>
-            <label>Telefone<input name="phone" value={patientData.phone} onChange={(event) => updatePatientField("phone", event.target.value)} /></label>
-            <label>WhatsApp<input name="whatsapp" value={patientData.whatsapp} onChange={(event) => updatePatientField("whatsapp", event.target.value)} /></label>
+            <label>Telefone / WhatsApp<input name="phone" value={patientData.phone} onChange={(event) => { updatePatientField("phone", event.target.value); updatePatientField("whatsapp", event.target.value); }} /></label>
+            <input name="whatsapp" type="hidden" value={patientData.whatsapp || patientData.phone} />
             <label>E-mail<input name="email" type="email" value={patientData.email} onChange={(event) => updatePatientField("email", event.target.value)} /></label>
-            <label>ProntuarioUnico<input name="uniqueRecordNumber" readOnly value={patientData.uniqueRecordNumber} placeholder="Gerado automaticamente na primeira entrada" /><small className="field-help">{patientData.uniqueRecordNumber ? "Numero vinculado ao paciente selecionado." : "Sera gerado automaticamente ao abrir o BA."}</small></label>
+            <label>Prontuário de Evolução<input name="uniqueRecordNumber" readOnly value={patientData.uniqueRecordNumber} placeholder="Gerado automaticamente na primeira entrada" /><small className="field-help">{patientData.uniqueRecordNumber ? "Número vinculado ao paciente selecionado." : "Será gerado automaticamente ao abrir o BA."}</small></label>
           </div>
           <label>Endereco<input name="address" value={patientData.address} onChange={(event) => updatePatientField("address", event.target.value)} /></label>
           {birthDateMessage && <p className="inline-warning">{birthDateMessage}</p>}
@@ -1329,7 +1332,7 @@ function BaOpening({
               <div className="section-heading section-heading--compact">
                 <div>
                   <h3>Resultados da busca</h3>
-                  <p>{searchResults.length ? "Selecione um paciente para preencher somente os Dados do Paciente." : "Nenhum paciente encontrado. Continue o cadastro para criar um novo ProntuárioÚnico."}</p>
+                  <p>{searchResults.length ? "Selecione um paciente para preencher somente os Dados do Paciente." : "Nenhum paciente encontrado. Continue o cadastro para criar um novo Prontuário de Evolução."}</p>
                 </div>
                 <button className="ghost-action" onClick={() => setSearchOpen(false)} type="button">Fechar</button>
               </div>
@@ -1338,7 +1341,7 @@ function BaOpening({
                   <button key={patient.id} onClick={() => selectPatient(patient)} type="button">
                     <strong>{patient.fullName}</strong>
                     <span>CPF {maskCpf(patient.cpf)} · {formatDate(patient.birthDate)} · {calculateAge(patient.birthDate)}</span>
-                    <small>{patient.whatsapp || patient.phone} · ProntuárioÚnico {patient.uniqueRecordNumber} · Ultimo BA {lastBa?.baNumber ?? "sem BA"}</small>
+                    <small>{patient.whatsapp || patient.phone} · Prontuário de Evolução {patient.uniqueRecordNumber} · Último BA {lastBa?.baNumber ?? "sem BA"}</small>
                   </button>
                 ))}
               </div>
@@ -1371,23 +1374,11 @@ function BaOpening({
                 ))}
               </select>
             </label>
-            <label>
-              Prioridade
-              <select name="priority" defaultValue="">
-                <option value="">Selecione</option>
-                <option value="low">Baixa</option>
-                <option value="normal">Normal</option>
-                <option value="high">Alta</option>
-                <option value="urgent">Urgente</option>
-              </select>
-            </label>
-            <label>Convênio ou particular<select name="payerType" onChange={(event) => setPayerType(event.target.value as "private" | "insurance")} value={payerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>
-            {payerType === "insurance" && <label>Nome do convênio<input defaultValue={prefill?.insuranceName} name="insuranceName" required placeholder="Informe o convênio" /></label>}
+            {showInsuranceType && <label>Convênio ou particular<select name="payerType" onChange={(event) => setPayerType(event.target.value as "private" | "insurance")} value={payerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>}
+            {showInsuranceType && payerType === "insurance" && <label>Nome do convênio<input defaultValue={prefill?.insuranceName} name="insuranceName" required placeholder="Informe o convênio" /></label>}
             <label>Data/hora de abertura<input value={new Date().toLocaleString("pt-BR")} readOnly /></label>
           </div>
-          <label>Queixa principal inicial<textarea name="chiefComplaint" defaultValue={baPrefill.chiefComplaint} /></label>
           <label>Observacoes iniciais<textarea name="initialNotes" defaultValue={baPrefill.initialNotes} /></label>
-          <label>Motivo da abertura do BA<textarea name="openingReason" /></label>
         </section>
 
         <button className="primary-button" disabled={opening} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : "Abrir BA"}</button>
@@ -1460,12 +1451,12 @@ function Patients({
         <div>
           <span className="eyebrow">Consulta histórica da clínica</span>
           <h1>Pesquisar paciente</h1>
-          <p>Busque pelo nome, CPF, telefone, ProntuárioÚnico ou BA para acessar o histórico completo do paciente.</p>
+          <p>Busque pelo nome, CPF, telefone, Prontuário de Evolução ou BA para acessar o histórico completo do paciente.</p>
         </div>
         <form className="patient-search-form" onSubmit={searchPatients}>
           <label className="patient-search-form__field">
             <Search size={20} />
-            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, CPF, telefone, ProntuárioÚnico ou BA" />
+            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, CPF, telefone, Prontuário de Evolução ou BA" />
           </label>
           <button className="primary-button" disabled={loading} type="submit">{loading ? "Pesquisando..." : "Pesquisar"}</button>
         </form>
@@ -1495,7 +1486,7 @@ function Patients({
           {results.length ? results.map(({ patient, lastBa, lastCompleted }) => (
             <button className="patient-result-card" key={patient.id} onClick={() => onSelect(patient.id)} type="button">
               <span className="patient-result-card__avatar">{patient.fullName.slice(0, 2).toUpperCase()}</span>
-              <span className="patient-result-card__identity"><strong>{patient.fullName}</strong><small>CPF {maskCpf(patient.cpf)} · {patient.whatsapp || patient.phone}</small><small>ProntuárioÚnico {patient.uniqueRecordNumber}</small></span>
+              <span className="patient-result-card__identity"><strong>{patient.fullName}</strong><small>CPF {maskCpf(patient.cpf)} · {patient.whatsapp || patient.phone}</small><small>Prontuário de Evolução {patient.uniqueRecordNumber}</small></span>
               <span className="patient-result-card__meta"><small>Idade</small><strong>{calculateAge(patient.birthDate)}</strong></span>
               <span className="patient-result-card__meta"><small>Último BA</small><strong>{lastBa?.baNumber ?? "Sem BA"}</strong></span>
               <span className="patient-result-card__meta"><small>Último atendimento</small><strong>{lastCompleted ? formatDateTime(lastCompleted.finishedAt ?? lastCompleted.scheduledAt) : "-"}</strong></span>
@@ -1683,14 +1674,14 @@ function PatientProfile({
     <div className="page-stack">
       <section className="profile-header">
         <div>
-          <span className="eyebrow">ProntuárioÚnico: {patient.uniqueRecordNumber}</span>
+          <span className="eyebrow">Prontuário de Evolução: {patient.uniqueRecordNumber}</span>
           <h1>{patient.fullName}</h1>
           <p>{patient.whatsapp} · {patient.profession || "Profissao nao informada"} · CPF {patient.cpf}</p>
         </div>
         <div className="hero-panel__actions">
           <button className="ghost-action" onClick={() => onCreateAttendance(patient)} type="button"><Plus size={18} /> Novo BA</button>
           <button className="ghost-action" onClick={onSchedule} type="button"><CalendarPlus size={18} /> Agendar atendimento</button>
-          <button className="ghost-action export-action export-action--pdf" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico</button>
+          <button className="ghost-action export-action export-action--pdf" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar Prontuário de Evolução</button>
           <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={generateCurrentAttendanceReport} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatorio com IA"}</button>
         </div>
       </section>
@@ -1706,7 +1697,7 @@ function PatientProfile({
           <div><span>Paciente</span><strong>{patient.fullName}</strong></div>
           <div><span>Nascimento</span><strong>{patient.birthDate ? formatDate(patient.birthDate) : "Nao informado"}</strong></div>
           <div><span>Idade</span><strong>{calculateAge(patient.birthDate)}</strong></div>
-          <div><span>ProntuárioÚnico</span><strong>{patient.uniqueRecordNumber}</strong></div>
+          <div><span>Prontuário de Evolução</span><strong>{patient.uniqueRecordNumber}</strong></div>
           <div><span>BA atual</span><strong>{currentAttendance.baNumber}</strong></div>
           <div><span>Status</span><strong>{statusLabel(currentAttendance.status)}</strong></div>
           <div><span>Abertura</span><strong>{formatDateTime(currentAttendance.openedAt ?? currentAttendance.scheduledAt)}</strong></div>
@@ -1817,7 +1808,7 @@ function PatientDataSection({ patient }: { patient: Patient }) {
       <div className="section-heading section-heading--compact">
         <div>
           <h2>Dados do paciente</h2>
-          <p>Dados cadastrais operacionais. Historico clinico completo permanece no ProntuárioÚnico.</p>
+          <p>Dados cadastrais operacionais. Historico clinico completo permanece no Prontuário de Evolução.</p>
         </div>
         <Users size={20} />
       </div>
@@ -1831,7 +1822,7 @@ function PatientDataSection({ patient }: { patient: Patient }) {
         <div><dt>WhatsApp</dt><dd>{patient.whatsapp || "Nao informado"}</dd></div>
         <div><dt>E-mail</dt><dd>{patient.email || "Nao informado"}</dd></div>
         <div><dt>Endereco</dt><dd>{patient.address || "Nao informado"}</dd></div>
-        <div><dt>ProntuárioÚnico</dt><dd>{patient.uniqueRecordNumber}</dd></div>
+        <div><dt>Prontuário de Evolução</dt><dd>{patient.uniqueRecordNumber}</dd></div>
         <div><dt>Data de cadastro</dt><dd>{formatDate(patient.createdAt)}</dd></div>
         <div><dt>Status do paciente</dt><dd><span className="status-badge status-badge--completed">Ativo</span></dd></div>
       </dl>
@@ -1843,7 +1834,7 @@ function PatientAttendanceHistory({ attendances, patient, profiles, company, ana
   const [selected, setSelected] = useState<Attendance | null>(null);
   return (
     <section className="page-stack">
-      <div className="section-heading section-heading--compact"><div><h2>Histórico de atendimentos</h2><p>Atendimentos locais vinculados ao ProntuárioÚnico nesta clínica.</p></div></div>
+      <div className="section-heading section-heading--compact"><div><h2>Histórico de atendimentos</h2><p>Atendimentos locais vinculados ao Prontuário de Evolução nesta clínica.</p></div></div>
       {attendances.length ? <div className="patient-history-list">{attendances.map((attendance) => (
         <article className="patient-history-card" key={attendance.id}>
           <div><span className={`status-badge status-badge--${attendance.status}`}>{statusLabel(attendance.status)}</span><h3>{attendance.baNumber}</h3><p>{formatDateTime(attendance.openedAt)} · {profiles.find((item) => item.id === attendance.professionalId)?.fullName ?? "Profissional a definir"}</p></div>
@@ -1920,13 +1911,13 @@ function ReportsSection({
         <div className="section-heading section-heading--compact">
           <div>
             <h2>Relatórios</h2>
-            <p>Exportacoes e relatorio medico com IA respeitando ProntuárioÚnico, BA e HCI autorizado.</p>
+            <p>Exportacoes e relatorio medico com IA respeitando Prontuário de Evolução, BA e HCI autorizado.</p>
           </div>
           <FileText size={20} />
         </div>
         <div className="report-list">
           <button className="export-action export-action--pdf" disabled={!currentAttendance} onClick={() => currentAttendance && exportAttendanceBa(patient, company, currentAttendance, anamneses, footSensitivityMaps, attendanceImages)} type="button"><FileText size={18} /> Exportar BA atual</button>
-          <button className="export-action export-action--pdf" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar ProntuárioÚnico completo</button>
+          <button className="export-action export-action--pdf" onClick={() => exportMedicalRecord(patient, company, attendances, anamneses, footSensitivityMaps, attendanceImages)} type="button"><Download size={18} /> Exportar Prontuário de Evolução completo</button>
           <button className="primary-button" disabled={generatingAiReport || !currentAttendance} onClick={() => currentAttendance && onGenerateReport(currentAttendance.id)} type="button"><Sparkles size={18} /> {generatingAiReport ? "Gerando relatório com IA..." : "Gerar relatório médico com IA"}</button>
         </div>
       </div>
@@ -2017,7 +2008,7 @@ function AttendanceManagement({
 
       <div className="data-panel operational-filters">
         <div className="filter-grid">
-          <label>Pesquisar paciente, CPF, telefone, BA ou ProntuárioÚnico<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite nome, CPF, telefone, BA ou PU" /></label>
+          <label>Pesquisar paciente, CPF, telefone, BA ou Prontuário de Evolução<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite nome, CPF, telefone, BA ou PU" /></label>
           <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="completed">Finalizados</option><option value="in_progress">Em atendimento</option><option value="waiting">Aguardando</option><option value="all">Todos</option></select></label>
           <label>Data inicial<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
           <label>Data final<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
@@ -2052,7 +2043,7 @@ function AttendanceManagement({
               </div>
             </article>
           );
-        }) : <EmptyState title="Nenhum atendimento encontrado" message="Ajuste os filtros ou pesquise por nome, CPF, telefone, BA ou ProntuárioÚnico." />}
+        }) : <EmptyState title="Nenhum atendimento encontrado" message="Ajuste os filtros ou pesquise por nome, CPF, telefone, BA ou Prontuário de Evolução." />}
       </div>
 
       {selected && (
@@ -2061,7 +2052,7 @@ function AttendanceManagement({
             <div><h2>Detalhes do BA {selected.baNumber}</h2><p>{statusLabel(selected.status)} · {formatDateTime(selected.openedAt ?? selected.scheduledAt)}</p></div>
             <dl className="definition-grid">
               <div><dt>Paciente</dt><dd>{patients.find((item) => item.id === selected.patientId)?.fullName ?? "-"}</dd></div>
-              <div><dt>ProntuárioÚnico</dt><dd>{selected.uniqueRecordNumber}</dd></div>
+              <div><dt>Prontuário de Evolução</dt><dd>{selected.uniqueRecordNumber}</dd></div>
               <div><dt>Finalizado em</dt><dd>{selected.finishedAt ? formatDateTime(selected.finishedAt) : "-"}</dd></div>
               <div><dt>Motivo da reabertura</dt><dd>{selected.reopenReason || "-"}</dd></div>
             </dl>
@@ -2172,7 +2163,7 @@ function Attendances({
       </section>
       <section className="data-panel operational-filters">
         <div className="filter-grid">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Paciente, ProntuárioÚnico, BA, queixa ou procedimento" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Paciente, Prontuário de Evolução, BA, queixa ou procedimento" />
           <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos os status</option>{(["waiting", "in_progress", "completed", "cancelled", "no_show", "paused", "ba_open"] as const).map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</select>
           <select value={professional} onChange={(event) => setProfessional(event.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select>
           <select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">Todo o periodo</option><option value="today">Hoje</option><option value="week">Esta semana</option><option value="month">Este mes</option><option value="custom">Personalizado</option></select>
@@ -2197,7 +2188,7 @@ function Attendances({
               <div className="table-actions">
                 {attendance.status === "waiting" && <button className="primary-button" onClick={() => onStart(attendance.id)} type="button"><PlayCircle size={17} /> Iniciar atendimento</button>}
                 {["in_progress", "paused"].includes(attendance.status) && <button className="primary-button" onClick={() => onContinue(attendance.id)} type="button"><ClipboardEdit size={17} /> Continuar atendimento</button>}
-                {attendance.status === "completed" && <><button className="ghost-action" onClick={() => onOpenPatient(attendance.patientId, attendance.id)} type="button">Ver no ProntuárioÚnico</button><button className="ghost-action export-action export-action--pdf" onClick={() => onExport(attendance)} type="button"><Download size={17} /> Exportar BA</button></>}
+                {attendance.status === "completed" && <><button className="ghost-action" onClick={() => onOpenPatient(attendance.patientId, attendance.id)} type="button">Ver no Prontuário de Evolução</button><button className="ghost-action export-action export-action--pdf" onClick={() => onExport(attendance)} type="button"><Download size={17} /> Exportar BA</button></>}
                 {["cancelled", "no_show"].includes(attendance.status) && <button className="ghost-action" onClick={() => onOpenPatient(attendance.patientId, attendance.id)} type="button">Ver detalhes</button>}
               </div>
             </article>
@@ -2209,6 +2200,7 @@ function Attendances({
 }
 
 function ClinicalAgendaPage({
+  company,
   appointments,
   patients,
   profiles,
@@ -2218,6 +2210,7 @@ function ClinicalAgendaPage({
   onOpenBa,
   onNotify
 }: {
+  company: Company;
   appointments: ClinicalAppointment[];
   patients: Patient[];
   profiles: typeof demoProfiles;
@@ -2238,6 +2231,7 @@ function ClinicalAgendaPage({
   const [markingAbsent, setMarkingAbsent] = useState<ClinicalAppointment | null>(null);
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
   const [appointmentPayerType, setAppointmentPayerType] = useState<"private" | "insurance">("private");
+  const showInsuranceType = Boolean(company.enableInsuranceType);
 
   const filteredPatients = patients.filter((patient) =>
     [patient.fullName, patient.cpf, patient.phone, patient.whatsapp, patient.uniqueRecordNumber]
@@ -2269,7 +2263,7 @@ function ClinicalAgendaPage({
     }
 
     if (patientMode === "temporary") {
-      onNotify("Este paciente ainda não possui ProntuárioÚnico", "Ele será criado somente na Abertura de BA.", "info");
+      onNotify("Este paciente ainda não possui Prontuário de Evolução", "Ele será criado somente na Abertura de atendimento.", "info");
     } else {
       onNotify("Paciente existente vinculado ao agendamento", "Nenhum BA foi criado pela Agenda.", "success");
     }
@@ -2280,7 +2274,7 @@ function ClinicalAgendaPage({
       uniqueMedicalRecordId: patient?.uniqueMedicalRecordId,
       temporaryPatientName: patientMode === "temporary" ? String(form.get("temporaryPatientName") || "") : undefined,
       temporaryPatientPhone: patientMode === "temporary" ? String(form.get("temporaryPatientPhone") || "") : undefined,
-      temporaryPatientWhatsapp: patientMode === "temporary" ? String(form.get("temporaryPatientWhatsapp") || "") : undefined,
+      temporaryPatientWhatsapp: patientMode === "temporary" ? String(form.get("temporaryPatientWhatsapp") || form.get("temporaryPatientPhone") || "") : undefined,
       temporaryPatientEmail: patientMode === "temporary" ? String(form.get("temporaryPatientEmail") || "") : undefined,
       temporaryPatientBirthDate: patientMode === "temporary" ? String(form.get("temporaryPatientBirthDate") || "") : undefined,
       appointmentDate: String(form.get("appointmentDate") || new Date().toISOString().slice(0, 10)),
@@ -2339,7 +2333,7 @@ function ClinicalAgendaPage({
         <div>
           <span className="eyebrow">Agenda Clínica</span>
           <h1>Agenda inteligente da clínica</h1>
-          <p>Reserve horários, acompanhe chegadas e envie dados para a Abertura de BA sem gerar BA ou ProntuárioÚnico antes da entrada clínica.</p>
+          <p>Reserve horários, acompanhe chegadas e envie dados para a Abertura de atendimento sem gerar BA ou Prontuário de Evolução antes da entrada clínica.</p>
         </div>
         <button className="primary-button" onClick={() => setNewAppointmentOpen(true)} type="button"><CalendarPlus size={18} /> Novo agendamento</button>
       </section>
@@ -2385,7 +2379,7 @@ function ClinicalAgendaPage({
 
           {patientMode === "existing" ? (
             <div className="search-results-panel">
-              <label>Buscar paciente<input value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} placeholder="Nome, CPF, telefone ou ProntuárioÚnico" /></label>
+              <label>Buscar paciente<input value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} placeholder="Nome, CPF, telefone ou Prontuário de Evolução" /></label>
               <div className="search-result-list search-result-list--compact">
                 {filteredPatients.slice(0, 4).map((patient) => (
                   <button className={selectedPatientId === patient.id ? "is-selected" : ""} key={patient.id} onClick={() => setSelectedPatientId(patient.id)} type="button">
@@ -2398,7 +2392,7 @@ function ClinicalAgendaPage({
             </div>
           ) : (
             <div className="temporary-banner">
-              Este agendamento ainda não cria ProntuárioÚnico. O ProntuárioÚnico será criado somente na Abertura de BA.
+              Este agendamento ainda não cria Prontuário de Evolução. O Prontuário de Evolução será criado somente na Abertura de atendimento.
             </div>
           )}
 
@@ -2406,9 +2400,7 @@ function ClinicalAgendaPage({
             <div className="form-grid form-grid--two">
               <label>Nome completo<input name="temporaryPatientName" /></label>
               <label>Telefone<input inputMode="tel" name="temporaryPatientPhone" onInput={(event) => { event.currentTarget.value = formatPhone(event.currentTarget.value); }} /></label>
-              <label>WhatsApp<input inputMode="tel" name="temporaryPatientWhatsapp" onInput={(event) => { event.currentTarget.value = formatPhone(event.currentTarget.value); }} /></label>
               <label>E-mail<input name="temporaryPatientEmail" type="email" /></label>
-              <label>Data de nascimento<input name="temporaryPatientBirthDate" type="date" /></label>
             </div>
           )}
 
@@ -2417,17 +2409,15 @@ function ClinicalAgendaPage({
             <label>Inicio<input name="startTime" defaultValue="09:00" type="time" /></label>
             <label>Fim<input name="endTime" defaultValue="09:50" type="time" /></label>
             <label>Profissional<select name="professionalId">{profiles.filter((profile) => profile.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
-            <label>Tipo de atendimento<input name="procedureType" placeholder="Ex.: Avaliacao podologica" /></label>
             <label>Agenda<select name="appointmentType" defaultValue="first_evaluation"><option value="first_evaluation">Primeira avaliacao</option><option value="return">Retorno</option><option value="procedure">Procedimento</option><option value="follow_up">Acompanhamento</option></select></label>
-            <label>Convênio ou particular<select name="payerType" onChange={(event) => setAppointmentPayerType(event.target.value as "private" | "insurance")} value={appointmentPayerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>
-            {appointmentPayerType === "insurance" && <label>Nome do convênio<input name="insuranceName" required /></label>}
+            {showInsuranceType && <label>Convênio ou particular<select name="payerType" onChange={(event) => setAppointmentPayerType(event.target.value as "private" | "insurance")} value={appointmentPayerType}><option value="private">Particular</option><option value="insurance">Convênio</option></select></label>}
+            {showInsuranceType && appointmentPayerType === "insurance" && <label>Nome do convênio<input name="insuranceName" required /></label>}
           </div>
-          <label>Queixa/resumo inicial<textarea name="initialComplaint" /></label>
           <label>Observacoes<textarea name="notes" /></label>
           <div className="dialog-card__actions"><button className="ghost-action" onClick={() => setNewAppointmentOpen(false)} type="button">Cancelar</button><button className="primary-button" type="submit"><CalendarPlus size={18} /> Criar agendamento</button></div>
         </form></div>}
       {editing && <div className="dialog-backdrop"><form className="dialog-card dialog-card--wide" onSubmit={handleEditSubmit}><div><h2>Editar agendamento</h2><p>Altere data, horarios, profissional, observacoes e status.</p></div><div className="form-grid form-grid--two"><label>Data<input defaultValue={editing.appointmentDate} name="appointmentDate" required type="date" /></label><label>Inicio<input defaultValue={editing.startTime} name="startTime" required type="time" /></label><label>Fim<input defaultValue={editing.endTime} name="endTime" required type="time" /></label><label>Profissional<select defaultValue={editing.professionalId} name="professionalId">{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label><label>Status<select defaultValue={editing.status} name="status">{(["scheduled", "confirmed", "waiting_arrival", "arrived", "cancelled", "no_show", "rescheduled"] as const).map((item) => <option key={item} value={item}>{appointmentStatusLabel(item)}</option>)}</select></label></div><label>Observacoes<textarea defaultValue={editing.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setEditing(null)} type="button">Cancelar</button><button className="primary-button" type="submit">Salvar alteracoes</button></div></form></div>}
-      {markingAbsent && <div className="dialog-backdrop"><form className="dialog-card" onSubmit={handleAbsentSubmit}><div><h2>Deseja marcar este paciente como falta?</h2><p>Esta acao apenas atualiza o agendamento. Nenhum BA ou ProntuárioÚnico sera criado.</p></div><label>Observacao da falta<textarea name="absenceNotes" placeholder="Opcional" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setMarkingAbsent(null)} type="button">Cancelar</button><button className="danger-button" type="submit">Marcar falta</button></div></form></div>}
+      {markingAbsent && <div className="dialog-backdrop"><form className="dialog-card" onSubmit={handleAbsentSubmit}><div><h2>Deseja marcar este paciente como falta?</h2><p>Esta ação apenas atualiza o agendamento. Nenhum BA ou Prontuário de Evolução será criado.</p></div><label>Observação da falta<textarea name="absenceNotes" placeholder="Opcional" /></label><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setMarkingAbsent(null)} type="button">Cancelar</button><button className="danger-button" type="submit">Marcar falta</button></div></form></div>}
     </div>
   );
 }
@@ -2464,8 +2454,7 @@ function AppointmentCard({
           <span className={`status-badge status-badge--appointment-${appointment.status}`}>{appointmentStatusLabel(appointment.status)}</span>
         </div>
         <p>{appointment.procedureType} · {professionalName}</p>
-        <small>{appointment.appointmentDate} · {phone} · {patient?.uniqueRecordNumber ?? "Sem ProntuárioÚnico ate Abertura de BA"}</small>
-        {appointment.initialComplaint && <small>Queixa/resumo: {appointment.initialComplaint}</small>}
+        <small>{appointment.appointmentDate} · {phone} · {patient?.uniqueRecordNumber ?? "Sem Prontuário de Evolução até Abertura de atendimento"}</small>
       </div>
       <div className="table-actions">
         {appointment.status === "scheduled" && <button className="ghost-action" onClick={() => onStatus(appointment.id, "confirmed")} type="button">Confirmar</button>}
@@ -2517,7 +2506,7 @@ function FinancialReviewDialog({ attendance, patient, products, onCancel, onConf
   const [saving, setSaving] = useState(false);
   const total = items.reduce((sum, item) => sum + item.value, 0);
 
-  return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · ProntuárioÚnico {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Nao gerar lancamento agora</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, payerType: attendance.payerType, insuranceName: attendance.insuranceName, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
+  return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · Prontuário de Evolução {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Nao gerar lancamento agora</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, payerType: attendance.payerType, insuranceName: attendance.insuranceName, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
 }
 
 function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct, onUpdateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void>; onUpdateProduct: (product: StockProduct) => Promise<void> }) {
@@ -2864,7 +2853,7 @@ function Reports({
   function exportCsv() {
     const rows = reportType === "financial"
       ? [["Descrição", "BA", "Tipo", "Valor", "Status"], ...financialResults.map((item) => [item.description, item.baNumber || "", item.type, String(item.amount), item.status])]
-      : [["Paciente", "ProntuárioÚnico", "BA", "Data", "Status", "Procedimento", "Produtos"], ...attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "", item.uniqueRecordNumber, item.baNumber, item.openedAt, item.status, item.procedure, item.productsUsed.join("; ")])];
+      : [["Paciente", "Prontuário de Evolução", "BA", "Data", "Status", "Procedimento", "Produtos"], ...attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "", item.uniqueRecordNumber, item.baNumber, item.openedAt, item.status, item.procedure, item.productsUsed.join("; ")])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -2888,7 +2877,7 @@ function Reports({
       return;
     }
     const rows = attendanceResults.map((item) => `<tr><td>${patients.find((entry) => entry.id === item.patientId)?.fullName || "-"}</td><td>${item.uniqueRecordNumber}</td><td>${item.baNumber}</td><td>${formatDateTime(item.openedAt)}</td><td>${statusLabel(item.status)}</td><td>${item.procedure || "-"}</td><td>${item.productsUsed.join(", ") || "-"}</td></tr>`).join("");
-    openPrintDocument("Histórico de atendimento", [documentHeader(company, "Histórico de Atendimento"), `<table><thead><tr><th>Paciente</th><th>ProntuárioÚnico</th><th>BA</th><th>Data</th><th>Status</th><th>Procedimento</th><th>Produtos</th></tr></thead><tbody>${rows || "<tr><td colspan='7'>Nenhum atendimento encontrado.</td></tr>"}</tbody></table>`].join(""), company);
+    openPrintDocument("Histórico de atendimento", [documentHeader(company, "Histórico de Atendimento"), `<table><thead><tr><th>Paciente</th><th>Prontuário de Evolução</th><th>BA</th><th>Data</th><th>Status</th><th>Procedimento</th><th>Produtos</th></tr></thead><tbody>${rows || "<tr><td colspan='7'>Nenhum atendimento encontrado.</td></tr>"}</tbody></table>`].join(""), company);
   }
 
   return (
@@ -2910,15 +2899,15 @@ function Reports({
             {period === "custom" && <><label>Início<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label><label>Fim<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label></>}
             <label>Paciente<select value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="all">Todos os pacientes</option>{patients.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
             <label>Profissional<select value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="all">Todos os profissionais</option>{profiles.filter((item) => item.role !== "financial").map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
-            <label>{reportType === "financial" ? "BA, categoria ou descrição" : "BA, ProntuárioÚnico, queixa, curativo, produto ou procedimento"}<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            <label>{reportType === "financial" ? "BA, categoria ou descrição" : "BA, Prontuário de Evolução, queixa, curativo, produto ou procedimento"}<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
             <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todos os status</option>{reportType === "financial" ? (["paid", "pending", "overdue", "cancelled"] as const).map((item) => <option key={item} value={item}>{paymentStatusLabel(item)}</option>) : (["waiting", "in_progress", "completed", "cancelled", "no_show"] as const).map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</select></label>
             {reportType === "financial" && <><label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option value="all">Receitas e despesas</option><option value="income">Receita</option><option value="expense">Despesa</option></select></label><label>Forma de pagamento<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="all">Todas</option>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}<option value="private">Particular</option></select></label><label>Valor mínimo<input inputMode="numeric" name="reportMinValue" value={minValue} onChange={(event) => setMinValue(event.target.value)} /></label><label>Valor máximo<input inputMode="numeric" name="reportMaxValue" value={maxValue} onChange={(event) => setMaxValue(event.target.value)} /></label></>}
             <button className="ghost-action" onClick={clear} type="button">Limpar filtros</button>
           </div>}
           {reportType === "medical" && <div className="medical-patient-search">
-            <label>Pesquisar paciente para encaminhamento<input value={medicalPatientQuery} onChange={(event) => setMedicalPatientQuery(event.target.value)} placeholder="Nome, CPF, telefone, ProntuárioÚnico ou BA" /></label>
+            <label>Pesquisar paciente para encaminhamento<input value={medicalPatientQuery} onChange={(event) => setMedicalPatientQuery(event.target.value)} placeholder="Nome, CPF, telefone, Prontuário de Evolução ou BA" /></label>
             <div className="patient-search-results">
-              {medicalPatientResults.length ? medicalPatientResults.map((item) => <button className={medicalPatient.id === item.id ? "is-selected" : ""} key={item.id} onClick={() => { setMedicalPatientId(item.id); setMedicalPatientQuery(item.fullName); setGenerated(false); }} type="button"><strong>{item.fullName}</strong><small>{item.uniqueRecordNumber} · {item.cpf} · {attendances.filter((attendance) => attendance.patientId === item.id && attendance.companyId === companyId).length} BA(s)</small></button>) : <EmptyState title="Nenhum paciente encontrado." message="Revise nome, CPF, telefone, ProntuárioÚnico ou BA." />}</div>
+              {medicalPatientResults.length ? medicalPatientResults.map((item) => <button className={medicalPatient.id === item.id ? "is-selected" : ""} key={item.id} onClick={() => { setMedicalPatientId(item.id); setMedicalPatientQuery(item.fullName); setGenerated(false); }} type="button"><strong>{item.fullName}</strong><small>{item.uniqueRecordNumber} · {item.cpf} · {attendances.filter((attendance) => attendance.patientId === item.id && attendance.companyId === companyId).length} BA(s)</small></button>) : <EmptyState title="Nenhum paciente encontrado." message="Revise nome, CPF, telefone, Prontuário de Evolução ou BA." />}</div>
             <div className="selected-patient-card"><strong>{medicalPatient.fullName}</strong><span>{medicalPatient.uniqueRecordNumber} · {medicalPatient.cpf}</span><small>{medicalPatientAttendances.length} atendimento(s) locais disponíveis para o relatório.</small></div>
           </div>}
           {reportType === "medical" && hciAvailable && (
@@ -2940,7 +2929,7 @@ function Reports({
           </div>
           {reportType === "medical" && <textarea className="report-editor" value={report || "Clique em Gerar relatório para criar o encaminhamento."} onChange={(event) => onChangeReport(event.target.value)} />}
           {reportType === "financial" && generated && <><section className="metrics-grid"><MetricCard icon={<TrendingUp />} label="Receitas" value={currency.format(revenue)} detail={`${financialResults.filter((item) => item.type === "income").length} lançamentos`} /><MetricCard icon={<Receipt />} label="Despesas" value={currency.format(expenses)} detail={`${financialResults.filter((item) => item.type === "expense").length} lançamentos`} /><MetricCard icon={<CreditCard />} label="Saldo" value={currency.format(revenue - expenses)} detail="Receitas menos despesas" /><MetricCard icon={<CalendarClock />} label="Pendente" value={currency.format(financialResults.filter((item) => item.status === "pending").reduce((sum, item) => sum + item.amount, 0))} detail="A receber" /></section>{financialResults.length ? <Table headers={["Descrição", "Paciente", "BA", "Tipo", "Valor", "Status"]} rows={financialResults.map((item) => [item.description, patients.find((entry) => entry.id === item.patientId)?.fullName || "-", item.baNumber || "-", item.type === "income" ? "Receita" : "Despesa", currency.format(item.amount), paymentStatusLabel(item.status)])} /> : <EmptyState title="Nenhum lançamento encontrado para os filtros selecionados." message="Limpe ou ajuste os filtros." />}</>}
-          {reportType === "attendance" && generated && (attendanceResults.length ? <Table headers={["Paciente", "ProntuárioÚnico", "BA", "Data", "Profissional", "Status", "Procedimento", "Produtos", "Anamnese", "Imagens"]} rows={attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "-", item.uniqueRecordNumber, item.baNumber, formatDateTime(item.openedAt), profiles.find((entry) => entry.id === item.professionalId)?.fullName || "-", statusLabel(item.status), item.procedure || "-", item.productsUsed.join(", ") || "-", anamneses.find((entry) => entry.attendanceId === item.id)?.isCompleted ? "Concluída" : "Sem conclusão", String(attendanceImages.filter((image) => image.attendanceId === item.id).length)])} /> : <EmptyState title="Nenhum atendimento encontrado para os filtros selecionados." message="Limpe ou ajuste os filtros." />)}
+          {reportType === "attendance" && generated && (attendanceResults.length ? <Table headers={["Paciente", "Prontuário de Evolução", "BA", "Data", "Profissional", "Status", "Procedimento", "Produtos", "Anamnese", "Imagens"]} rows={attendanceResults.map((item) => [patients.find((entry) => entry.id === item.patientId)?.fullName || "-", item.uniqueRecordNumber, item.baNumber, formatDateTime(item.openedAt), profiles.find((entry) => entry.id === item.professionalId)?.fullName || "-", statusLabel(item.status), item.procedure || "-", item.productsUsed.join(", ") || "-", anamneses.find((entry) => entry.attendanceId === item.id)?.isCompleted ? "Concluída" : "Sem conclusão", String(attendanceImages.filter((image) => image.attendanceId === item.id).length)])} /> : <EmptyState title="Nenhum atendimento encontrado para os filtros selecionados." message="Limpe ou ajuste os filtros." />)}
           {reportType !== "medical" && !generated && <EmptyState title="Configure os filtros e gere o relatório" message="Os resultados aparecerão aqui." />}
         </div>
       </section>
@@ -2971,7 +2960,7 @@ function HciView({
         <div>
           <span className="eyebrow">LGPD · consentimento · auditoria</span>
           <h1>HCI — Historico Clinico Integrado</h1>
-          <p>Consulta segura pelo ProntuárioÚnico do paciente, sem quebrar isolamento por empresa.</p>
+          <p>Consulta segura pelo Prontuário de Evolução do paciente, sem quebrar isolamento por empresa.</p>
         </div>
         <HeartPulse size={26} />
       </div>
@@ -2979,7 +2968,7 @@ function HciView({
       <section className="data-panel">
         <div className="hci-search">
           <label>
-            Buscar por nome, CPF, ProntuárioÚnico, telefone ou data de nascimento
+            Buscar por nome, CPF, Prontuário de Evolução, telefone ou data de nascimento
             <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Ex.: Ana Paula, 123.456.789-00, PU-2026-000001" />
           </label>
           <button className="primary-button" type="button"><Search size={18} /> Buscar paciente</button>
@@ -2995,7 +2984,7 @@ function HciView({
             {matches.map((match) => (
               <button className={selectedMatch?.id === match.id ? "is-active" : ""} key={match.id} onClick={() => onSelectMatch(match)} type="button">
                 <strong>{match.companyName}</strong>
-                <span>{match.patientName} · ProntuárioÚnico {match.uniqueRecordNumber}</span>
+                <span>{match.patientName} · Prontuário de Evolução {match.uniqueRecordNumber}</span>
                 <small>{match.matchPriority} · {consentLabel(match.consentStatus)}</small>
               </button>
             ))}
@@ -3011,7 +3000,7 @@ function HciView({
               </div>
               <dl className="definition-grid">
                 <div><dt>Paciente</dt><dd>{integratedHistory.patient.fullName}</dd></div>
-                <div><dt>ProntuárioÚnico</dt><dd>{integratedHistory.patient.uniqueRecordNumber}</dd></div>
+                <div><dt>Prontuário de Evolução</dt><dd>{integratedHistory.patient.uniqueRecordNumber}</dd></div>
                 <div><dt>Escopo</dt><dd>{selectedMatch.accessScope}</dd></div>
               </dl>
               <Table
@@ -3193,6 +3182,13 @@ function SettingsView({ company, profile, onCompanyChange, onNotify }: { company
           <label>Cor do menu lateral<input type="color" value={company.sidebarColor || "#071923"} onChange={(event) => update("sidebarColor", event.target.value)} /></label>
           <label>Cor do texto do menu<input type="color" value={company.sidebarTextColor || "#f8fbfc"} onChange={(event) => update("sidebarTextColor", event.target.value)} /></label>
           <label>Cor de destaque do menu<input type="color" value={company.sidebarHoverColor || company.primaryColor} onChange={(event) => update("sidebarHoverColor", event.target.value)} /></label>
+          <fieldset className="option-fieldset">
+            <legend>Campos operacionais</legend>
+            <label className="toggle-row">
+              <input checked={Boolean(company.enableInsuranceType)} onChange={(event) => update("enableInsuranceType", event.target.checked)} type="checkbox" />
+              Exibir Convênio / Particular na agenda e abertura de atendimento
+            </label>
+          </fieldset>
           <fieldset className="option-fieldset">
             <legend>HCI — Historico Clinico Integrado</legend>
             <label className="toggle-row">
@@ -3682,7 +3678,7 @@ function exportAttendanceBa(patient: Patient, company: Company, attendance: Atte
     `BA ${attendance.baNumber}`,
     [
       documentHeader(company, `Boletim de Atendimento ${attendance.baNumber}`),
-      `<h2>Paciente</h2><p>${patient.fullName}<br>ProntuárioÚnico: ${patient.uniqueRecordNumber}<br>CPF: ${patient.cpf}</p>`,
+      `<h2>Paciente</h2><p>${patient.fullName}<br>Prontuário de Evolução: ${patient.uniqueRecordNumber}<br>CPF: ${patient.cpf}</p>`,
       `<h2>Atendimento</h2><p>Data: ${formatDateTime(attendance.scheduledAt)}<br>Queixa: ${attendance.complaint}<br>Procedimento: ${attendance.procedure}<br>Conduta: ${attendance.conduct || "Nao informada"}</p>`,
       `<h2>Anamnese</h2>${formatAnamnesisForPrint(relatedAnamnesis)}`,
       `<h2>Sensibilidade / Pe 3D</h2><ul>${relatedFootMaps.map((entry) => `<li>${entry.footSide} · ${entry.regionKey}: ${entry.sensitivityStatus} · ${entry.notes}</li>`).join("") || "<li>Sem marcacoes</li>"}</ul>`,
@@ -3717,9 +3713,9 @@ function exportMedicalRecord(
   images: AttendanceImage[]
 ) {
   openPrintDocument(
-    `ProntuárioÚnico ${patient.uniqueRecordNumber}`,
+    `Prontuário de Evolução ${patient.uniqueRecordNumber}`,
     [
-      documentHeader(company, `ProntuárioÚnico ${patient.uniqueRecordNumber}`),
+      documentHeader(company, `Prontuário de Evolução ${patient.uniqueRecordNumber}`),
       `<h2>Dados do paciente</h2><p>${patient.fullName}<br>CPF: ${patient.cpf}<br>Nascimento: ${formatDate(patient.birthDate)}<br>Telefone/WhatsApp: ${patient.whatsapp}</p>`,
       `<h2>Dados clinicos</h2><p>Queixa principal: ${patient.clinical.chiefComplaint}<br>Historico: ${patient.clinical.diseaseHistory}<br>Medicamentos: ${patient.clinical.medications || "Nao informado"}</p>`,
       `<h2>BAs</h2><ul>${attendances.map((attendance) => `<li>${attendance.baNumber} — ${formatDateTime(attendance.scheduledAt)} — ${attendance.procedure}</li>`).join("")}</ul>`,
@@ -3770,17 +3766,22 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
   const sections: Array<[string, Array<[string, unknown]>]> = [
     ["Identificação", [["Paciente", data.identification_name], ["Data da avaliação", data.identification_date], ["Idade", data.identification_age], ["Profissão", data.identification_profession]]],
     ["Queixa principal", [["Queixa", data.main_complaint || data.chief_complaint]]],
-    ["Histórico de saúde", [["Condições relatadas", data.health_history], ["Medicamentos em uso", data.medications], ["Alergias", data.allergies]]],
-    ["Exame clínico", [["Exame de pele", data.skin_exam], ["Edema", data.edema], ["Sensibilidade vibratória", data.vibratory_sensitivity], ["Sensibilidade térmica", data.thermal_sensitivity], ["Glicemia", data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
-    ["Avaliação podológica", [["Achados podológicos", data.podology_assessment || data.podological_assessment], ["Procedimento realizado", data.procedure || data.performed_procedure], ["Produtos/curativos utilizados", data.used_products], ["Conduta", data.conduct], ["Retorno", data.return_date || data.follow_up_date]]]
+    ["Histórico de Saúde", [["Condições relatadas", data.health_history], ["Cirurgia", data.surgery_history], ["Descrição da cirurgia", data.surgery_description], ["Medicamentos em uso", data.medications], ["Alergias", data.allergies]]],
+    ["Avaliação Podal", [["Alterações podais", data.changes], ["Pele", data.skin_exam], ["Edema", data.edema_present ? `${humanizeAnamnesisValue(data.edema_present)}${data.edema ? ` - ${humanizeAnamnesisValue(data.edema)}` : ""}` : data.edema], ["Glicemia", data.glycemia_result || data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
+    ["Indicação de tratamento", [["Indicação", data.treatment_indication], ["Laserterapia", data.lasertherapy_joules ? `${data.lasertherapy_joules} J` : undefined], ["LED", data.led_joules ? `${data.led_joules} J` : undefined], ["Alta frequência", data.high_frequency_minutes ? `${data.high_frequency_minutes} minutos` : undefined], ["Eletrocauterização", data.electrocautery_minutes ? `${data.electrocautery_minutes} minutos` : undefined]]],
+    ["Orientações Home Care", [["Orientações", data.home_care_guidance]]],
+    ["Retorno", [["Data sugerida", data.return_date || data.follow_up_date], ["Paciente retornou?", data.patient_returned], ["Observações", data.return_notes]]]
   ];
   sections.push(
-    ["Sensibilidade Monofilamento", [
+    ["Avaliação de Sensibilidade", [
       ["Monofilamento pe D", data.monofilament_right],
       ["Monofilamento pe E", data.monofilament_left],
-      ["Sensibilidade vibratoria", data.vibration_sensitivity || data.vibratory_sensitivity],
-      ["Sensibilidade termica", data.thermal_sensitivity],
-      ["Observacoes", data.monofilament_notes]
+      ["Sensibilidade vibratória D", data.vibration_sensitivity_right || data.vibration_sensitivity || data.vibratory_sensitivity],
+      ["Sensibilidade vibratória E", data.vibration_sensitivity_left],
+      ["Sensibilidade térmica D", data.thermal_sensitivity_right || data.thermal_sensitivity],
+      ["Sensibilidade térmica E", data.thermal_sensitivity_left],
+      ["Observações D", data.monofilament_notes_right || data.monofilament_notes],
+      ["Observações E", data.monofilament_notes_left]
     ]],
     ["ITB e IHB", [
       ["ITB direito", formatIndexForPrint(data.itb_right_result, data.itb_right_classification)],
@@ -3788,7 +3789,7 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
       ["IHB direito", formatIndexForPrint(data.ihb_right_result, data.ihb_right_classification)],
       ["IHB esquerdo", formatIndexForPrint(data.ihb_left_result, data.ihb_left_classification)]
     ]],
-    ["Diagnostico ungueal", [
+    ["Diagnóstico Ungueal", [
       ["Pe direito", getAnamnesisObjectEntry(data.block_14, "right_foot")],
       ["Pe esquerdo", getAnamnesisObjectEntry(data.block_14, "left_foot")],
       ["Local marcado no pe direito", formatWoundLocationForPrint(getAnamnesisObjectEntry(getAnamnesisObjectEntry(data.block_14, "right_foot"), "wound_location"))],
@@ -3800,6 +3801,12 @@ function formatAnamnesisForPrint(record?: AnamnesisRecord) {
       ["Produtos/curativos utilizados", data.used_products],
       ["Conduta", data.conduct],
       ["Retorno", data.return_date || data.follow_up_date]
+    ]],
+    ["Evolução por Imagem", [
+      ["Observações", data.images_notes]
+    ]],
+    ["Comparativo de evolução", [
+      ["Observação comparativa", data.image_evolution_notes]
     ]]
   );
   const rendered = sections
@@ -3836,6 +3843,7 @@ function formatWoundLocationForPrint(value: unknown) {
 function humanizeAnamnesisValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (Array.isArray(value)) return value.map(humanizeAnamnesisValue).filter(Boolean).join(", ");
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
   if (typeof value === "object") {
     if ("region_label" in value && typeof value.region_label === "string" && "region_key" in value) return fixClinicalText(value.region_label);
     if ("name" in value && typeof value.name === "string") return fixClinicalText(value.name);
@@ -3851,21 +3859,26 @@ function anamnesisLabel(key: string) {
     anatomical_laminar: "Anatomico laminar",
     curvature: "Curvatura",
     pathologies: "Patologias",
+    onicocriptosis_grade: "Grau da Onicocriptose",
     structural_changes: "Alteracoes estruturais e distrofias",
     observations: "Observacoes",
-    wound_location: "Local da ferida",
+    wound_location: "Local de alteração acompanhada",
     foot_side: "Lado",
     region_key: "Chave da regiao",
     region_label: "Regiao",
     plantar_debridement: "Debaste plantar",
-    sandpaper: "Lixa",
-    instruments: "Instrumentos",
-    care: "Cuidados",
-    sandpaper_grit: "Gramatura de lixa",
-    burs: "Brocas",
-    diamond: "Diamantadas",
-    ceramic: "Ceramica",
-    spherical_ball: "Esferica bolinha"
+    checklist: "Procedimentos",
+    diamond_burs_text: "Brocas diamantadas",
+    ceramic_burs_text: "Brocas Cerâmica",
+    curettage: "Curetagem com cureta",
+    laminar_sanding: "Lixamento laminar",
+    laminar_sanding_file: "Lixa laminar",
+    laminar_sanding_grit: "Gramatura laminar",
+    plantar_sanding: "Lixamento plantar",
+    plantar_sanding_file: "Lixa plantar",
+    plantar_sanding_grit: "Gramatura plantar",
+    finishing: "Finalização",
+    other_procedures: "Outros procedimentos"
   };
   return labels[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

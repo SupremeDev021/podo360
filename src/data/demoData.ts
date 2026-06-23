@@ -38,7 +38,8 @@ export const demoCompany: Company = {
   hciEnabled: true,
   hciConsentValidityDays: 180,
   hciAllowImages: false,
-  hciDefaultScope: "history_without_images"
+  hciDefaultScope: "history_without_images",
+  enableInsuranceType: false
 };
 
 export const demoPartnerCompany: Company = {
@@ -61,7 +62,8 @@ export const demoPartnerCompany: Company = {
   hciEnabled: true,
   hciConsentValidityDays: 90,
   hciAllowImages: true,
-  hciDefaultScope: "clinical_summary"
+  hciDefaultScope: "clinical_summary",
+  enableInsuranceType: false
 };
 
 export const demoProfiles: Profile[] = [

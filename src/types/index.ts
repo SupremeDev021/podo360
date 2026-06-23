@@ -69,6 +69,7 @@ export type Company = {
   requireFinancialConfirmation?: boolean;
   includeProductsInFinancial?: boolean;
   includeProceduresInFinancial?: boolean;
+  enableInsuranceType?: boolean;
 };
 
 export type Profile = {

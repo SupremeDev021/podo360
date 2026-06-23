@@ -51,14 +51,14 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
           return `${image.baNumber} em ${new Date(image.createdAt).toLocaleDateString("pt-BR")}: ${imageTypeLabel(image.imageType)} em ${image.footRegion || "regiao nao informada"}${notes ? `; ${notes}` : ""}.`;
         })
         .join(" ")
-    : "Sem imagens evolutivas registradas no ProntuárioÚnico local.";
+    : "Sem imagens evolutivas registradas no Prontuário de Evolução local.";
   const hciSummary =
     input.includeHci && input.integratedHistories?.length
       ? input.integratedHistories
           .map((history) => {
             const hciBas = history.attendances.map((attendance) => attendance.baNumber).join(", ");
             const hciProcedures = history.attendances.map((attendance) => attendance.procedure).join("; ");
-            return `${history.sourceCompany.displayName}: ProntuárioÚnico ${history.patient.uniqueRecordNumber}; BAs autorizados ${hciBas}; registros relevantes: ${hciProcedures}.`;
+            return `${history.sourceCompany.displayName}: Prontuário de Evolução ${history.patient.uniqueRecordNumber}; BAs autorizados ${hciBas}; registros relevantes: ${hciProcedures}.`;
           })
           .join("\n")
       : "HCI nao incluido ou sem consentimento autorizado para consulta integrada.";
@@ -73,7 +73,7 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
     ``,
     `Dados do paciente`,
     `Nome: ${input.patient.fullName}`,
-    `ProntuárioÚnico: ${input.patient.uniqueRecordNumber}`,
+    `Prontuário de Evolução: ${input.patient.uniqueRecordNumber}`,
     `CPF: ${input.patient.cpf}`,
     `Data de nascimento: ${new Date(input.patient.birthDate).toLocaleDateString("pt-BR")}`,
     `Telefone/WhatsApp: ${input.patient.whatsapp}`,
@@ -107,7 +107,7 @@ export async function generateReferralReport(input: ReferralInput): Promise<stri
     ``,
     `Historico Clinico Integrado`,
     hciSummary,
-    `Este relatorio foi gerado com base no ProntuárioÚnico do paciente e nos registros da clinica atual. Dados de outras clinicas foram incluidos apenas quando autorizados via HCI.`,
+    `Este relatorio foi gerado com base no Prontuário de Evolução do paciente e nos registros da clinica atual. Dados de outras clinicas foram incluidos apenas quando autorizados via HCI.`,
     ``,
     `Sugestao de avaliacao medica`,
     `Solicita-se avaliacao medica para investigacao complementar e conduta apropriada. Este relatorio nao estabelece diagnostico definitivo; organiza informacoes clinicas registradas em atendimento podologico e apoia o encaminhamento quando houver necessidade de avaliacao medica.`,

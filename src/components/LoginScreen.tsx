@@ -34,10 +34,10 @@ type Feedback = {
 };
 
 const featureItems = [
-  { icon: FileHeart, label: "ProntuarioUnico", detail: "Historico clinico integrado" },
-  { icon: Activity, label: "Anamnese modular", detail: "Fluxos clinicos completos" },
+  { icon: FileHeart, label: "Prontuário de Evolução", detail: "Histórico clínico integrado" },
+  { icon: Activity, label: "Anamnese modular", detail: "Fluxos clínicos completos" },
   { icon: Network, label: "HCI com LGPD", detail: "Dados seguros e auditaveis" },
-  { icon: Sparkles, label: "Relatorios com IA", detail: "Inteligencia para decisoes" }
+  { icon: Sparkles, label: "Relatórios com IA", detail: "Inteligência para decisões" }
 ];
 
 function getLoginErrorMessage(message: string) {
@@ -155,9 +155,9 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
         </header>
 
         <div className="login-showcase__content">
-          <span className="login-kicker"><span /> Tecnologia para a jornada clinica</span>
-          <h1>Gestao clinica inteligente para podologia.</h1>
-          <p>Controle atendimentos, ProntuarioUnico, BA, anamnese, imagens de evolucao, HCI e relatorios em um ambiente seguro e tecnologico.</p>
+          <span className="login-kicker"><span /> Tecnologia para a jornada clínica</span>
+          <h1>Gestão clínica inteligente para podologia.</h1>
+          <p>Controle atendimentos, Prontuário de Evolução, anamnese, imagens de evolução, HCI e relatórios em um ambiente seguro e tecnológico.</p>
 
           <div className="login-feature-grid">
             {featureItems.map(({ icon: Icon, label, detail }) => (
@@ -172,7 +172,7 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
         <div className="login-clinical-visual" aria-hidden="true">
           <div className="login-clinical-visual__scan"><Footprints /></div>
           <span className="login-data-point login-data-point--one"><i /> Mapa de sensibilidade</span>
-          <span className="login-data-point login-data-point--two"><i /> Evolucao documentada</span>
+          <span className="login-data-point login-data-point--two"><i /> Evolução documentada</span>
           <span className="login-data-point login-data-point--three"><i /> Dados sincronizados</span>
         </div>
 
@@ -186,13 +186,13 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
         <form className="login-card" onSubmit={handleLogin} noValidate>
           <div className="login-card__brand">
             <span className="login-card__mark"><Footprints size={22} /></span>
-            <div><strong>Podo360</strong><small>Plataforma clinica</small></div>
+            <div><strong>Podo360</strong><small>Plataforma clínica</small></div>
           </div>
 
           <div className="login-card__heading">
             <span className="login-card__eyebrow"><ShieldCheck size={15} /> Acesso seguro</span>
             <h2>Entrar no sistema</h2>
-            <p>Acesse sua clinica com seguranca.</p>
+            <p>Acesse sua clínica com segurança.</p>
           </div>
 
           <div className={`login-feedback login-feedback--${feedback.tone}`} role="status" aria-live="polite">
