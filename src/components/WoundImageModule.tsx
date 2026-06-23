@@ -26,7 +26,7 @@ const imageTypes: Array<{ value: AttendanceImage["imageType"]; label: string }> 
   { value: "evolution", label: "Evolucao" }
 ];
 
-const footRegions = ["Pe direito", "Pe esquerdo", "Halux", "Dedos", "Planta do pe", "Calcanhar", "Unha", "Curativo", "Outra"];
+const footRegions = ["Pé Direito", "Pé Esquerdo"];
 
 export function WoundImageModule({
   images,
@@ -69,9 +69,9 @@ export function WoundImageModule({
       footSide: footSideFromRegion(region),
       footRegion: region,
       fileUrl,
-      description: String(form.get("description") || ""),
+      description: "",
       clinicalNotes: String(form.get("clinicalNotes") || ""),
-      comparativeNotes: String(form.get("comparativeNotes") || ""),
+      comparativeNotes: "",
       notes: String(form.get("clinicalNotes") || ""),
       createdBy,
       updatedAt: new Date().toISOString()
@@ -86,8 +86,8 @@ export function WoundImageModule({
       <form className="panel-form" onSubmit={handleSubmit}>
         <div className="section-heading section-heading--compact">
           <div>
-            <h2>Imagens da ferida</h2>
-            <p>Registro visual de ferida, lesao, curativo, unha, pele ou regiao tratada.</p>
+            <h2>Evolução por Imagem</h2>
+            <p>Registro visual da evolução clínica por pé.</p>
           </div>
           <ImagePlus size={20} />
         </div>
@@ -120,20 +120,18 @@ export function WoundImageModule({
           </label>
           <label>
             Regiao relacionada
-            <select name="footRegion" defaultValue="Pe direito" disabled={readOnly}>
+            <select name="footRegion" defaultValue="Pé Direito" disabled={readOnly}>
               {footRegions.map((region) => <option key={region} value={region}>{region}</option>)}
             </select>
           </label>
         </div>
 
         <label>URL do arquivo seguro<input disabled={readOnly} name="fileUrl" placeholder="Preenchido automaticamente apos o envio seguro da imagem" /></label>
-        <label>Descricao da imagem<textarea disabled={readOnly} name="description" /></label>
         <label>Observacoes clinicas<textarea disabled={readOnly} name="clinicalNotes" /></label>
-        <label>Observacao comparativa<textarea disabled={readOnly} name="comparativeNotes" placeholder="Ex.: menor hiperemia comparado ao BA anterior" /></label>
 
         {previewUrl && <img className="wound-preview" alt="Previa da imagem selecionada" src={previewUrl} />}
 
-        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit"><Save size={18} /> Salvar imagem da ferida</button>
+        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit"><Save size={18} /> Salvar evolução por imagem</button>
       </form>
 
       <section className="data-panel data-panel--flat">
@@ -144,7 +142,7 @@ export function WoundImageModule({
               <ImageThumb image={image} />
               <strong>{imageTypeLabel(image.imageType)}</strong>
               <span>{image.footRegion || "Regiao nao informada"} · {new Date(image.createdAt).toLocaleString("pt-BR")}</span>
-              <p>{image.description || image.clinicalNotes || "Sem descricao"}</p>
+              <p>{image.clinicalNotes || "Sem observações"}</p>
             </article>
           )) : <p className="muted">Nenhuma imagem vinculada a este BA ainda.</p>}
         </div>
@@ -171,7 +169,7 @@ function imageTypeLabel(type: AttendanceImage["imageType"]) {
 }
 
 function footSideFromRegion(region: string): FootSide | "not_applicable" {
-  if (region === "Pe direito") return "right";
-  if (region === "Pe esquerdo") return "left";
+  if (region === "Pé Direito") return "right";
+  if (region === "Pé Esquerdo") return "left";
   return "not_applicable";
 }

@@ -12,7 +12,7 @@ async function enterDemo(page: Page) {
 }
 
 async function openActiveAttendance(page: Page) {
-  await page.getByRole("button", { name: /^Atendimentos$/i }).click();
+  await page.getByRole("button", { name: /^Atendimento$/i }).click();
   const continueButton = page.getByRole("button", { name: /Continuar atendimento/i }).first();
   const startButton = page.getByRole("button", { name: /Iniciar atendimento/i }).first();
   if (await continueButton.count()) {
@@ -27,10 +27,10 @@ async function openActiveAttendance(page: Page) {
 
 async function openMonofilament(page: Page) {
   await openActiveAttendance(page);
-  await page.getByRole("button", { name: /Sensibilidade Monofilamento/i }).click();
-  await expect(page.locator(".wizard-form")).toContainText(/Sensibilidade Monofilamento - Pe D/i);
-  await expect(page.locator(".wizard-form")).toContainText(/Sensibilidade Monofilamento - Pe E/i);
-  await expect(page.locator(".wizard-form")).toContainText(/Sensibilidade vibratoria/i);
+  await page.getByRole("button", { name: /Avaliação de Sensibilidade/i }).click();
+  await expect(page.locator(".wizard-form")).toContainText(/Sensibilidade Monofilamento - Pé D/i);
+  await expect(page.locator(".wizard-form")).toContainText(/Pé Esquerdo/i);
+  await expect(page.locator(".wizard-form")).toContainText(/Sensibilidade vibratória/i);
   await expect(page.locator(".foot-canvas canvas")).toHaveCount(0);
 }
 
@@ -45,16 +45,18 @@ async function selectWizardRadio(page: Page, fieldsetLabel: RegExp, option: RegE
   await page.locator("fieldset").filter({ hasText: fieldsetLabel }).getByLabel(option).click();
 }
 
-test("Sensibilidade Monofilamento unifica monofilamento e sensibilidades sem 3D", async ({ page }) => {
+test("Avaliação de Sensibilidade separa pés e mantém fluxo sem 3D", async ({ page }) => {
   test.setTimeout(180_000);
   await enterDemo(page);
   await openMonofilament(page);
 
-  await selectWizardRadio(page, /Sensibilidade Monofilamento - Pe D/i, /Presente/i);
-  await selectWizardRadio(page, /Sensibilidade Monofilamento - Pe E/i, /Diminuida/i);
-  await selectWizardRadio(page, /Sensibilidade vibratoria/i, /Presente/i);
-  await selectWizardRadio(page, /Sensibilidade termica/i, /Positivo/i);
-  await page.getByLabel(/Observacoes de sensibilidade/i).fill("Teste automatizado da aba unificada.");
+  await selectWizardRadio(page, /Sensibilidade Monofilamento - Pé D/i, /Presente/i);
+  await selectWizardRadio(page, /Sensibilidade vibratória/i, /Presente/i);
+  await selectWizardRadio(page, /Sensibilidade térmica/i, /Positivo/i);
+  await page.getByLabel(/Observações de sensibilidade/i).fill("Teste automatizado do pé direito.");
+  await page.getByRole("button", { name: /Pé Esquerdo/i }).click();
+  await selectWizardRadio(page, /Sensibilidade Monofilamento - Pé E/i, /Diminuída/i);
+  await selectWizardRadio(page, /Sensibilidade vibratória/i, /Ausente/i);
   await saveCurrentDraft(page);
 });
 
@@ -132,7 +134,7 @@ test("Curativo usa regioes do pe e cancelar finalizacao mantem atendimento abert
 
   await page.getByRole("button", { name: /Finalizar atendimento/i }).click();
   await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toBeVisible();
-  await page.getByRole("button", { name: /Agora nao/i }).click();
+  await page.getByRole("button", { name: /Agora n[aã]o/i }).click();
   await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Finalizar atendimento/i })).toBeVisible();
   await expect(page.getByText(/Em atendimento/i).first()).toBeVisible();
@@ -163,10 +165,10 @@ test("Finalizar no fim da Anamnese abre confirmacao e respeita cancelamento", as
   await enterDemo(page);
   await openActiveAttendance(page);
 
-  await page.locator(".stepper").getByRole("button", { name: /Evolucao e observacoes finais/i }).click();
+  await page.locator(".stepper").getByRole("button", { name: /Retorno/i }).click();
   await page.locator(".wizard-form").getByRole("button", { name: /Finalizar atendimento/i }).click();
   await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toBeVisible();
-  await page.getByRole("button", { name: /Agora nao/i }).click();
+  await page.getByRole("button", { name: /Agora n[aã]o/i }).click();
   await expect(page.getByRole("dialog", { name: /Deseja finalizar este atendimento/i })).toHaveCount(0);
   await expect(page.locator(".toast")).not.toContainText(/Atendimento finalizado/i);
   await expect(page.locator(".wizard-form").getByRole("button", { name: /Finalizar atendimento/i })).toBeVisible();
@@ -179,7 +181,7 @@ test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo o
   await page.getByRole("button", { name: /Finalizar atendimento/i }).click();
   await page.getByRole("button", { name: /Sim, finalizar/i }).click();
   await expect(page.locator(".toast")).toContainText(/Atendimento finalizado/i);
-  const skipFinancial = page.getByRole("button", { name: /Nao gerar lancamento agora/i });
+  const skipFinancial = page.getByRole("button", { name: /N[aã]o gerar lan[cç]amento agora/i });
   if (await skipFinancial.count()) await skipFinancial.click();
 
   await expect(page.getByText(/dispon.vel apenas para consulta/i)).toBeVisible();
@@ -196,31 +198,29 @@ test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo o
   await page.getByRole("button", { name: /Confirmar reabertura/i }).click();
   await expect(page.locator(".toast")).toContainText(/Atendimento reaberto/i);
 
-  await page.getByRole("button", { name: /^Atendimentos$/i }).click();
+  await page.getByRole("button", { name: /^Atendimento$/i }).click();
   await page.getByRole("button", { name: /Continuar atendimento/i }).first().click();
   await expect(page.getByRole("button", { name: /Salvar rascunho/i })).toBeEnabled();
   await expect(page.getByRole("button", { name: /Finalizar atendimento/i })).toBeVisible();
 });
 
-test("Abertura de BA permanece na tela e PU fica somente leitura", async ({ page }) => {
+test("Abertura de atendimento permanece na tela e prontuário fica somente leitura", async ({ page }) => {
   await enterDemo(page);
-  await page.getByRole("button", { name: /Abertura de BA/i }).click();
+  await page.getByRole("button", { name: /Abertura de atendimento/i }).click();
 
   const puField = page.locator('input[name="uniqueRecordNumber"]');
   await expect(puField).toBeVisible();
   await expect(puField).toHaveAttribute("readonly", "");
-  await expect(page.getByText(/Sera gerado automaticamente ao abrir o BA/i)).toBeVisible();
+  await expect(page.getByText(/Será gerado automaticamente ao abrir o BA/i)).toBeVisible();
 
   await page.locator('input[name="fullName"]').fill("Paciente Novo BA");
   await page.locator('input[name="cpf"]').fill("12345678909");
   await page.locator('input[name="birthDate"]').fill("1980-06-09");
   await page.locator('input[name="phone"]').fill("11988887777");
-  await page.locator('input[name="whatsapp"]').fill("11988887777");
-  await page.locator('textarea[name="chiefComplaint"]').fill("Dor plantar");
   await page.getByRole("button", { name: /Abrir BA/i }).click();
 
   await expect(page.locator(".toast")).toContainText(/BA aberto com sucesso/i);
-  await expect(page.getByRole("heading", { name: /Abertura de BA/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Abertura de atendimento/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Pesquisar paciente/i })).toHaveCount(0);
   await expect(page.locator('input[name="fullName"]')).toHaveValue("");
   await expect(puField).toHaveValue("");
@@ -229,8 +229,6 @@ test("Abertura de BA permanece na tela e PU fica somente leitura", async ({ page
   await page.locator('input[name="cpf"]').fill("12345678909");
   await page.locator('input[name="birthDate"]').fill("1980-06-09");
   await page.locator('input[name="phone"]').fill("11988887777");
-  await page.locator('input[name="whatsapp"]').fill("11988887777");
-  await page.locator('textarea[name="chiefComplaint"]').fill("Tentativa de novo BA sem finalizar anterior");
   await page.getByRole("button", { name: /Abrir BA/i }).click();
   await expect(page.locator(".toast")).toContainText(/Este paciente ja possui um BA aberto|Este paciente já possui um BA aberto/i);
   await expect(page.locator('input[name="fullName"]')).toHaveValue("Paciente Novo BA");

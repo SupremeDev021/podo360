@@ -38,121 +38,119 @@ type AnamnesisWizardProps = {
 };
 
 const modules: Module[] = [
-  { key: "identification", title: "Identificacao", description: "Dados basicos da ficha.", fields: [
+  { key: "identification", title: "Identificação", description: "Dados básicos da ficha.", fields: [
     { name: "identification_name", label: "Nome", type: "text" },
     { name: "identification_date", label: "Data", type: "date" },
     { name: "identification_age", label: "Idade", type: "number" },
-    { name: "identification_profession", label: "Profissao", type: "text" },
-    { name: "identification_evaluation_type", label: "Tipo de avaliacao", type: "radio", options: ["1a Avaliacao", "Reavaliacao"] }
+    { name: "identification_profession", label: "Profissão", type: "text" },
+    { name: "identification_evaluation_type", label: "Tipo de avaliação", type: "radio", options: ["1ª Avaliação", "Reavaliação", "Retorno"] }
   ] },
   { key: "chief_complaint", title: "Queixa principal", description: "Motivo do atendimento.", fields: [
     { name: "main_complaint", label: "Queixa principal", type: "textarea" },
-    { name: "main_complaint_notes", label: "Observacoes livres", type: "textarea" }
+    { name: "main_complaint_notes", label: "Observações livres", type: "textarea" }
   ] },
-  { key: "medications", title: "Medicamentos em uso", description: "Medicamentos e observacoes.", fields: [
+  { key: "medications", title: "Medicamentos", description: "Medicamentos e observações.", fields: [
     { name: "medications", label: "Medicamentos em uso", type: "textarea" },
-    { name: "medications_notes", label: "Observacoes", type: "textarea" }
+    { name: "medications_notes", label: "Observações", type: "textarea" }
   ] },
-  { key: "health_history", title: "Historico de saude", description: "Condicoes relatadas.", fields: [
-    { name: "health_history", label: "Historico de saude", type: "checkbox", options: ["Diabetes", "AVC", "Saude mental", "Hipertensao", "CA", "Doencas neurodegenerativas", "Tabagismo", "DPOC", "Doencas vasculares", "Outros"] }
+  { key: "health_history", title: "Histórico de Saúde", description: "Condições relatadas.", fields: [
+    { name: "health_history", label: "Histórico de Saúde", type: "checkbox", options: ["Diabetes", "AVC", "Saúde mental", "Hipertensão", "Histórico de Câncer (CA)", "Doença Pulmonar Obstrutiva Crônica (DPOC)", "Doenças neurodegenerativas", "Tabagismo", "Doenças vasculares", "Outros"] },
+    { name: "surgery_history", label: "Cirurgia", type: "radio", options: ["Sim", "Não"] },
+    { name: "surgery_description", label: "Descrição da cirurgia", type: "textarea" }
   ] },
-  { key: "skin_exam", title: "Exame fisico / Pele", description: "Estado da pele.", fields: [
-    { name: "skin_exam", label: "Pele", type: "checkbox", options: ["Hidratada", "Anidrose", "Descamacao", "Psoriase", "Hiperhidrose"] }
-  ] },
-  { key: "changes", title: "Alteracoes", description: "Alteracoes podologicas.", fields: [
-    { name: "changes", label: "Alteracoes", type: "checkbox", options: ["Calos com nucleo", "Calosidades", "Verruga plantar"] }
+  { key: "podal_evaluation", title: "Avaliação Podal", description: "Alterações podais e avaliação da pele.", fields: [
+    { name: "changes", label: "Alterações podais", type: "checkbox", options: ["Pés supinado", "Pés pronado", "Dedos em garras", "Dedos sobrepostos", "Pé plano", "Pé com hipercurvatura", "Hálux valgo", "Calos com núcleo", "Calosidades", "Verruga plantar"] },
+    { name: "skin_exam", label: "Pele", type: "checkbox", options: ["Hidratada", "Anidrose", "Descamação", "Psoríase", "Hiperhidrose", "Bromidrose", "Tínea Pedis", "Fissuras"] }
   ] },
   { key: "edema", title: "Edema", description: "Grau de edema.", fields: [
-    { name: "edema", label: "Edema", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
+    { name: "edema_present", label: "Edema", type: "radio", options: ["Sim", "Não"] },
+    { name: "edema", label: "Grau", type: "radio", options: ["Grau 1 + / ++++", "Grau 2 ++ / ++++", "Grau 3 +++ / ++++", "Grau 4 ++++ / ++++"] }
   ] },
-  { key: "vascular_exams", title: "Sensibilidade Monofilamento", description: "Monofilamento, sensibilidade vibratoria e termica sem mapa 3D.", fields: [
-    { name: "monofilament_right", label: "Sensibilidade Monofilamento - Pe D", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
-    { name: "monofilament_left", label: "Sensibilidade Monofilamento - Pe E", type: "radio", options: ["Presente", "Diminuida", "Ausente"] },
-    { name: "vibration_sensitivity", label: "Sensibilidade vibratoria com Diapasao", type: "radio", options: ["Presente", "Ausente"] },
-    { name: "thermal_sensitivity", label: "Sensibilidade termica", type: "radio", options: ["Positivo", "Negativo"] },
-    { name: "monofilament_notes", label: "Observacoes de sensibilidade", type: "textarea" }
+  { key: "vascular_exams", title: "Avaliação de Sensibilidade", description: "Monofilamento, sensibilidade vibratória e térmica por pé.", fields: [
+    { name: "monofilament_right", label: "Sensibilidade Monofilamento - Pé D", type: "radio", options: ["Presente", "Diminuída", "Ausente"] },
+    { name: "monofilament_left", label: "Sensibilidade Monofilamento - Pé E", type: "radio", options: ["Presente", "Diminuída", "Ausente"] },
+    { name: "vibration_sensitivity", label: "Sensibilidade vibratória com Diapasão", type: "radio", options: ["Presente", "Ausente"] },
+    { name: "thermal_sensitivity", label: "Sensibilidade térmica", type: "radio", options: ["Positivo", "Negativo"] },
+    { name: "monofilament_notes", label: "Observações de sensibilidade", type: "textarea" }
   ] },
-  { key: "itb", title: "ITB", description: "Indice tornozelo-braco com calculo automatico.", fields: [
-    { name: "itb_right_foot", label: "Pe D mmHg", type: "number" },
-    { name: "itb_left_foot", label: "Pe E mmHg", type: "number" },
-    { name: "itb_right_arm", label: "Braco D mmHg", type: "number" },
-    { name: "itb_left_arm", label: "Braco E mmHg", type: "number" }
+  { key: "itb", title: "ITB", description: "Índice tornozelo-braço com cálculo automático.", fields: [
+    { name: "itb_right_foot", label: "Pé D mmHg", type: "number" },
+    { name: "itb_left_foot", label: "Pé E mmHg", type: "number" },
+    { name: "itb_right_arm", label: "Braço D mmHg", type: "number" },
+    { name: "itb_left_arm", label: "Braço E mmHg", type: "number" }
   ] },
-  { key: "ihb", title: "IHB", description: "Indice halux-braco com calculo automatico.", fields: [
-    { name: "ihb_right_hallux", label: "Halux D mmHg", type: "number" },
-    { name: "ihb_left_hallux", label: "Halux E mmHg", type: "number" },
-    { name: "ihb_right_arm", label: "Braco D mmHg", type: "number" },
-    { name: "ihb_left_arm", label: "Braco E mmHg", type: "number" }
+  { key: "ihb", title: "IHB", description: "Índice hálux-braço com cálculo automático.", fields: [
+    { name: "ihb_right_hallux", label: "Hálux D mmHg", type: "number" },
+    { name: "ihb_left_hallux", label: "Hálux E mmHg", type: "number" },
+    { name: "ihb_right_arm", label: "Braço D mmHg", type: "number" },
+    { name: "ihb_left_arm", label: "Braço E mmHg", type: "number" }
   ] },
   { key: "glycemia", title: "Glicemia", description: "Resultado em mg/dL.", fields: [
     { name: "glycemia_result", label: "Resultado em mg/dL", type: "number" },
-    { name: "glycemia_context", label: "Contexto", type: "radio", options: ["Em jejum", "Apos alimentacao"] }
+    { name: "glycemia_context", label: "Contexto", type: "radio", options: ["Em jejum", "Após alimentação"] }
   ] },
   { key: "eva", title: "Escala EVA", description: "Dor de 0 a 10.", fields: [
     { name: "eva_scale", label: "Valor EVA", type: "number" },
-    { name: "eva_notes", label: "Observacoes", type: "textarea" }
+    { name: "eva_notes", label: "Observações", type: "textarea" }
   ] },
-  { key: "podology_diagnosis", title: "Diagnostico ungueal", description: "Alteracoes ungueais separadas por pe e local da ferida.", fields: [
-    { name: "nail_anatomy", label: "Anatomico laminar", type: "checkbox", options: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil", "Curvatura", "Plana", "Normal / fisiologica", "Telha", "Gancho / Uncinada", "Caracol / Em pinca"] },
-    { name: "pathologies", label: "Patologias", type: "checkbox", options: ["Onicomicose", "Paroniquia / Unheiro", "Sindrome da unha verde", "Onicocriptose / Unha encravada", "Onicogrifose", "Hematoma subungueal", "Outras"] },
-    { name: "structural_changes", label: "Alteracoes estruturais e distrofias", type: "checkbox", options: ["Onicolise", "Coiloniquia", "Linhas de Beau", "Psoriase ungueal", "Paroniquia", "Onicogrifose", "Coloníquia / Unha em colher", "Unhas de Hipocrates / Baqueteamento digital", "Onicosquizia"] },
-    { name: "podology_diagnosis_notes", label: "Observacoes", type: "textarea" }
+  { key: "podology_diagnosis", title: "Diagnóstico Ungueal", description: "Alterações ungueais separadas por pé e local de alteração acompanhada.", fields: [
+    { name: "nail_anatomy", label: "Anatômico laminar", type: "checkbox", options: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil", "Baqueteamento digital (Unha Vidro de Relógio)"] },
+    { name: "pathologies", label: "Patologias", type: "checkbox", options: ["Onicomicose", "Paroníquia / Unheiro", "Síndrome da unha verde", "Onicocriptose / Unha encravada", "Onicogrifose", "Hematoma subungueal", "Outras"] },
+    { name: "structural_changes", label: "Alterações estruturais e distrofias", type: "checkbox", options: ["Onicólise", "Coiloniquia", "Linhas de Beau", "Psoríase ungueal", "Paroníquia", "Onicogrifose", "Coloníquia / Unha em colher", "Unhas de Hipócrates / Baqueteamento digital", "Onicosquizia"] },
+    { name: "podology_diagnosis_notes", label: "Observações", type: "textarea" }
   ] },
-  { key: "procedure", title: "Procedimento", description: "Procedimentos, instrumentos, cuidados, lixas e brocas.", fields: [
-    { name: "procedure", label: "Procedimento", type: "checkbox", options: ["Debaste plantar", "Realizado", "Nao realizado", "Lixa", "Laminar", "Plantar", "Instrumentos", "Kit diabetico", "Kit nao diabetico", "Cuidados", "Higienizante", "Emoliente", "Creme hidratante", "Finalizador"] },
-    { name: "sandpaper", label: "Gramatura de lixa", type: "checkbox", options: ["80g", "180g", "220g", "400g"] },
-    { name: "drills", label: "Brocas", type: "checkbox", options: ["Diamantadas", "718g", "720g", "Ceramica", "Azul", "Vermelha", "Preta", "Esferica bolinha", "1014g", "1016g", "1018g"] },
-    { name: "procedure_notes", label: "Observacoes do procedimento", type: "textarea" }
+  { key: "procedure", title: "Procedimento", description: "Checklist de procedimentos executados.", fields: [
+    { name: "procedure_notes", label: "Observações do procedimento", type: "textarea" }
   ] },
-  { key: "dressing", title: "Curativo", description: "Curativo e local de aplicacao.", fields: [
+  { key: "dressing", title: "Curativo", description: "Curativo e local de aplicação.", fields: [
     { name: "dressing_type", label: "Tipo de curativo", type: "checkbox", options: ["Curativo oclusivo", "Curativo nao oclusivo"] },
     { name: "dressing_location", label: "Local do curativo", type: "text" },
-    { name: "dressing_description", label: "Descricao", type: "textarea" },
+    { name: "dressing_description", label: "Descrição", type: "textarea" },
     { name: "dressing_products", label: "Produtos utilizados", type: "textarea" },
-    { name: "dressing_notes", label: "Observacoes", type: "textarea" }
+    { name: "dressing_notes", label: "Observações", type: "textarea" }
   ] },
-  { key: "wound_images", title: "Imagens da ferida", description: "Anexos ficam preparados para armazenamento seguro.", fields: [
-    { name: "images_notes", label: "Observacoes sobre imagens antes, durante e depois", type: "textarea" }
+  { key: "treatment_indication", title: "Indicação de tratamento", description: "Indicação clínica e tratamento tecnológico.", fields: [
+    { name: "treatment_indication", label: "Indicação de tratamento", type: "textarea" },
+    { name: "lasertherapy_joules", label: "Laserterapia (J)", type: "text" },
+    { name: "led_joules", label: "LED (J)", type: "text" },
+    { name: "high_frequency_minutes", label: "Alta frequência (minutos)", type: "text" },
+    { name: "electrocautery_minutes", label: "Eletrocauterização (minutos)", type: "text" }
   ] },
-  { key: "image_evolution", title: "Comparativo de evolucao", description: "Compare imagens por BA, regiao e momento do tratamento.", fields: [
-    { name: "image_evolution_notes", label: "Observacao comparativa geral", type: "textarea" }
+  { key: "home_care", title: "Orientações Home Care", description: "Orientações para o paciente realizar em casa.", fields: [
+    { name: "home_care_guidance", label: "Orientações Home Care", type: "textarea" }
+  ] },
+  { key: "wound_images", title: "Evolução por Imagem", description: "Anexos ficam preparados para armazenamento seguro.", fields: [
+    { name: "images_notes", label: "Observações sobre imagens antes, durante e depois", type: "textarea" }
+  ] },
+  { key: "image_evolution", title: "Comparativo de evolução", description: "Compare imagens e registros anteriores para acompanhar a evolução do tratamento.", fields: [
+    { name: "image_evolution_notes", label: "Observação comparativa geral", type: "textarea" }
   ] },
   { key: "return", title: "Retorno", description: "Retorno sugerido.", fields: [
     { name: "return_date", label: "Data sugerida de retorno", type: "date" },
-    { name: "return_needed", label: "Necessita retorno?", type: "radio", options: ["Sim", "Nao"] },
-    { name: "return_priority", label: "Prioridade do retorno", type: "radio", options: ["Baixa", "Media", "Alta"] },
-    { name: "return_notes", label: "Observacoes", type: "textarea" }
-  ] },
-  { key: "evolution", title: "Evolucao e observacoes finais", description: "Evolucao, orientacoes e fechamento do atendimento.", fields: [
-    { name: "evolution_notes", label: "Evolucao e observacoes finais", type: "textarea" },
-    { name: "home_care_guidance", label: "Orientacoes domiciliares", type: "textarea" }
+    { name: "patient_returned", label: "Paciente retornou?", type: "radio", options: ["Sim", "Não"] },
+    { name: "return_notes", label: "Observações", type: "textarea" }
   ] }
 ];
 
 const nailGroups = {
-  anatomical_laminar: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil"],
+  anatomical_laminar: ["Quadrada / Retangular", "Arredondada / Ovalada", "Involuta / Unha em funil", "Baqueteamento digital (Unha Vidro de Relógio)"],
   curvature: ["Plana", "Normal / fisiológica", "Telha", "Gancho / Uncinada", "Caracol / Em pinça"],
   pathologies: ["Onicomicose", "Paroníquia / Unheiro", "Síndrome da unha verde", "Onicocriptose / Unha encravada", "Onicogrifose", "Hematoma subungueal", "Outras"],
   structural_changes: ["Onicólise", "Coiloniquia", "Linhas de Beau", "Psoríase ungueal", "Paroníquia", "Onicogrifose", "Coloníquia / Unha em colher", "Unhas de Hipócrates / Baqueteamento digital", "Onicosquizia"]
 };
 
 const procedureGroups = {
+  checklist: ["Higienização", "Emoliência", "Frezagem", "Sulco Ungueal", "Laminar", "Corte correto laminar", "Sondagem com Goiva", "Retirada da Unicofose"],
+  curettage: ["Vazada", "Fechada"],
   plantar_debridement: ["Realizado", "Não realizado"],
-  sandpaper: ["Laminar", "Plantar"],
-  instruments: ["Kit diabético", "Kit não diabético"],
-  care: ["Higienizante", "Emoliente", "Creme hidratante", "Finalizador"],
-  sandpaper_grit: ["80g", "180g", "220g", "400g"],
-  burs: {
-    diamond: ["718g", "720g"],
-    ceramic: ["Azul", "Vermelha", "Preta"],
-    spherical_ball: ["1014g", "1016g", "1018g"]
-  }
+  finishing: ["Creme hidratante", "Finalizador"]
 };
 
 type FootDiagnosisSide = {
   anatomical_laminar: string[];
   curvature: string[];
   pathologies: string[];
+  onicocriptosis_grade: string;
   structural_changes: string[];
   observations: string;
   wound_location: FootRegionSelection | null;
@@ -168,16 +166,19 @@ type NailBlockData = {
 };
 
 type ProcedureBlockData = {
+  checklist: string[];
+  diamond_burs_text: string;
+  ceramic_burs_text: string;
+  curettage: string[];
   plantar_debridement: string;
-  sandpaper: string[];
-  instruments: string[];
-  care: string[];
-  sandpaper_grit: string[];
-  burs: {
-    diamond: string[];
-    ceramic: string[];
-    spherical_ball: string[];
-  };
+  laminar_sanding: boolean;
+  laminar_sanding_file: string;
+  laminar_sanding_grit: string;
+  plantar_sanding: boolean;
+  plantar_sanding_file: string;
+  plantar_sanding_grit: string;
+  finishing: string[];
+  other_procedures: string;
 };
 
 export function AnamnesisWizard({
@@ -221,6 +222,7 @@ export function AnamnesisWizard({
   function moduleHasValue(module: Module) {
     if (module.key === "podology_diagnosis") return hasNailBlockValue(formData);
     if (module.key === "procedure") return hasProcedureBlockValue(formData);
+    if (module.key === "vascular_exams") return hasSensitivityBlockValue(formData);
     return module.fields.some((field) => {
       const value = formData[field.name];
       return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "";
@@ -337,7 +339,10 @@ export function AnamnesisWizard({
         {currentModule.key === "procedure" && (
           <ProcedureBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
         )}
-        {currentModule.key !== "podology_diagnosis" && currentModule.key !== "procedure" && currentModule.fields.map((field) => (
+        {currentModule.key === "vascular_exams" && (
+          <SensitivityBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
+        )}
+        {currentModule.key !== "podology_diagnosis" && currentModule.key !== "procedure" && currentModule.key !== "vascular_exams" && currentModule.fields.map((field) => (
           field.name === "dressing_products" ? (
             <div className="used-products-editor" key={field.name}>
               {usedProducts.map((usedProduct, index) => {
@@ -381,6 +386,46 @@ export function AnamnesisWizard({
   );
 }
 
+function SensitivityBlock({
+  disabled,
+  formData,
+  onPatch
+}: {
+  disabled: boolean;
+  formData: AnamnesisFormData;
+  onPatch: (patch: AnamnesisFormData) => void;
+}) {
+  const [activeFoot, setActiveFoot] = useState<FootSide>("right");
+  const suffix = activeFoot === "right" ? "right" : "left";
+  const monofilamentKey = activeFoot === "right" ? "monofilament_right" : "monofilament_left";
+  const vibrationKey = `vibration_sensitivity_${suffix}`;
+  const thermalKey = `thermal_sensitivity_${suffix}`;
+  const notesKey = `monofilament_notes_${suffix}`;
+  const vibrationValue = getTextValue(formData[vibrationKey]) || (activeFoot === "right" ? getTextValue(formData.vibration_sensitivity) : "");
+  const thermalValue = getTextValue(formData[thermalKey]) || (activeFoot === "right" ? getTextValue(formData.thermal_sensitivity) : "");
+  const notesValue = getTextValue(formData[notesKey]) || (activeFoot === "right" ? getTextValue(formData.monofilament_notes) : "");
+
+  function patchField(name: string, value: string) {
+    onPatch({ [name]: value });
+  }
+
+  return (
+    <div className="clinical-block">
+      <div className="foot-tabs" role="tablist" aria-label="Selecionar pé para sensibilidade">
+        <button className={activeFoot === "right" ? "is-active" : ""} onClick={() => setActiveFoot("right")} type="button">Pé Direito</button>
+        <button className={activeFoot === "left" ? "is-active" : ""} onClick={() => setActiveFoot("left")} type="button">Pé Esquerdo</button>
+      </div>
+      <RadioGroup disabled={disabled} label={`Sensibilidade Monofilamento - ${activeFoot === "right" ? "Pé D" : "Pé E"}`} options={["Presente", "Diminuída", "Ausente"]} selected={getTextValue(formData[monofilamentKey])} onChange={(value) => patchField(monofilamentKey, value)} />
+      <RadioGroup disabled={disabled} label="Sensibilidade vibratória com Diapasão" options={["Presente", "Ausente"]} selected={vibrationValue} onChange={(value) => patchField(vibrationKey, value)} />
+      <RadioGroup disabled={disabled} label="Sensibilidade térmica" options={["Positivo", "Negativo"]} selected={thermalValue} onChange={(value) => patchField(thermalKey, value)} />
+      <label>
+        Observações de sensibilidade
+        <textarea disabled={disabled} value={notesValue} onChange={(event) => patchField(notesKey, event.target.value)} />
+      </label>
+    </div>
+  );
+}
+
 function NailDiagnosisBlock({
   disabled,
   formData,
@@ -418,7 +463,11 @@ function NailDiagnosisBlock({
 
   function toggle(group: keyof Pick<FootDiagnosisSide, "anatomical_laminar" | "curvature" | "pathologies" | "structural_changes">, option: string, checked: boolean) {
     const selected = current[group];
-    patchSide({ [group]: checked ? [...selected, option] : selected.filter((item) => item !== option) });
+    const nextPatch: Partial<FootDiagnosisSide> = { [group]: checked ? [...selected, option] : selected.filter((item) => item !== option) };
+    if (group === "pathologies" && option === "Onicocriptose / Unha encravada" && !checked) {
+      nextPatch.onicocriptosis_grade = "";
+    }
+    patchSide(nextPatch);
   }
 
   function selectWoundLocation(selection: FootRegionSelection) {
@@ -448,6 +497,9 @@ function NailDiagnosisBlock({
         <CheckboxGroup disabled={disabled} label="Anatômico laminar" options={nailGroups.anatomical_laminar} selected={current.anatomical_laminar} onToggle={(option, checked) => toggle("anatomical_laminar", option, checked)} />
         <CheckboxGroup disabled={disabled} label="Curvatura" options={nailGroups.curvature} selected={current.curvature} onToggle={(option, checked) => toggle("curvature", option, checked)} />
         <CheckboxGroup disabled={disabled} label="Patologias" options={nailGroups.pathologies} selected={current.pathologies} onToggle={(option, checked) => toggle("pathologies", option, checked)} />
+        {current.pathologies.includes("Onicocriptose / Unha encravada") && (
+          <RadioGroup disabled={disabled} label="Grau da Onicocriptose" options={["Grau 1", "Grau 2", "Grau 3", "Grau 4"]} selected={current.onicocriptosis_grade} onChange={(value) => patchSide({ onicocriptosis_grade: value })} />
+        )}
         <CheckboxGroup disabled={disabled} label="Alterações estruturais e distrofias" options={nailGroups.structural_changes} selected={current.structural_changes} onToggle={(option, checked) => toggle("structural_changes", option, checked)} />
       </div>
 
@@ -461,7 +513,7 @@ function NailDiagnosisBlock({
         footSide={activeSide}
         value={current.wound_location ?? null}
         onChange={selectWoundLocation}
-        title="Local da ferida / alteração acompanhada"
+        title="Local de alteração acompanhada"
         helperText="Marque no pé 3D a região acompanhada neste diagnóstico ungueal. O fallback por seleção continua disponível."
       />
     </div>
@@ -483,35 +535,29 @@ function ProcedureBlock({
     onPatch({ block_15: next as unknown as Record<string, unknown> });
   }
 
-  function toggleArray(group: keyof Pick<ProcedureBlockData, "sandpaper" | "instruments" | "care" | "sandpaper_grit">, option: string, checked: boolean) {
+  function toggleArray(group: keyof Pick<ProcedureBlockData, "checklist" | "curettage" | "finishing">, option: string, checked: boolean) {
     const selected = block[group];
     patch({ ...block, [group]: checked ? [...selected, option] : selected.filter((item) => item !== option) });
   }
 
-  function toggleBur(group: keyof ProcedureBlockData["burs"], option: string, checked: boolean) {
-    const selected = block.burs[group];
-    patch({
-      ...block,
-      burs: {
-        ...block.burs,
-        [group]: checked ? [...selected, option] : selected.filter((item) => item !== option)
-      }
-    });
-  }
-
   return (
     <div className="clinical-block procedure-block">
+      <CheckboxGroup disabled={disabled} label="Procedimentos" options={procedureGroups.checklist} selected={block.checklist} onToggle={(option, checked) => toggleArray("checklist", option, checked)} />
+      <div className="form-grid form-grid--two">
+        <label>Brocas diamantadas<input disabled={disabled} value={block.diamond_burs_text} onChange={(event) => patch({ ...block, diamond_burs_text: event.target.value })} placeholder="Descreva as brocas utilizadas" /></label>
+        <label>Brocas Cerâmica<input disabled={disabled} value={block.ceramic_burs_text} onChange={(event) => patch({ ...block, ceramic_burs_text: event.target.value })} placeholder="Descreva as brocas utilizadas" /></label>
+      </div>
+      <CheckboxGroup disabled={disabled} label="Curetagem com cureta" options={procedureGroups.curettage} selected={block.curettage} onToggle={(option, checked) => toggleArray("curettage", option, checked)} />
       <RadioGroup disabled={disabled} label="Debaste plantar" options={procedureGroups.plantar_debridement} selected={block.plantar_debridement} onChange={(value) => patch({ ...block, plantar_debridement: value })} />
-      <CheckboxGroup disabled={disabled} label="Lixa" options={procedureGroups.sandpaper} selected={block.sandpaper} onToggle={(option, checked) => toggleArray("sandpaper", option, checked)} />
-      <CheckboxGroup disabled={disabled} label="Instrumentos" options={procedureGroups.instruments} selected={block.instruments} onToggle={(option, checked) => toggleArray("instruments", option, checked)} />
-      <CheckboxGroup disabled={disabled} label="Cuidados" options={procedureGroups.care} selected={block.care} onToggle={(option, checked) => toggleArray("care", option, checked)} />
-      <CheckboxGroup disabled={disabled} label="Gramatura de lixa" options={procedureGroups.sandpaper_grit} selected={block.sandpaper_grit} onToggle={(option, checked) => toggleArray("sandpaper_grit", option, checked)} />
       <fieldset className="option-fieldset clinical-subgroups">
-        <legend>Brocas</legend>
-        <CheckboxGroup disabled={disabled} label="Diamantadas" options={procedureGroups.burs.diamond} selected={block.burs.diamond} onToggle={(option, checked) => toggleBur("diamond", option, checked)} />
-        <CheckboxGroup disabled={disabled} label="Cerâmica" options={procedureGroups.burs.ceramic} selected={block.burs.ceramic} onToggle={(option, checked) => toggleBur("ceramic", option, checked)} />
-        <CheckboxGroup disabled={disabled} label="Esférica bolinha" options={procedureGroups.burs.spherical_ball} selected={block.burs.spherical_ball} onToggle={(option, checked) => toggleBur("spherical_ball", option, checked)} />
+        <legend>Lixamento</legend>
+        <label><input checked={block.laminar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, laminar_sanding: event.target.checked })} type="checkbox" /> Laminar</label>
+        {block.laminar_sanding && <div className="form-grid form-grid--two"><label>Lixa<input disabled={disabled} value={block.laminar_sanding_file} onChange={(event) => patch({ ...block, laminar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.laminar_sanding_grit} onChange={(event) => patch({ ...block, laminar_sanding_grit: event.target.value })} /></label></div>}
+        <label><input checked={block.plantar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, plantar_sanding: event.target.checked })} type="checkbox" /> Plantar</label>
+        {block.plantar_sanding && <div className="form-grid form-grid--two"><label>Lixa<input disabled={disabled} value={block.plantar_sanding_file} onChange={(event) => patch({ ...block, plantar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.plantar_sanding_grit} onChange={(event) => patch({ ...block, plantar_sanding_grit: event.target.value })} /></label></div>}
       </fieldset>
+      <CheckboxGroup disabled={disabled} label="Finalização" options={procedureGroups.finishing} selected={block.finishing} onToggle={(option, checked) => toggleArray("finishing", option, checked)} />
+      <label>Outros procedimentos<textarea disabled={disabled} value={block.other_procedures} onChange={(event) => patch({ ...block, other_procedures: event.target.value })} /></label>
     </div>
   );
 }
@@ -788,6 +834,7 @@ function hasNailBlockValue(data: AnamnesisFormData) {
     foot.anatomical_laminar.length ||
     foot.curvature.length ||
     foot.pathologies.length ||
+    foot.onicocriptosis_grade ||
     foot.structural_changes.length ||
     foot.observations ||
     foot.region_key ||
@@ -798,14 +845,35 @@ function hasNailBlockValue(data: AnamnesisFormData) {
 function hasProcedureBlockValue(data: AnamnesisFormData) {
   const block = getProcedureBlockData(data);
   return Boolean(
+    block.checklist.length ||
+    block.diamond_burs_text ||
+    block.ceramic_burs_text ||
+    block.curettage.length ||
     block.plantar_debridement ||
-    block.sandpaper.length ||
-    block.instruments.length ||
-    block.care.length ||
-    block.sandpaper_grit.length ||
-    block.burs.diamond.length ||
-    block.burs.ceramic.length ||
-    block.burs.spherical_ball.length
+    block.laminar_sanding ||
+    block.laminar_sanding_file ||
+    block.laminar_sanding_grit ||
+    block.plantar_sanding ||
+    block.plantar_sanding_file ||
+    block.plantar_sanding_grit ||
+    block.finishing.length ||
+    block.other_procedures
+  );
+}
+
+function hasSensitivityBlockValue(data: AnamnesisFormData) {
+  return Boolean(
+    data.monofilament_right ||
+    data.monofilament_left ||
+    data.vibration_sensitivity ||
+    data.thermal_sensitivity ||
+    data.monofilament_notes ||
+    data.vibration_sensitivity_right ||
+    data.vibration_sensitivity_left ||
+    data.thermal_sensitivity_right ||
+    data.thermal_sensitivity_left ||
+    data.monofilament_notes_right ||
+    data.monofilament_notes_left
   );
 }
 
@@ -834,6 +902,7 @@ function getFootDiagnosisSide(value: Record<string, unknown>, side: FootSide, da
     anatomical_laminar: getStringArray(value.anatomical_laminar, useLegacy ? getStringArray(data.nail_anatomy).filter((item) => nailGroups.anatomical_laminar.includes(item)) : []),
     curvature: getStringArray(value.curvature, useLegacy ? getStringArray(data.nail_anatomy).filter((item) => nailGroups.curvature.includes(item)) : []),
     pathologies: getStringArray(value.pathologies, useLegacy ? getStringArray(data.pathologies) : []),
+    onicocriptosis_grade: getTextValue(value.onicocriptosis_grade),
     structural_changes: getStringArray(value.structural_changes, useLegacy ? getStringArray(data.structural_changes) : []),
     observations: getTextValue(value.observations) || (useLegacy ? getTextValue(data.podology_diagnosis_notes) : ""),
     wound_location: getWoundLocationSelection(value.wound_location, side, getTextValue(value.region_key), getTextValue(value.region_label)) ?? null,
@@ -875,23 +944,29 @@ function getProcedureBlockData(data: AnamnesisFormData): ProcedureBlockData {
   const burs = getObjectValue(block.burs);
   const legacyProcedure = getStringArray(data.procedure);
   const legacyDrills = getStringArray(data.drills);
+  const legacySandpaper = getStringArray(block.sandpaper, legacyProcedure.filter((item) => ["Laminar", "Plantar"].includes(item)));
+  const legacyCare = getStringArray(block.care, legacyProcedure.filter((item) => ["Higienizante", "Emoliente", "Creme hidratante", "Finalizador"].includes(item)));
   return {
+    checklist: getStringArray(block.checklist, legacyProcedure.filter((item) => procedureGroups.checklist.includes(normalizeProcedureOption(item))).map(normalizeProcedureOption)),
+    diamond_burs_text: getTextValue(block.diamond_burs_text) || getStringArray(getObjectValue(burs).diamond, legacyDrills.filter((item) => ["718g", "720g"].includes(item))).join(", "),
+    ceramic_burs_text: getTextValue(block.ceramic_burs_text) || getStringArray(getObjectValue(burs).ceramic, legacyDrills.filter((item) => ["Azul", "Vermelha", "Preta"].includes(item))).join(", "),
+    curettage: getStringArray(block.curettage),
     plantar_debridement: getTextValue(block.plantar_debridement) || legacyProcedure.find((item) => ["Realizado", "Nao realizado", "Não realizado"].includes(item)) || "",
-    sandpaper: getStringArray(block.sandpaper, legacyProcedure.filter((item) => procedureGroups.sandpaper.includes(item))),
-    instruments: getStringArray(block.instruments, legacyProcedure.filter((item) => ["Kit diabetico", "Kit diabético", "Kit nao diabetico", "Kit não diabético"].includes(item)).map(normalizeProcedureOption)),
-    care: getStringArray(block.care, legacyProcedure.filter((item) => procedureGroups.care.includes(item))),
-    sandpaper_grit: getStringArray(block.sandpaper_grit, getStringArray(data.sandpaper)),
-    burs: {
-      diamond: getStringArray(getObjectValue(burs).diamond, legacyDrills.filter((item) => procedureGroups.burs.diamond.includes(item))),
-      ceramic: getStringArray(getObjectValue(burs).ceramic, legacyDrills.filter((item) => procedureGroups.burs.ceramic.includes(item))),
-      spherical_ball: getStringArray(getObjectValue(burs).spherical_ball, legacyDrills.filter((item) => procedureGroups.burs.spherical_ball.includes(item)))
-    }
+    laminar_sanding: getBooleanValue(block.laminar_sanding) || legacySandpaper.includes("Laminar"),
+    laminar_sanding_file: getTextValue(block.laminar_sanding_file),
+    laminar_sanding_grit: getTextValue(block.laminar_sanding_grit) || getStringArray(block.sandpaper_grit, getStringArray(data.sandpaper)).join(", "),
+    plantar_sanding: getBooleanValue(block.plantar_sanding) || legacySandpaper.includes("Plantar"),
+    plantar_sanding_file: getTextValue(block.plantar_sanding_file),
+    plantar_sanding_grit: getTextValue(block.plantar_sanding_grit),
+    finishing: getStringArray(block.finishing, legacyCare.filter((item) => procedureGroups.finishing.includes(item))),
+    other_procedures: getTextValue(block.other_procedures)
   };
 }
 
 function normalizeProcedureOption(value: string) {
   if (value === "Kit diabetico") return "Kit diabético";
   if (value === "Kit nao diabetico") return "Kit não diabético";
+  if (value === "Higienizacao") return "Higienização";
   return value;
 }
 
@@ -901,6 +976,10 @@ function getObjectValue(value: unknown): Record<string, unknown> {
 
 function getStringArray(value: unknown, fallback: string[] = []) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback;
+}
+
+function getBooleanValue(value: unknown) {
+  return value === true;
 }
 
 function toPressure(value: unknown) {

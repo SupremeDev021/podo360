@@ -338,7 +338,7 @@ export function FootSensitivityMap3D({
       <section className="panel-form foot-sensitivity-form">
         <div className="section-heading section-heading--compact">
           <div>
-          <h2>Sensibilidade Monofilamento</h2>
+          <h2>Avaliação de Sensibilidade</h2>
             <p>{footSide === "right" ? "Pé direito" : "Pé esquerdo"} · {selected.clinicalGroup} · {selected.displayLabel}</p>
           </div>
         </div>

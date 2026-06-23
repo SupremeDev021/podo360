@@ -16,13 +16,13 @@ export function UniqueMedicalRecordView({ patient, uniqueMedicalRecord, attendan
         <div className="data-panel">
           <div className="section-heading">
             <div>
-              <h2>Dados do ProntuárioÚnico</h2>
+              <h2>Dados do Prontuário de Evolução</h2>
               <p>Identificador unico do paciente no Podo360; dados clinicos seguem separados por clinica.</p>
             </div>
             <ClipboardEdit size={20} />
           </div>
           <dl className="definition-grid">
-            <div><dt>Numero do ProntuárioÚnico</dt><dd>{uniqueMedicalRecord?.uniqueRecordNumber ?? patient.uniqueRecordNumber}</dd></div>
+            <div><dt>Numero do Prontuário de Evolução</dt><dd>{uniqueMedicalRecord?.uniqueRecordNumber ?? patient.uniqueRecordNumber}</dd></div>
             <div><dt>Queixa principal local</dt><dd>{patient.clinical.chiefComplaint}</dd></div>
             <div><dt>Historico local</dt><dd>{patient.clinical.diseaseHistory}</dd></div>
             <div><dt>Diabetes</dt><dd>{patient.clinical.diabetes ? "Sim" : "Nao"}</dd></div>
@@ -36,7 +36,7 @@ export function UniqueMedicalRecordView({ patient, uniqueMedicalRecord, attendan
           <div className="section-heading">
             <div>
               <h2>Linha do tempo de BAs</h2>
-              <p>Atendimentos da clinica atual vinculados ao ProntuárioÚnico.</p>
+              <p>Atendimentos da clinica atual vinculados ao Prontuário de Evolução.</p>
             </div>
             <CheckCircle2 size={20} />
           </div>
