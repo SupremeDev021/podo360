@@ -24,6 +24,20 @@ Empresa criada/validada:
 
 Nenhum dado sensivel real foi inserido nesta etapa.
 
+## Segunda Empresa de Isolamento
+
+Empresa criada/validada para teste multiempresa:
+
+- Nome: Clinica Teste Isolamento
+- Status clinico: `active`
+- Plano comercial: Start
+- Registro em `companies`: criado
+- Registro em `company_settings`: criado
+- Registro em `platform_companies`: criado
+- Registro em `platform_company_subscriptions`: criado
+
+Esta empresa foi criada apenas para validar isolamento entre clinicas antes da entrada de dados clinicos reais.
+
 ## Usuario Inicial
 
 O projeto ainda nao possui usuarios em `auth.users`.
@@ -37,6 +51,15 @@ Procedimento recomendado:
 3. Usar role `company_admin` para o dono/admin da clinica.
 4. Se o mesmo usuario tambem for administrar a plataforma, criar registro em `platform_admin_users`.
 5. Nunca versionar senha, token, `service_role` ou arquivo `.env`.
+
+Estado validado em 25/06/2026:
+
+- `auth.users`: 0 usuarios
+- `profiles`: 0 perfis
+- Clinica Pe Saudavel: 0 perfis vinculados
+- Clinica Teste Isolamento: 0 perfis vinculados
+
+Portanto, login real e teste multiempresa autenticado ainda nao puderam ser executados.
 
 ## Validacao de Banco
 
@@ -169,9 +192,33 @@ Motivo:
 
 Essas functions sao usadas por RLS ou por RPCs reais do app. Revogar sem teste com usuario real poderia quebrar login, BA, finalizacao, reabertura e leitura multiempresa.
 
+Avisos restantes observados apos hardening e criacao da segunda empresa:
+
+- `can_access_company`
+- `cancel_attendance_finalization`
+- `current_company_id`
+- `current_profile`
+- `current_role`
+- `has_attendance_management_access`
+- `has_clinical_write_access`
+- `has_financial_access`
+- `has_hci_enabled`
+- `has_hci_view_access`
+- `has_valid_hci_consent`
+- `is_platform_admin`
+- `is_super_admin`
+- `mark_attendance_finished`
+- `mark_attendance_started`
+
+Classificacao atual:
+
+- Aceitos temporariamente com justificativa tecnica.
+- Precisam ser reavaliados depois de login real e execucao dos fluxos clinicos.
+- Nao foram classificados como liberacao final para dados clinicos reais.
+
 ## Teste Multiempresa
 
-Ainda nao foi criado usuario real nem segunda empresa com usuario autenticado.
+Foi criada a segunda empresa, mas ainda nao foi criado usuario real nem profile autenticado para nenhuma das empresas.
 
 Teste pendente:
 
@@ -195,6 +242,7 @@ Validado nesta etapa:
 - functions principais;
 - Storage;
 - triggers de BA/PU em transacao com rollback.
+- segunda empresa de isolamento criada e vinculada a plano/status.
 
 ## Credenciais
 
@@ -214,13 +262,15 @@ Nao foram commitados:
 
 1. Criar usuario inicial no Supabase Auth de forma segura.
 2. Vincular o usuario em `profiles` com `company_id` da Clinica Pe Saudavel.
-3. Validar login no app.
-4. Testar abertura de atendimento com RLS real.
-5. Testar anamnese, imagens, relatorios, PDF e finalizacao.
-6. Testar isolamento multiempresa com segunda empresa/usuario.
-7. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
-8. Rodar Security Advisor novamente apos login real e testes funcionais.
+3. Criar usuario da Clinica Teste Isolamento de forma segura.
+4. Vincular o usuario da Empresa B em `profiles`.
+5. Validar login no app.
+6. Testar abertura de atendimento com RLS real.
+7. Testar anamnese, imagens, relatorios, PDF e finalizacao.
+8. Testar isolamento multiempresa com segunda empresa/usuario.
+9. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
+10. Rodar Security Advisor novamente apos login real e testes funcionais.
 
 ## Conclusao
 
-A base esta melhor endurecida para producao, mas ainda nao deve receber dados clinicos reais ate a criacao do usuario inicial, validacao de login e teste multiempresa com usuarios autenticados.
+A base esta melhor endurecida para producao e as duas empresas de teste estao preparadas, mas ainda nao deve receber dados clinicos reais ate a criacao dos usuarios iniciais, validacao de login e teste multiempresa com usuarios autenticados.
