@@ -3763,11 +3763,17 @@ function exportDashboardReport(
 function formatAnamnesisForPrint(record?: AnamnesisRecord) {
   if (!record) return "<p>Sem anamnese registrada para este atendimento.</p>";
   const data = record.formData;
+  const medicationsInUse = data.medications_in_use || (data.medications ? "Sim" : undefined);
+  const surgeryDescription = data.surgery_history === "Sim" ? data.surgery_description : undefined;
+  const edemaSummary = data.edema_present === "Sim"
+    ? `Sim${data.edema ? ` - ${humanizeAnamnesisValue(data.edema)}` : ""}`
+    : data.edema_present === "Não" ? "Não" : undefined;
   const sections: Array<[string, Array<[string, unknown]>]> = [
-    ["Identificação", [["Paciente", data.identification_name], ["Data da avaliação", data.identification_date], ["Idade", data.identification_age], ["Profissão", data.identification_profession]]],
+    ["Identificação", [["Paciente", data.identification_name], ["Data de nascimento", data.identification_birth_date], ["Idade", data.identification_age], ["Profissão", data.identification_profession]]],
     ["Queixa principal", [["Queixa", data.main_complaint || data.chief_complaint]]],
-    ["Histórico de Saúde", [["Condições relatadas", data.health_history], ["Cirurgia", data.surgery_history], ["Descrição da cirurgia", data.surgery_description], ["Medicamentos em uso", data.medications], ["Alergias", data.allergies]]],
-    ["Avaliação Podal", [["Alterações podais", data.changes], ["Pele", data.skin_exam], ["Edema", data.edema_present ? `${humanizeAnamnesisValue(data.edema_present)}${data.edema ? ` - ${humanizeAnamnesisValue(data.edema)}` : ""}` : data.edema], ["Glicemia", data.glycemia_result || data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
+    ["Medicamentos", [["Medicamentos em uso?", medicationsInUse], ["Quais medicações?", medicationsInUse === "Sim" ? data.medications : undefined], ["Observações", data.medications_notes]]],
+    ["Histórico de Saúde", [["Condições relatadas", data.health_history], ["Cirurgia", data.surgery_history], ["Descrição da cirurgia", surgeryDescription], ["Alergias", data.allergies]]],
+    ["Avaliação Podal", [["Alterações podais", data.changes], ["Pele", data.skin_exam], ["Edema", edemaSummary], ["Glicemia", data.glycemia_result || data.blood_glucose], ["Escala de dor EVA", data.eva_scale ? `${data.eva_scale}/10` : undefined]]],
     ["Indicação de tratamento", [["Indicação", data.treatment_indication], ["Laserterapia", data.lasertherapy_joules ? `${data.lasertherapy_joules} J` : undefined], ["LED", data.led_joules ? `${data.led_joules} J` : undefined], ["Alta frequência", data.high_frequency_minutes ? `${data.high_frequency_minutes} minutos` : undefined], ["Eletrocauterização", data.electrocautery_minutes ? `${data.electrocautery_minutes} minutos` : undefined]]],
     ["Orientações Home Care", [["Orientações", data.home_care_guidance]]],
     ["Retorno", [["Data sugerida", data.return_date || data.follow_up_date], ["Paciente retornou?", data.patient_returned], ["Observações", data.return_notes]]]
