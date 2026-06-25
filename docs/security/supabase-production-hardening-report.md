@@ -40,26 +40,32 @@ Esta empresa foi criada apenas para validar isolamento entre clinicas antes da e
 
 ## Usuario Inicial
 
-O projeto ainda nao possui usuarios em `auth.users`.
+Foram criados dois usuarios em `auth.users` pelo fluxo seguro, sem migration versionada com senha.
 
-Por seguranca, nenhum usuario com senha foi criado por migration ou script versionado.
+Usuario A:
 
-Procedimento recomendado:
+- Empresa: Clinica Pe Saudavel
+- `company_id`: `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`
+- Role: `company_admin`
+- `active`: `true`
+- `is_platform_admin`: `false`
 
-1. Criar o usuario inicial pelo painel Supabase Auth ou por script local nao versionado.
-2. Criar o registro correspondente em `profiles`, vinculado ao `company_id` da Clinica Pe Saudavel.
-3. Usar role `company_admin` para o dono/admin da clinica.
-4. Se o mesmo usuario tambem for administrar a plataforma, criar registro em `platform_admin_users`.
-5. Nunca versionar senha, token, `service_role` ou arquivo `.env`.
+Usuario B:
 
-Estado validado em 25/06/2026:
+- Empresa: Clinica Teste Isolamento
+- `company_id`: `b7cd6131-5565-406a-ac9c-eb5f0cce21f1`
+- Role: `company_admin`
+- `active`: `true`
+- `is_platform_admin`: `false`
 
-- `auth.users`: 0 usuarios
-- `profiles`: 0 perfis
-- Clinica Pe Saudavel: 0 perfis vinculados
-- Clinica Teste Isolamento: 0 perfis vinculados
+Validado no banco:
 
-Portanto, login real e teste multiempresa autenticado ainda nao puderam ser executados.
+- `auth.uid()` reconhece os dois usuarios quando a sessao autenticada e simulada via JWT claim.
+- `current_company_id()` retorna o `company_id` correto para cada usuario.
+- `current_role()` retorna `company_admin`.
+- `is_platform_admin()` retorna `false` para ambos.
+
+Senhas nao foram registradas, versionadas ou documentadas.
 
 ## Fluxo de Setup Inicial
 
@@ -228,18 +234,39 @@ Classificacao atual:
 
 ## Teste Multiempresa
 
-Foi criada a segunda empresa, mas ainda nao foi criado usuario real nem profile autenticado para nenhuma das empresas.
+Foi executado teste multiempresa autenticado por RLS com transacao e `rollback`.
 
-Teste pendente:
+Metodo:
 
-- criar usuario da Empresa A;
-- criar usuario da Empresa B;
-- validar que Empresa A nao acessa pacientes, atendimentos, imagens, financeiro, estoque ou configuracoes da Empresa B;
-- validar que usuario clinico comum nao acessa `platform_leads` nem listagem global de `platform_companies`.
+- Criado paciente temporario da Empresa A.
+- Criado atendimento temporario da Empresa A.
+- Criada anamnese temporaria da Empresa A.
+- Criado paciente temporario da Empresa B.
+- Criado atendimento temporario da Empresa B.
+- Criada anamnese temporaria da Empresa B.
+- Simulada sessao `authenticated` com `auth.uid()` do Usuario A.
+- Simulada sessao `authenticated` com `auth.uid()` do Usuario B.
+- Executado `rollback` ao final de cada teste.
+
+Resultado Empresa A:
+
+- Viu seu proprio paciente, atendimento e anamnese.
+- Nao viu paciente, atendimento ou anamnese da Empresa B.
+- Nao visualizou `platform_leads`.
+- Nao visualizou `platform_admin_audit_logs`.
+
+Resultado Empresa B:
+
+- Viu seu proprio paciente, atendimento e anamnese.
+- Nao viu paciente, atendimento ou anamnese da Empresa A.
+- Nao visualizou `platform_leads`.
+- Nao visualizou `platform_admin_audit_logs`.
+
+Conclusao: o isolamento RLS basico entre empresas passou no banco. Ainda falta validar os mesmos fluxos pela interface com login real no navegador.
 
 ## Validacao do App
 
-Login real ainda nao foi validado porque nao existe usuario em `auth.users`.
+Login real visual ainda precisa ser validado no navegador usando as senhas criadas fora do repositorio.
 
 Validado nesta etapa:
 
@@ -253,6 +280,11 @@ Validado nesta etapa:
 - Storage;
 - triggers de BA/PU em transacao com rollback.
 - segunda empresa de isolamento criada e vinculada a plano/status.
+- usuarios Auth e profiles vinculados a `company_id`;
+- helpers `current_company_id`, `current_role` e `is_platform_admin`;
+- isolamento multiempresa por RLS com usuarios autenticados simulados;
+- Storage `company-assets` com leitura escopada por pasta `company_id`;
+- view `company_platform_access` refletindo `active` e `suspended` em transacao com rollback.
 
 ## Credenciais
 
@@ -268,19 +300,56 @@ Nao foram commitados:
 - token Supabase
 - dumps com dados sensiveis
 
+## Storage - Teste Autenticado
+
+Teste executado no bucket `company-assets`:
+
+- Objeto temporario da Empresa A no caminho do `company_id` da Empresa A.
+- Objeto temporario da Empresa B no caminho do `company_id` da Empresa B.
+- Usuario A viu apenas o asset da propria empresa.
+- Usuario A nao viu o asset da Empresa B.
+- Usuario B viu apenas o asset da propria empresa.
+- Usuario B nao viu o asset da Empresa A.
+- Objetos temporarios revertidos com `rollback`.
+
+Como o bucket e publico para servir logos/assets visuais, URLs publicas de objetos continuam possiveis, mas a listagem ampla anonima permanece fechada.
+
+## Status da Empresa
+
+Validado via view `company_platform_access`:
+
+- Empresa B em estado real `active` retornou `active`.
+- Em transacao com `rollback`, Empresa B alterada para `suspended` retornou `suspended`.
+- Apos rollback, Empresa B continuou `active`.
+
+Esse resultado confirma que a camada de acesso esta pronta para o app bloquear status suspenso/inativo com mensagem amigavel.
+
+## Security Advisor - Atualizacao Pos-Usuarios
+
+Security Advisor executado apos criacao dos usuarios e testes autenticados.
+
+Avisos restantes:
+
+- functions `SECURITY DEFINER` executaveis por `authenticated`;
+- Leaked Password Protection desabilitado no Supabase Auth.
+
+Classificacao:
+
+- Functions `SECURITY DEFINER`: aceitas temporariamente, pois sao helpers/RPCs usados por RLS e fluxos clinicos. Devem ser reavaliadas depois do teste completo pela interface.
+- Leaked Password Protection: recomendacao de hardening de Auth. Habilitar no painel Supabase antes da entrada real em producao.
+
+Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
+
 ## Pendencias Antes de Dados Reais
 
-1. Criar usuario inicial no Supabase Auth de forma segura.
-2. Vincular o usuario em `profiles` com `company_id` da Clinica Pe Saudavel.
-3. Criar usuario da Clinica Teste Isolamento de forma segura.
-4. Vincular o usuario da Empresa B em `profiles`.
-5. Validar login no app.
-6. Testar abertura de atendimento com RLS real.
-7. Testar anamnese, imagens, relatorios, PDF e finalizacao.
-8. Testar isolamento multiempresa com segunda empresa/usuario.
-9. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
-10. Rodar Security Advisor novamente apos login real e testes funcionais.
+1. Validar login real no app pelo navegador.
+2. Testar abertura de atendimento pela interface.
+3. Testar anamnese, imagens, relatorios, PDF e finalizacao pela interface.
+4. Testar upload real de asset/logo pela interface.
+5. Habilitar/revisar Leaked Password Protection no Supabase Auth.
+6. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
+7. Rodar Security Advisor novamente apos fluxo clinico completo pela interface.
 
 ## Conclusao
 
-A base esta melhor endurecida para producao e as duas empresas de teste estao preparadas, mas ainda nao deve receber dados clinicos reais ate a criacao dos usuarios iniciais, validacao de login e teste multiempresa com usuarios autenticados.
+A base esta melhor endurecida para producao, os usuarios iniciais estao vinculados a suas empresas e o isolamento RLS/Storage passou em testes autenticados por banco com rollback. Ainda nao deve receber dados clinicos reais ate validacao de login e fluxo clinico completo pela interface.

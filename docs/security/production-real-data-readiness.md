@@ -10,10 +10,10 @@ Ainda nao liberado para dados clinicos reais.
 
 Motivo principal:
 
-- ainda nao existe usuario real em `auth.users`;
-- ainda nao existe `profile` vinculado a `company_id`;
-- login real no app ainda nao foi validado;
-- teste multiempresa autenticado ainda nao foi executado.
+- os usuarios Auth e os `profiles` foram criados e validados no banco;
+- o isolamento multiempresa foi validado por simulacao autenticada no banco com `rollback`;
+- o login real visual no app ainda precisa ser confirmado no navegador com as senhas criadas fora do repositorio;
+- o fluxo clinico completo via interface ainda precisa ser executado pelo responsavel antes de receber dados clinicos reais.
 
 ## Itens Ja Validados
 
@@ -30,19 +30,22 @@ Motivo principal:
 - Execucao direta de functions internas por `authenticated` foi restringida.
 - Teste transacional com rollback validou geracao de BA e PU.
 - Nenhum dado clinico de teste ficou persistido.
+- Usuario da Clinica Pe Saudavel criado em `auth.users` e vinculado em `profiles`.
+- Usuario da Clinica Teste Isolamento criado em `auth.users` e vinculado em `profiles`.
+- `current_company_id`, `current_role` e `is_platform_admin` validados para os dois usuarios.
+- Teste multiempresa autenticado por RLS validado com transacao e `rollback`.
+- Storage `company-assets` validado por RLS com objetos temporarios e `rollback`.
+- Status `suspended` validado na view `company_platform_access` com `rollback`.
 
 ## Itens Bloqueantes
 
-1. Criar usuario da Clinica Pe Saudavel no Supabase Auth.
-2. Criar `profile` com role `company_admin` para a Clinica Pe Saudavel.
-3. Criar usuario da Clinica Teste Isolamento no Supabase Auth.
-4. Criar `profile` com role adequada para a Clinica Teste Isolamento.
-5. Validar login real no app.
-6. Validar fluxo clinico principal com RLS real.
-7. Validar isolamento Empresa A x Empresa B.
-8. Validar Storage com usuarios reais.
-9. Validar status `suspended`/reativacao.
-10. Reavaliar Security Advisor apos testes autenticados.
+1. Validar login real no app pelo navegador.
+2. Validar fluxo clinico principal pela interface.
+3. Validar criacao real de paciente/BA/anamnese pela interface.
+4. Validar relatorios, impressao e PDF pela interface.
+5. Validar upload real de logo/asset pela interface.
+6. Habilitar Leaked Password Protection no Supabase Auth, se desejado para producao.
+7. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
 
 ## Setup Inicial Preparado
 
@@ -114,6 +117,63 @@ Checklist:
 - Usuario clinico comum nao altera `platform_plans`.
 - Usuario clinico comum nao lista `platform_companies` globalmente.
 
+Resultado em 25/06/2026:
+
+- Empresa A autenticada simulada por `auth.uid()` viu 1 paciente, 1 atendimento e 1 anamnese proprios.
+- Empresa A autenticada simulada nao viu paciente, atendimento ou anamnese da Empresa B.
+- Empresa B autenticada simulada por `auth.uid()` viu 1 paciente, 1 atendimento e 1 anamnese proprios.
+- Empresa B autenticada simulada nao viu paciente, atendimento ou anamnese da Empresa A.
+- Usuarios clinicos simulados nao visualizaram `platform_leads`.
+- Usuarios clinicos simulados nao visualizaram `platform_admin_audit_logs`.
+- Todos os registros clinicos criados para o teste foram revertidos com `rollback`.
+
+Este teste valida as policies RLS no banco. Ainda falta repetir os fluxos pela interface com login real no navegador.
+
+## Usuarios e Profiles Validados
+
+Usuario A:
+
+- Empresa: Clinica Pe Saudavel
+- `company_id`: `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`
+- Role: `company_admin`
+- `active`: `true`
+- `is_platform_admin`: `false`
+
+Usuario B:
+
+- Empresa: Clinica Teste Isolamento
+- `company_id`: `b7cd6131-5565-406a-ac9c-eb5f0cce21f1`
+- Role: `company_admin`
+- `active`: `true`
+- `is_platform_admin`: `false`
+
+Senhas nao foram registradas, versionadas ou documentadas.
+
+## Storage Validado
+
+Bucket:
+
+- `company-assets`
+
+Resultado:
+
+- Empresa A autenticada simulada viu apenas asset no caminho da propria empresa.
+- Empresa A nao viu asset temporario da Empresa B.
+- Empresa B autenticada simulada viu apenas asset no caminho da propria empresa.
+- Empresa B nao viu asset temporario da Empresa A.
+- Objetos de teste foram revertidos com `rollback`.
+- Listagem publica ampla continua removida.
+
+## Status da Empresa
+
+Validacao:
+
+- Empresa B em `active` aparece como `active` na view `company_platform_access`.
+- Em transacao com `rollback`, Empresa B alterada para `suspended` apareceu como `suspended` na view.
+- Apos rollback, Empresa B continuou `active`.
+
+O app deve usar esta informacao para exibir a mensagem amigavel de bloqueio quando o status nao permitir acesso.
+
 ## RPCs e Functions Restantes
 
 Security Advisor ainda aponta functions `SECURITY DEFINER` executaveis por `authenticated`.
@@ -135,9 +195,15 @@ Mantidas temporariamente por uso em RLS/RPC real:
 
 Decisao:
 
-- Nao revogar agora sem login real, pois pode quebrar fluxos clinicos.
-- Reavaliar apos testes autenticados.
+- Nao revogar agora sem teste completo pela interface, pois pode quebrar fluxos clinicos.
+- Reavaliar apos testes reais no navegador.
 - Considerar mover RPCs sensiveis para schema privado ou Edge Functions em etapa posterior.
+
+Security Advisor em 25/06/2026:
+
+- Sem alerta critico novo de RLS/storage nas validacoes executadas.
+- Warnings restantes: functions `SECURITY DEFINER` executaveis por `authenticated`, aceitas temporariamente porque sao helpers/RPCs do app.
+- Warning adicional: Leaked Password Protection desabilitado no Supabase Auth. Recomenda-se habilitar no painel do Supabase antes da producao real.
 
 ## Criterio de Liberacao
 
@@ -159,4 +225,6 @@ Somente declarar pronto para dados clinicos reais quando:
 
 ## Conclusao
 
-O banco esta estruturado e endurecido em uma boa base inicial, e o fluxo seguro de setup do primeiro usuario foi preparado. A liberacao para dados clinicos reais ainda depende obrigatoriamente da criacao segura dos usuarios Auth e da validacao multiempresa autenticada.
+O banco esta estruturado e endurecido em uma boa base inicial. Os usuarios Auth e profiles ja foram criados com vinculo correto, e os testes autenticados de RLS/Storage passaram por simulacao segura com rollback.
+
+Ainda nao liberar dados clinicos reais ate validar login visual, fluxo clinico completo, relatorios/PDF e upload real pela interface usando as senhas criadas fora do repositorio.
