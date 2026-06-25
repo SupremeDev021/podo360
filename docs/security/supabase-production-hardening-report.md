@@ -61,6 +61,16 @@ Estado validado em 25/06/2026:
 
 Portanto, login real e teste multiempresa autenticado ainda nao puderam ser executados.
 
+## Fluxo de Setup Inicial
+
+Foi preparado um fluxo seguro para auxiliar a criacao do primeiro usuario:
+
+- rota do Admin: `/admin/setup`;
+- documento operacional: `docs/setup/criar-primeiro-usuario-podo360.md`;
+- script exemplo sem segredo: `scripts/setup/create-initial-user.example.ts`.
+
+Esse fluxo nao coloca senha em migration e nao usa `service_role` no frontend. A criacao real do usuario deve acontecer pelo Supabase Auth ou por script local ignorado pelo Git.
+
 ## Validacao de Banco
 
 Migrations remotas sincronizadas:

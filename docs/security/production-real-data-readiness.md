@@ -44,6 +44,18 @@ Motivo principal:
 9. Validar status `suspended`/reativacao.
 10. Reavaliar Security Advisor apos testes autenticados.
 
+## Setup Inicial Preparado
+
+Foi preparado um caminho seguro para criacao do primeiro usuario sem versionar senha:
+
+- Tela do Admin: `/admin/setup`
+- Guia: `docs/setup/criar-primeiro-usuario-podo360.md`
+- Script exemplo: `scripts/setup/create-initial-user.example.ts`
+
+A tela `/admin/setup` nao usa `service_role` no navegador e nao salva senha. Ela orienta a criacao do usuario no Supabase Auth e gera o SQL para vincular o `profile` ao `company_id` correto.
+
+Arquivos locais reais com senha devem usar o sufixo `.local.ts`, que esta protegido no `.gitignore`.
+
 ## Procedimento Seguro para Criar Usuarios
 
 Nao criar usuario com senha em migration versionada.
@@ -147,4 +159,4 @@ Somente declarar pronto para dados clinicos reais quando:
 
 ## Conclusao
 
-O banco esta estruturado e endurecido em uma boa base inicial, mas a liberacao para dados clinicos reais depende obrigatoriamente da criacao segura dos usuarios Auth e da validacao multiempresa autenticada.
+O banco esta estruturado e endurecido em uma boa base inicial, e o fluxo seguro de setup do primeiro usuario foi preparado. A liberacao para dados clinicos reais ainda depende obrigatoriamente da criacao segura dos usuarios Auth e da validacao multiempresa autenticada.
