@@ -48,6 +48,16 @@ export async function getCompanyAccessState(companyId: string): Promise<CompanyA
     return buildCompanyAccessState("active");
   }
 
+  const { data: platformAccess } = await supabase
+    .from("company_platform_access")
+    .select("status")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (platformAccess?.status) {
+    return buildCompanyAccessState(normalizeCompanyStatus(platformAccess.status));
+  }
+
   const { data, error } = await supabase
     .from("companies")
     .select("plan_status, blocked_at")
