@@ -15,6 +15,7 @@ playwright-report
 test-results
 .vite
 .tools
+supabase/.temp
 *.tsbuildinfo
 edge-debug-profile/
 preview-root/
