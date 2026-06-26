@@ -13,6 +13,7 @@ import {
   EyeOff,
   FileText,
   HeartPulse,
+  Footprints,
   Image as ImageIcon,
   KeyRound,
   Layers3,
@@ -30,7 +31,7 @@ import {
   UploadCloud,
   Users
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
@@ -41,26 +42,11 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MetricCard } from "./components/MetricCard";
 import { UniqueMedicalRecordView } from "./components/UniqueMedicalRecord";
 import { WoundImageModule } from "./components/WoundImageModule";
-import {
-  demoAnamneses,
-  demoAutoclaveRecords,
-  demoAttendanceImages,
-  demoAttendances,
-  demoClinicalAppointments,
-  demoCompany,
-  demoFinancial,
-  demoFootSensitivityMaps,
-  demoHciConsents,
-  demoHciMatches,
-  demoIntegratedHistories,
-  demoPatients,
-  demoProfiles,
-  demoStock,
-  demoUniqueMedicalRecords
-} from "./data/demoData";
 import { podologyProductCatalog, podologyProductCategories } from "./data/productCatalog";
-import { supabase } from "./lib/supabase";
+import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { generateReferralReport } from "./services/aiReferralReportService";
+import { COMPANY_ACCESS_UNAVAILABLE_MESSAGE } from "./services/companyStatusService";
+import { getPlatformAccessSnapshot } from "./services/platformAccessService";
 import { roleLabel } from "./services/rbac";
 import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
@@ -88,6 +74,28 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 const FINALIZED_ATTENDANCE_MESSAGE = "Este atendimento já foi finalizado. Para editar, cancele a finalização na aba Gerenciamento de Atendimento.";
 const OPEN_BA_EXISTS_MESSAGE = "Este paciente já possui um BA aberto. Finalize o atendimento atual antes de abrir um novo BA.";
 const OPEN_ATTENDANCE_STATUSES: Attendance["status"][] = ["ba_open", "waiting", "in_progress", "reopened", "paused"];
+const USER_WITHOUT_PROFILE_MESSAGE = "Seu usuario ainda nao esta vinculado a uma clinica. Entre em contato com o suporte Podo360.";
+
+type AuthStatus = "checking" | "unauthenticated" | "authenticated" | "blocked";
+
+const loginCompanyPlaceholder: Company = {
+  id: "",
+  name: "Podo360",
+  displayName: "Podo360",
+  contactEmail: "",
+  contactPhone: "",
+  document: "",
+  planName: "",
+  planStatus: "active",
+  primaryColor: "#0f766e",
+  secondaryColor: "#134e4a",
+  accentColor: "#14b8a6",
+  backgroundColor: "#f3f7fb",
+  sidebarColor: "#071923",
+  sidebarTextColor: "#f8fbfc",
+  sidebarHoverColor: "#0f766e",
+  enableInsuranceType: false
+};
 
 function isAttendanceFinalized(attendance?: Pick<Attendance, "status" | "finishedAt">) {
   return Boolean(attendance && (attendance.status === "completed" || attendance.finishedAt));
@@ -125,6 +133,101 @@ function catalogStock(companyId: string, existing: StockProduct[]) {
       active: true
     }));
   return [...existing, ...catalog];
+}
+
+type ProfileRow = {
+  id: string;
+  company_id: string | null;
+  full_name: string;
+  email: string;
+  role: Profile["role"];
+  active: boolean;
+  disabled_at?: string | null;
+  disabled_by?: string | null;
+};
+
+type CompanyRow = {
+  id: string;
+  name: string;
+  document?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  plan_status: Company["planStatus"];
+  blocked_at?: string | null;
+};
+
+type CompanySettingsRow = {
+  display_name?: string | null;
+  logo_url?: string | null;
+  logo_path?: string | null;
+  logo_uploaded_at?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  accent_color?: string | null;
+  background_color?: string | null;
+  sidebar_color?: string | null;
+  sidebar_text_color?: string | null;
+  sidebar_hover_color?: string | null;
+  commercial_data?: {
+    contactEmail?: string;
+    contactPhone?: string;
+    document?: string;
+    enableInsuranceType?: boolean;
+  } | null;
+  hci_enabled?: boolean | null;
+  hci_consent_validity_days?: number | null;
+  hci_allow_images?: boolean | null;
+  hci_default_scope?: Company["hciDefaultScope"] | null;
+  auto_financial_on_finish?: boolean | null;
+  require_financial_confirmation?: boolean | null;
+  include_products_in_financial?: boolean | null;
+  include_procedures_in_financial?: boolean | null;
+};
+
+function mapProfile(row: ProfileRow): Profile {
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    fullName: row.full_name,
+    email: row.email,
+    role: row.role,
+    active: row.active,
+    disabledAt: row.disabled_at ?? undefined,
+    disabledBy: row.disabled_by ?? undefined
+  };
+}
+
+function mapCompany(row: CompanyRow, settings?: CompanySettingsRow | null, planName = ""): Company {
+  const commercial = settings?.commercial_data ?? {};
+  return {
+    id: row.id,
+    name: row.name,
+    displayName: settings?.display_name || row.name,
+    logoUrl: settings?.logo_url ?? undefined,
+    logoPath: settings?.logo_path ?? undefined,
+    logoUploadedAt: settings?.logo_uploaded_at ?? undefined,
+    contactEmail: commercial.contactEmail || row.contact_email || "",
+    contactPhone: commercial.contactPhone || row.contact_phone || "",
+    document: commercial.document || row.document || "",
+    planName,
+    planStatus: row.blocked_at ? "blocked" : row.plan_status,
+    primaryColor: settings?.primary_color || loginCompanyPlaceholder.primaryColor,
+    secondaryColor: settings?.secondary_color || loginCompanyPlaceholder.secondaryColor,
+    accentColor: settings?.accent_color || loginCompanyPlaceholder.accentColor,
+    backgroundColor: settings?.background_color || loginCompanyPlaceholder.backgroundColor,
+    sidebarColor: settings?.sidebar_color || loginCompanyPlaceholder.sidebarColor,
+    sidebarTextColor: settings?.sidebar_text_color || loginCompanyPlaceholder.sidebarTextColor,
+    sidebarHoverColor: settings?.sidebar_hover_color || loginCompanyPlaceholder.sidebarHoverColor,
+    hciEnabled: Boolean(settings?.hci_enabled),
+    hciConsentValidityDays: settings?.hci_consent_validity_days ?? 180,
+    hciAllowImages: Boolean(settings?.hci_allow_images),
+    hciDefaultScope: settings?.hci_default_scope ?? "history_without_images",
+    autoFinancialOnFinish: Boolean(settings?.auto_financial_on_finish),
+    requireFinancialConfirmation: settings?.require_financial_confirmation ?? true,
+    includeProductsInFinancial: settings?.include_products_in_financial ?? true,
+    includeProceduresInFinancial: settings?.include_procedures_in_financial ?? true,
+    enableInsuranceType: Boolean(commercial.enableInsuranceType)
+  };
 }
 
 type AppNotice = {
@@ -191,33 +294,35 @@ function allowedViewsForProfile(profile: Profile): ViewKey[] {
 }
 
 export function App() {
-  const [company, setCompany] = useState<Company>(demoCompany);
-  const [signedIn, setSignedIn] = useState(false);
+  const [company, setCompany] = useState<Company>(loginCompanyPlaceholder);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [authMessage, setAuthMessage] = useState("Validando acesso...");
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
-  const [patients, setPatients] = useState<Patient[]>(demoPatients);
-  const [uniqueMedicalRecords, setUniqueMedicalRecords] = useState<UniqueMedicalRecord[]>(demoUniqueMedicalRecords);
-  const [appointments, setAppointments] = useState<ClinicalAppointment[]>(demoClinicalAppointments);
-  const [attendances, setAttendances] = useState<Attendance[]>(demoAttendances);
-  const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>(demoAnamneses);
-  const [financial, setFinancial] = useState<FinancialTransaction[]>(demoFinancial);
-  const [stock, setStock] = useState<StockProduct[]>(() => catalogStock(demoCompany.id, demoStock));
-  const [autoclaveRecords, setAutoclaveRecords] = useState<AutoclaveRecord[]>(demoAutoclaveRecords);
-  const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>(demoFootSensitivityMaps);
-  const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>(demoAttendanceImages);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [uniqueMedicalRecords, setUniqueMedicalRecords] = useState<UniqueMedicalRecord[]>([]);
+  const [appointments, setAppointments] = useState<ClinicalAppointment[]>([]);
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [anamneses, setAnamneses] = useState<AnamnesisRecord[]>([]);
+  const [financial, setFinancial] = useState<FinancialTransaction[]>([]);
+  const [stock, setStock] = useState<StockProduct[]>([]);
+  const [autoclaveRecords, setAutoclaveRecords] = useState<AutoclaveRecord[]>([]);
+  const [footSensitivityMaps, setFootSensitivityMaps] = useState<FootSensitivityMap[]>([]);
+  const [attendanceImages, setAttendanceImages] = useState<AttendanceImage[]>([]);
   const [attendanceAuditLogs, setAttendanceAuditLogs] = useState<AttendanceAuditLog[]>([]);
   const [includeHciInReport, setIncludeHciInReport] = useState(false);
   const [hciQuery, setHciQuery] = useState("");
-  const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(demoHciMatches[0]);
-  const [selectedPatientId, setSelectedPatientId] = useState(demoPatients[0].id);
-  const [activeAttendanceId, setActiveAttendanceId] = useState<string | null>(demoAttendances[2]?.id ?? null);
+  const [hciSelectedMatch, setHciSelectedMatch] = useState<HciPatientMatch | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [activeAttendanceId, setActiveAttendanceId] = useState<string | null>(null);
   const [baOpeningPrefill, setBaOpeningPrefill] = useState<BaOpeningPrefill | null>(null);
   const [aiReport, setAiReport] = useState("");
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const [baSubmitting, setBaSubmitting] = useState(false);
-  const profile = demoProfiles[0];
-  const allowedViews = allowedViewsForProfile(profile);
-  const hasAttendanceManagementAccess = canManageAttendanceReopen(profile, allowedViews);
+  const allowedViews = profile ? allowedViewsForProfile(profile) : [];
+  const hasAttendanceManagementAccess = profile ? canManageAttendanceReopen(profile, allowedViews) : false;
 
   function handleMaskedInput(event: FormEvent<HTMLDivElement>) {
     const input = event.target as HTMLInputElement;
@@ -231,6 +336,127 @@ export function App() {
       input.value = formatCurrencyInput(input.value);
     }
   }
+
+  const resetClinicState = useCallback(() => {
+    setCompany(loginCompanyPlaceholder);
+    setProfile(null);
+    setProfiles([]);
+    setPatients([]);
+    setUniqueMedicalRecords([]);
+    setAppointments([]);
+    setAttendances([]);
+    setAnamneses([]);
+    setFinancial([]);
+    setStock([]);
+    setAutoclaveRecords([]);
+    setFootSensitivityMaps([]);
+    setAttendanceImages([]);
+    setAttendanceAuditLogs([]);
+    setSelectedPatientId("");
+    setActiveAttendanceId(null);
+    setActiveView("dashboard");
+    setAiReport("");
+    setHciSelectedMatch(null);
+  }, []);
+
+  const loadAuthenticatedAccess = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      resetClinicState();
+      setAuthMessage("Acesso indisponivel. Configure o ambiente oficial do Supabase para entrar.");
+      setAuthStatus("unauthenticated");
+      return;
+    }
+
+    setAuthStatus("checking");
+    setAuthMessage("Validando acesso...");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const session = sessionData.session;
+
+    if (sessionError || !session?.user) {
+      resetClinicState();
+      setAuthStatus("unauthenticated");
+      setAuthMessage("");
+      return;
+    }
+
+    const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,company_id,full_name,email,role,active,disabled_at,disabled_by")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (profileError || !profileRow) {
+      await supabase.auth.signOut();
+      resetClinicState();
+      setAuthMessage(USER_WITHOUT_PROFILE_MESSAGE);
+      setAuthStatus("blocked");
+      return;
+    }
+
+    const nextProfile = mapProfile(profileRow as ProfileRow);
+
+    if (!nextProfile.active || nextProfile.disabledAt) {
+      await supabase.auth.signOut();
+      resetClinicState();
+      setAuthMessage("Seu usuario esta inativo. Entre em contato com o suporte Podo360.");
+      setAuthStatus("blocked");
+      return;
+    }
+
+    if (!nextProfile.companyId) {
+      await supabase.auth.signOut();
+      resetClinicState();
+      setAuthMessage(USER_WITHOUT_PROFILE_MESSAGE);
+      setAuthStatus("blocked");
+      return;
+    }
+
+    const platformAccess = await getPlatformAccessSnapshot(nextProfile.companyId);
+    if (!platformAccess.access.canAccess) {
+      await supabase.auth.signOut();
+      resetClinicState();
+      setAuthMessage(platformAccess.access.message || COMPANY_ACCESS_UNAVAILABLE_MESSAGE);
+      setAuthStatus("blocked");
+      return;
+    }
+
+    const [{ data: companyRow, error: companyError }, { data: settingsRow, error: settingsError }, { data: profileRows, error: profilesError }] = await Promise.all([
+      supabase.from("companies").select("id,name,document,contact_email,contact_phone,plan_status,blocked_at").eq("id", nextProfile.companyId).maybeSingle(),
+      supabase.from("company_settings").select("*").eq("company_id", nextProfile.companyId).maybeSingle(),
+      supabase.from("profiles").select("id,company_id,full_name,email,role,active,disabled_at,disabled_by").eq("company_id", nextProfile.companyId)
+    ]);
+
+    if (companyError || settingsError || profilesError || !companyRow) {
+      await supabase.auth.signOut();
+      resetClinicState();
+      setAuthMessage("Nao foi possivel carregar a clinica vinculada. Entre em contato com o suporte Podo360.");
+      setAuthStatus("blocked");
+      return;
+    }
+
+    const nextCompany = mapCompany(companyRow as CompanyRow, settingsRow as CompanySettingsRow | null, platformAccess.plan?.name || "");
+    setCompany(nextCompany);
+    setProfile(nextProfile);
+    setProfiles(((profileRows ?? []) as ProfileRow[]).map(mapProfile));
+    setStock(catalogStock(nextCompany.id, []));
+    setAuthMessage("");
+    setAuthStatus("authenticated");
+  }, [resetClinicState]);
+
+  useEffect(() => {
+    void loadAuthenticatedAccess();
+    if (!supabase) return undefined;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        resetClinicState();
+        setAuthStatus("unauthenticated");
+        return;
+      }
+      void loadAuthenticatedAccess();
+    });
+    return () => data.subscription.unsubscribe();
+  }, [loadAuthenticatedAccess, resetClinicState]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
@@ -254,19 +480,13 @@ export function App() {
     }
   }, [company]);
 
-  const selectedPatient = patients.find((patient) => patient.id === selectedPatientId) ?? patients[0];
-  const selectedUniqueMedicalRecord = uniqueMedicalRecords.find((record) => record.id === selectedPatient.uniqueMedicalRecordId);
-  const selectedPatientAttendances = attendances.filter((attendance) => attendance.patientId === selectedPatient.id);
-  const selectedPatientAnamneses = anamneses.filter((record) => record.patientId === selectedPatient.id);
-  const selectedPatientFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === selectedPatient.id);
-  const selectedPatientImages = attendanceImages.filter((image) => image.patientId === selectedPatient.id);
-  const authorizedHciHistories = demoIntegratedHistories.filter((history) =>
-    demoHciConsents.some((consent) =>
-      consent.uniqueMedicalRecordId === selectedPatient.uniqueMedicalRecordId &&
-      consent.sourceCompanyId === history.sourceCompany.id &&
-      consent.consentStatus === "authorized"
-      )
-  );
+  const selectedPatient = patients.find((patient) => patient.id === selectedPatientId) ?? patients[0] ?? null;
+  const selectedUniqueMedicalRecord = selectedPatient ? uniqueMedicalRecords.find((record) => record.id === selectedPatient.uniqueMedicalRecordId) : undefined;
+  const selectedPatientAttendances = selectedPatient ? attendances.filter((attendance) => attendance.patientId === selectedPatient.id) : [];
+  const selectedPatientAnamneses = selectedPatient ? anamneses.filter((record) => record.patientId === selectedPatient.id) : [];
+  const selectedPatientFootMaps = selectedPatient ? footSensitivityMaps.filter((entry) => entry.patientId === selectedPatient.id) : [];
+  const selectedPatientImages = selectedPatient ? attendanceImages.filter((image) => image.patientId === selectedPatient.id) : [];
+  const authorizedHciHistories: IntegratedClinicalHistory[] = [];
 
   function notify(title: string, message: string, tone: AppNotice["tone"] = "success") {
     setNotice({ id: Date.now(), title, message, tone });
@@ -289,8 +509,12 @@ export function App() {
     return false;
   }
 
-  async function handleGenerateAiReport(patientId = selectedPatient.id, reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId?: string) {
-    const reportPatient = patients.find((item) => item.id === patientId && item.companyId === company.id) ?? selectedPatient;
+  async function handleGenerateAiReport(patientId?: string, reason = "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId?: string) {
+    const reportPatient = (patientId ? patients.find((item) => item.id === patientId && item.companyId === company.id) : selectedPatient) ?? null;
+    if (!reportPatient) {
+      notify("Selecione um paciente", "Nao ha paciente carregado para gerar relatorio.", "warning");
+      return;
+    }
     const patientAttendances = attendances.filter((attendance) => attendance.patientId === reportPatient.id && attendance.companyId === company.id);
     const reportAttendances = attendanceId ? patientAttendances.filter((attendance) => attendance.id === attendanceId) : patientAttendances;
     if (attendanceId && !reportAttendances.length) {
@@ -301,13 +525,7 @@ export function App() {
     const reportAnamneses = anamneses.filter((record) => record.patientId === reportPatient.id && record.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(record.attendanceId)));
     const reportFootMaps = footSensitivityMaps.filter((entry) => entry.patientId === reportPatient.id && entry.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(entry.attendanceId)));
     const reportImages = attendanceImages.filter((image) => image.patientId === reportPatient.id && image.companyId === company.id && (!attendanceId || relatedAttendanceIds.has(image.attendanceId)));
-    const reportHciHistories = demoIntegratedHistories.filter((history) =>
-      demoHciConsents.some((consent) =>
-        consent.uniqueMedicalRecordId === reportPatient.uniqueMedicalRecordId &&
-        consent.sourceCompanyId === history.sourceCompany.id &&
-        consent.consentStatus === "authorized"
-      )
-    );
+    const reportHciHistories: IntegratedClinicalHistory[] = [];
     try {
       const content = await generateReferralReport({
         company,
@@ -318,7 +536,7 @@ export function App() {
         attendanceImages: reportImages,
         integratedHistories: includeHciInReport ? reportHciHistories : [],
         includeHci: includeHciInReport,
-        professionalName: profile.fullName,
+        professionalName: profile!.fullName,
         reason
       });
       setAiReport(content);
@@ -474,7 +692,7 @@ export function App() {
       appointmentId: options?.appointmentId,
       convertedFromAppointment: Boolean(options?.appointmentId),
       openedAt,
-      openedBy: profile.id,
+      openedBy: profile!.id,
       scheduledAt: openedAt,
       attendanceDate: openedAt,
       type: options?.type ?? "Atendimento podologico",
@@ -502,7 +720,9 @@ export function App() {
         setBaSubmitting(false);
         return false;
       }
-      notify("BA salvo apenas localmente", "Nao foi possivel sincronizar o novo BA com o ambiente online.", "warning");
+      notify("Erro ao abrir BA", "Nao foi possivel sincronizar o novo BA com o ambiente online. Tente novamente.", "danger");
+      setBaSubmitting(false);
+      return false;
     } finally {
       setBaSubmitting(false);
     }
@@ -517,7 +737,7 @@ export function App() {
                 status: "converted_to_ba",
                 convertedAttendanceId: attendance.id,
                 convertedAt: openedAt,
-                convertedBy: profile.id,
+                convertedBy: profile!.id,
                 updatedAt: openedAt
               }
             : appointment
@@ -541,7 +761,7 @@ export function App() {
     const phone = String(form.get("phone"));
     const whatsapp = String(form.get("whatsapp") || phone);
     const uniqueRecordNumber = String(form.get("uniqueRecordNumber") || "");
-    const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, demoHciMatches);
+    const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, []);
     const existingPatient = patients.find((patient) =>
       normalizeText(patient.uniqueRecordNumber) === normalizeText(uniqueRecordNumber) ||
       normalizeDigits(patient.cpf) === normalizeDigits(cpf) ||
@@ -640,7 +860,7 @@ export function App() {
         ...appointment,
         id: `clinical-appointment-${appointments.length + 1}`,
         status: "scheduled",
-        createdBy: profile.id,
+        createdBy: profile!.id,
         createdAt: now,
         updatedAt: now
       };
@@ -718,8 +938,8 @@ export function App() {
           ...attendance,
           status: "in_progress",
           startedAt: attendance.startedAt ?? now,
-          startedBy: attendance.startedBy ?? profile.id,
-          professionalId: attendance.professionalId || profile.id,
+          startedBy: attendance.startedBy ?? profile!.id,
+          professionalId: attendance.professionalId || profile!.id,
           updatedAt: now
         };
       })
@@ -746,7 +966,7 @@ export function App() {
     setAttendances((current) =>
       current.map((attendance) =>
         attendance.id === attendanceId
-          ? { ...attendance, status: "completed", finishedAt: attendance.finishedAt ?? now, finishedBy: profile.id, updatedAt: now }
+          ? { ...attendance, status: "completed", finishedAt: attendance.finishedAt ?? now, finishedBy: profile!.id, updatedAt: now }
           : attendance
       )
     );
@@ -793,7 +1013,7 @@ export function App() {
       previousStatus: attendance.status,
       newStatus: "in_progress",
       reason: cleanReason,
-      createdBy: profile.id,
+      createdBy: profile!.id,
       createdAt: now,
       metadata: {
         previousFinishedAt: attendance.finishedAt,
@@ -809,10 +1029,10 @@ export function App() {
               status: "in_progress",
               previousFinishedAt: item.finishedAt,
               finalizationCancelledAt: now,
-              finalizationCancelledBy: profile.id,
+              finalizationCancelledBy: profile!.id,
               finalizationCancelledReason: cleanReason,
               reopenedAt: now,
-              reopenedBy: profile.id,
+              reopenedBy: profile!.id,
               reopenReason: cleanReason,
               finishedAt: undefined,
               finishedBy: undefined,
@@ -851,7 +1071,7 @@ export function App() {
 
   async function handleCreateFinancial(transaction: FinancialTransaction) {
     try {
-      await createFinancialTransaction(transaction, profile.id);
+      await createFinancialTransaction(transaction, profile!.id);
       setFinancial((current) => [transaction, ...current]);
       notify("Lancamento cadastrado com sucesso", `${transaction.description} foi incluido no financeiro.`, "success");
     } catch {
@@ -877,12 +1097,27 @@ export function App() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     }
-    setSignedIn(false);
-    setActiveView("dashboard");
+    resetClinicState();
+    setAuthStatus("unauthenticated");
   }
 
-  if (!signedIn) {
-    return <LoginScreen company={company} onDemoAccess={() => setSignedIn(true)} />;
+  if (authStatus === "checking") {
+    return <AccessStateScreen title="Validando acesso..." message="Estamos verificando sua sessao e o vinculo da clinica." />;
+  }
+
+  if (authStatus === "blocked") {
+    return <AccessStateScreen title="Acesso bloqueado" message={authMessage || COMPANY_ACCESS_UNAVAILABLE_MESSAGE} />;
+  }
+
+  if (authStatus !== "authenticated" || !profile) {
+    return (
+      <LoginScreen
+        company={loginCompanyPlaceholder}
+        onLoginSuccess={() => {
+          void loadAuthenticatedAccess();
+        }}
+      />
+    );
   }
 
   return (
@@ -894,7 +1129,7 @@ export function App() {
       {activeView === "ba-opening" && (
         <BaOpening
           company={company}
-          profiles={demoProfiles}
+          profiles={profiles}
           patients={patients}
           attendances={attendances}
           prefill={baOpeningPrefill}
@@ -913,39 +1148,42 @@ export function App() {
         />
       )}
       {activeView === "patient-profile" && (
-        <PatientProfile
-          patient={selectedPatient}
-          attendances={selectedPatientAttendances}
-          activeAttendanceId={activeAttendanceId}
-          uniqueMedicalRecord={selectedUniqueMedicalRecord}
-          anamneses={selectedPatientAnamneses}
-          footSensitivityMaps={selectedPatientFootMaps}
-          attendanceImages={selectedPatientImages}
-          products={stock.filter((item) => item.companyId === company.id)}
-          onGenerateReport={(attendanceId) => handleGenerateAiReport(selectedPatient.id, "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId)}
-          aiReport={aiReport}
-          onChangeAiReport={setAiReport}
-          onCreateAttendance={handleCreateAttendance}
-          onFinishAttendance={handleFinishAttendance}
-          onSaveAnamnesis={handleSaveAnamnesis}
-          onSaveFootSensitivity={handleSaveFootSensitivity}
-          onRemoveFootSensitivity={handleRemoveFootSensitivity}
-          onSaveAttendanceImage={handleSaveAttendanceImage}
-          onSaveComparativeNote={handleSaveComparativeNote}
-          company={company}
-          professionalId={profile.id}
-          profiles={demoProfiles}
-          hciHistories={authorizedHciHistories}
-          onSchedule={() => setActiveView("schedule")}
-          onSelectAttendance={setActiveAttendanceId}
-        />
+        selectedPatient ? (
+          <PatientProfile
+            patient={selectedPatient}
+            attendances={selectedPatientAttendances}
+            activeAttendanceId={activeAttendanceId}
+            uniqueMedicalRecord={selectedUniqueMedicalRecord}
+            anamneses={selectedPatientAnamneses}
+            footSensitivityMaps={selectedPatientFootMaps}
+            attendanceImages={selectedPatientImages}
+            products={stock.filter((item) => item.companyId === company.id)}
+            onGenerateReport={(attendanceId) => handleGenerateAiReport(selectedPatient.id, "Persistencia de sintomas e necessidade de avaliacao medica complementar.", attendanceId)}
+            aiReport={aiReport}
+            onChangeAiReport={setAiReport}
+            onCreateAttendance={handleCreateAttendance}
+            onFinishAttendance={handleFinishAttendance}
+            onSaveAnamnesis={handleSaveAnamnesis}
+            onSaveFootSensitivity={handleSaveFootSensitivity}
+            onRemoveFootSensitivity={handleRemoveFootSensitivity}
+            onSaveAttendanceImage={handleSaveAttendanceImage}
+            onSaveComparativeNote={handleSaveComparativeNote}
+            company={company}
+            professionalId={profile!.id}
+            profiles={profiles}
+            hciHistories={authorizedHciHistories}
+            onSchedule={() => setActiveView("schedule")}
+            onSelectAttendance={setActiveAttendanceId}
+          />
+        ) : <EmptyState title="Nenhum paciente selecionado" message="Cadastre ou selecione um paciente para abrir o Prontuario de Evolucao." />
       )}
       {activeView === "attendances" && (
         <Attendances
+          companyId={company.id}
           attendances={attendances}
           attendanceImages={attendanceImages}
           patients={patients}
-          profiles={demoProfiles}
+          profiles={profiles}
           onContinue={handleStartAttendance}
           onExport={(attendance) => {
             const patient = patients.find((item) => item.id === attendance.patientId);
@@ -965,7 +1203,7 @@ export function App() {
             attendances={attendances}
             auditLogs={attendanceAuditLogs}
             patients={patients}
-            profiles={demoProfiles}
+            profiles={profiles}
             onOpenAttendance={(patientId, attendanceId) => {
               setSelectedPatientId(patientId);
               setActiveAttendanceId(attendanceId);
@@ -982,7 +1220,7 @@ export function App() {
           company={company}
           appointments={appointments}
           patients={patients}
-          profiles={demoProfiles}
+          profiles={profiles}
           onSaveAppointment={handleSaveAppointment}
           onUpdateStatus={handleUpdateAppointmentStatus}
           onUpdateAppointment={handleUpdateAppointment}
@@ -990,41 +1228,63 @@ export function App() {
           onNotify={notify}
         />
       )}
-      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={demoProfiles} companyId={company.id} stock={stock} onCreateProduct={handleCreateProduct} onUpdateProduct={handleUpdateProduct} />}
-      {activeView === "stock" && <Stock companyId={company.id} onCreate={handleCreateProduct} onUpdate={handleUpdateProduct} stock={stock} />}
-      {activeView === "autoclave" && <AutoclaveRecords company={company} profile={profile} records={autoclaveRecords} stock={stock} onSave={handleSaveAutoclaveRecord} />}
+      {activeView === "financial" && <Financial attendances={attendances} financial={financial} onCreate={handleCreateFinancial} patients={patients} profiles={profiles} companyId={company.id} currentUserId={profile!.id} stock={stock} onCreateProduct={handleCreateProduct} onUpdateProduct={handleUpdateProduct} />}
+      {activeView === "stock" && <Stock companyId={company.id} currentUserId={profile!.id} onCreate={handleCreateProduct} onUpdate={handleUpdateProduct} stock={stock} />}
+      {activeView === "autoclave" && <AutoclaveRecords company={company} profile={profile!} records={autoclaveRecords} stock={stock} onSave={handleSaveAutoclaveRecord} />}
       {activeView === "reports" && (
-        <Reports
-          anamneses={anamneses}
-          attendanceImages={attendanceImages}
-          attendances={attendances}
-          company={company}
-          companyId={company.id}
-          financial={financial}
-          patient={selectedPatient}
-          patients={patients}
-          profiles={demoProfiles}
-          report={aiReport}
-          includeHci={includeHciInReport}
-          hciAvailable={demoHciMatches.some((match) => match.consentStatus === "authorized")}
-          onIncludeHciChange={setIncludeHciInReport}
-          onGenerate={handleGenerateAiReport}
-          onChangeReport={setAiReport}
-        />
+        selectedPatient ? (
+          <Reports
+            anamneses={anamneses}
+            attendanceImages={attendanceImages}
+            attendances={attendances}
+            company={company}
+            companyId={company.id}
+            financial={financial}
+            patient={selectedPatient}
+            patients={patients}
+            profiles={profiles}
+            report={aiReport}
+            includeHci={includeHciInReport}
+            hciAvailable={false}
+            onIncludeHciChange={setIncludeHciInReport}
+            onGenerate={handleGenerateAiReport}
+            onChangeReport={setAiReport}
+          />
+        ) : <EmptyState title="Nenhum paciente selecionado" message="Cadastre ou selecione um paciente para gerar relatorios." />
       )}
       {activeView === "hci" && (
         <HciView
           query={hciQuery}
           onQueryChange={setHciQuery}
-          matches={filterHciMatches(hciQuery, demoHciMatches)}
+          matches={[]}
           selectedMatch={hciSelectedMatch}
           onSelectMatch={setHciSelectedMatch}
         />
       )}
       {activeView === "settings" && <SettingsView company={company} profile={profile} onCompanyChange={setCompany} onNotify={notify} />}
-      {activeView === "super-admin" && <SuperAdmin company={company} onNotify={notify} />}
+      {activeView === "super-admin" && <SuperAdmin company={company} profiles={profiles} onNotify={notify} />}
       </div>
     </Layout>
+  );
+}
+
+function AccessStateScreen({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="login-screen login-screen--state">
+      <section className="login-access login-access--center">
+        <div className="login-card">
+          <div className="login-card__brand">
+            <span className="login-card__mark"><Footprints size={22} /></span>
+            <div><strong>Podo360</strong><small>Ambiente protegido</small></div>
+          </div>
+          <div className="login-card__heading">
+            <span className="login-card__eyebrow"><ShieldCheck size={15} /> Acesso seguro</span>
+            <h2>{title}</h2>
+            <p>{message}</p>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -1150,7 +1410,7 @@ function BaOpening({
   onNotify
 }: {
   company: Company;
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   patients: Patient[];
   attendances: Attendance[];
   prefill: BaOpeningPrefill | null;
@@ -1548,7 +1808,7 @@ function PatientProfile({
   onSaveComparativeNote: (imageIds: string[], note: string) => Promise<void> | void;
   company: Company;
   professionalId: string;
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   hciHistories: IntegratedClinicalHistory[];
   onSchedule: () => void;
   onSelectAttendance: (attendanceId: string) => void;
@@ -1830,7 +2090,7 @@ function PatientDataSection({ patient }: { patient: Patient }) {
   );
 }
 
-function PatientAttendanceHistory({ attendances, patient, profiles, company, anamneses, footSensitivityMaps, attendanceImages }: { attendances: Attendance[]; patient: Patient; profiles: typeof demoProfiles; company: Company; anamneses: AnamnesisRecord[]; footSensitivityMaps: FootSensitivityMap[]; attendanceImages: AttendanceImage[] }) {
+function PatientAttendanceHistory({ attendances, patient, profiles, company, anamneses, footSensitivityMaps, attendanceImages }: { attendances: Attendance[]; patient: Patient; profiles: Profile[]; company: Company; anamneses: AnamnesisRecord[]; footSensitivityMaps: FootSensitivityMap[]; attendanceImages: AttendanceImage[] }) {
   const [selected, setSelected] = useState<Attendance | null>(null);
   return (
     <section className="page-stack">
@@ -1947,7 +2207,7 @@ function AttendanceManagement({
   attendances: Attendance[];
   auditLogs: AttendanceAuditLog[];
   patients: Patient[];
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   onOpenAttendance: (patientId: string, attendanceId: string) => void;
   onReopen: (attendanceId: string, reason: string) => Promise<void> | void;
 }) {
@@ -2099,6 +2359,7 @@ function auditActionLabel(action: AttendanceAuditLog["action"]) {
 }
 
 function Attendances({
+  companyId,
   attendances,
   attendanceImages,
   patients,
@@ -2108,10 +2369,11 @@ function Attendances({
   onOpenPatient,
   onExport
 }: {
+  companyId: string;
   attendances: Attendance[];
   attendanceImages: AttendanceImage[];
   patients: Patient[];
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   onStart: (attendanceId: string) => void;
   onContinue: (attendanceId: string) => void;
   onOpenPatient: (patientId: string, attendanceId: string) => void;
@@ -2129,7 +2391,7 @@ function Attendances({
   const [dressingOnly, setDressingOnly] = useState(false);
 
   const filtered = attendances
-    .filter((attendance) => attendance.companyId === demoCompany.id)
+    .filter((attendance) => attendance.companyId === companyId)
     .filter((attendance) => {
       const patient = patients.find((item) => item.id === attendance.patientId);
       const text = normalizeText(`${patient?.fullName || ""} ${patient?.uniqueRecordNumber || ""} ${attendance.baNumber} ${attendance.complaint} ${attendance.procedure}`);
@@ -2213,7 +2475,7 @@ function ClinicalAgendaPage({
   company: Company;
   appointments: ClinicalAppointment[];
   patients: Patient[];
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   onSaveAppointment: (appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) => void;
   onUpdateStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
   onUpdateAppointment: (appointment: ClinicalAppointment) => void;
@@ -2269,7 +2531,7 @@ function ClinicalAgendaPage({
     }
 
     onSaveAppointment({
-      companyId: demoCompany.id,
+      companyId: company.id,
       patientId: patient?.id,
       uniqueMedicalRecordId: patient?.uniqueMedicalRecordId,
       temporaryPatientName: patientMode === "temporary" ? String(form.get("temporaryPatientName") || "") : undefined,
@@ -2509,7 +2771,7 @@ function FinancialReviewDialog({ attendance, patient, products, onCancel, onConf
   return <div className="dialog-backdrop"><section className="dialog-card dialog-card--large"><div><h2>Gerar lançamento financeiro deste atendimento</h2><p>Revise os itens antes de confirmar. O lançamento manual continua disponível no Financeiro.</p></div><div className="financial-review-summary"><strong>{patient?.fullName ?? "Paciente"}</strong><span>BA {attendance.baNumber} · Prontuário de Evolução {attendance.uniqueRecordNumber}</span></div><div className="financial-items">{items.map((item) => <div className="financial-item" key={item.id}><input aria-label="Descricao do item" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, label: event.target.value } : entry))} value={item.label} /><input aria-label="Valor do item" min="0" onChange={(event) => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, value: Number(event.target.value) } : entry))} step="0.01" type="number" value={item.value} /><button className="ghost-action" onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))} type="button">Remover</button></div>)}</div><div className="financial-item"><input onChange={(event) => setManualLabel(event.target.value)} placeholder="Adicionar item manual" value={manualLabel} /><input min="0" onChange={(event) => setManualValue(event.target.value)} placeholder="Valor" step="0.01" type="number" value={manualValue} /><button className="ghost-action" onClick={() => { if (!manualLabel) return; setItems((current) => [...current, { id: `manual-${Date.now()}`, label: manualLabel, value: Number(manualValue || 0) }]); setManualLabel(""); setManualValue(""); }} type="button">Adicionar</button></div><div className="form-grid form-grid--two"><label>Forma de pagamento<select onChange={(event) => setPaymentMethod(event.target.value as FinancialTransaction["paymentMethod"])} value={paymentMethod}>{(["pix", "cash", "credit_card", "debit_card", "insurance", "other"] as const).map((item) => <option key={item} value={item}>{paymentLabel(item)}</option>)}</select></label><label>Status<select onChange={(event) => setStatus(event.target.value as FinancialTransaction["status"])} value={status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></div><div className="financial-review-total"><span>Total</span><strong>{currency.format(total)}</strong></div><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={onCancel} type="button">Nao gerar lancamento agora</button><button className="primary-button" disabled={saving || !items.length} onClick={async () => { setSaving(true); await onConfirm({ id: `fin-${Date.now()}`, companyId: attendance.companyId, patientId: attendance.patientId, attendanceId: attendance.id, baNumber: attendance.baNumber, uniqueMedicalRecordId: attendance.uniqueMedicalRecordId, description: `Atendimento ${attendance.baNumber}: ${items.map((item) => item.label).join(", ")}`, type: "income", amount: total, dueDate: new Date().toISOString().slice(0, 10), paidAt: status === "paid" ? new Date().toISOString().slice(0, 10) : undefined, paymentMethod, category: "Atendimento", status, payerType: attendance.payerType, insuranceName: attendance.insuranceName, notes: "Gerado após revisão do atendimento." }); setSaving(false); }} type="button">{saving ? "Gerando..." : "Confirmar lançamento"}</button></div></section></div>;
 }
 
-function Financial({ financial, patients, attendances, profiles, companyId, onCreate, stock, onCreateProduct, onUpdateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: typeof demoProfiles; companyId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void>; onUpdateProduct: (product: StockProduct) => Promise<void> }) {
+function Financial({ financial, patients, attendances, profiles, companyId, currentUserId, onCreate, stock, onCreateProduct, onUpdateProduct }: { financial: FinancialTransaction[]; patients: Patient[]; attendances: Attendance[]; profiles: Profile[]; companyId: string; currentUserId: string; onCreate: (transaction: FinancialTransaction) => Promise<void>; stock: StockProduct[]; onCreateProduct: (product: StockProduct) => Promise<void>; onUpdateProduct: (product: StockProduct) => Promise<void> }) {
   const [section, setSection] = useState<"transactions" | "products">("transactions");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2558,7 +2820,7 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
   function clear() { setPeriod("all"); setPeriodStart(""); setPeriodEnd(""); setType("all"); setStatus("all"); setMethod("all"); setCategory("all"); setPatientId("all"); setBa(""); setProfessional("all"); setMin(""); setMax(""); }
 
   if (section === "products") {
-    return <div className="page-stack"><div className="filter-row"><button onClick={() => setSection("transactions")} type="button">Lancamentos</button><button className="is-active" type="button">Produtos</button></div><Stock companyId={companyId} onCreate={onCreateProduct} onUpdate={onUpdateProduct} stock={stock} /></div>;
+    return <div className="page-stack"><div className="filter-row"><button onClick={() => setSection("transactions")} type="button">Lancamentos</button><button className="is-active" type="button">Produtos</button></div><Stock companyId={companyId} currentUserId={currentUserId} onCreate={onCreateProduct} onUpdate={onUpdateProduct} stock={stock} /></div>;
   }
 
   return (
@@ -2588,7 +2850,7 @@ function Financial({ financial, patients, attendances, profiles, companyId, onCr
   );
 }
 
-function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]; companyId: string; onCreate: (product: StockProduct) => Promise<void>; onUpdate: (product: StockProduct) => Promise<void> }) {
+function Stock({ stock, companyId, currentUserId, onCreate, onUpdate }: { stock: StockProduct[]; companyId: string; currentUserId: string; onCreate: (product: StockProduct) => Promise<void>; onUpdate: (product: StockProduct) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<StockProduct | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2625,7 +2887,7 @@ function Stock({ stock, companyId, onCreate, onUpdate }: { stock: StockProduct[]
     <section className="metrics-grid"><MetricCard icon={<Boxes />} label="Total de produtos" value={String(stock.length)} detail="Produtos cadastrados" /><MetricCard icon={<AlertTriangle />} label="Estoque baixo" value={String(low.length)} detail="Abaixo do minimo" tone="danger" /><MetricCard icon={<CalendarClock />} label="Ativos" value={String(stock.filter((item) => item.active !== false).length)} detail="Disponiveis para uso" tone="warning" /><MetricCard icon={<Receipt />} label="Valor em estoque" value={currency.format(totalValue)} detail="Pelo custo medio" tone="success" /></section>
     {visibleStock.length ? <Table headers={["Produto", "Categoria", "Unidade", "Fornecedor", "Venda", "Status", "Acoes"]} rows={visibleStock.map((product) => [product.name, product.category, product.unit, product.supplier || "-", currency.format(product.saleValue), "Ativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditing(product); setOtherFields({}); setSelectedCategory(product.category); setOpen(true); }} type="button">Editar</button><button className="danger-link" onClick={() => setDeleting(product)} type="button">Excluir</button></div>])} /> : <EmptyState title="Nenhum produto cadastrado" message="Use Novo produto para iniciar o cadastro." />}
     {open && <div className="dialog-backdrop"><form className="dialog-card dialog-card--large" onSubmit={submit}><div><h2>{editing ? "Editar produto" : "Novo produto"}</h2><p>Escolha uma categoria para filtrar o catálogo ou informe um item personalizado.</p></div><div className="form-grid form-grid--two"><label>Categoria<select defaultValue={editing?.category || ""} name="category" onChange={(event) => { setSelectedCategory(event.target.value); setOtherFields((state) => ({ ...state, category: event.target.value === "__other__" })); }}><option value="">Todas as categorias</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__other__">Outra categoria</option></select>{otherFields.category && <input name="categoryOther" placeholder="Informe a nova categoria" required />}</label><label>Produto<select defaultValue={editing?.name || ""} name="name" onChange={(event) => setOtherFields((state) => ({ ...state, name: event.target.value === "__other__" }))}><option value="">Selecione um produto</option>{productsByCategory.map(([category, items]) => <optgroup key={category} label={category}>{items.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</optgroup>)}<option value="__other__">Outro produto</option></select>{otherFields.name && <input name="nameOther" placeholder="Informe o novo produto" required />}</label>{choiceField("unit", "Unidade de medida", units as Array<[string, string]>, editing?.unit)}{choiceField("supplier", "Fornecedor", suppliers.map((item): [string, string] => [item, item]), editing?.supplier)}<label>Codigo interno<input defaultValue={editing?.internalCode} name="internalCode" /></label><label>Quantidade atual<input defaultValue={editing?.currentQuantity ?? 0} min="0" name="currentQuantity" step="0.001" type="number" /></label><label>Quantidade minima<input defaultValue={editing?.minimumQuantity ?? 0} min="0" name="minimumQuantity" step="0.001" type="number" /></label><label>Valor de custo<input defaultValue={editing?.costValue ?? 0} min="0" name="costValue" step="0.01" type="number" /></label><label>Valor de venda<input defaultValue={editing?.saleValue ?? 0} min="0" name="saleValue" step="0.01" type="number" /></label><label className="toggle-row"><input defaultChecked={editing?.active !== false} name="active" type="checkbox" /> Produto ativo</label></div><label>Observacoes<textarea defaultValue={editing?.notes} name="notes" /></label><div className="dialog-card__actions"><button className="ghost-action" disabled={saving} onClick={() => { setOpen(false); setEditing(null); setSelectedCategory(""); }} type="button">Cancelar</button><button className="primary-button" disabled={saving} type="submit">{saving ? "Salvando..." : editing ? "Salvar alteracoes" : "Salvar produto"}</button></div></form></div>}
-    {deleting && <div className="dialog-backdrop"><section className="dialog-card"><div className="dialog-card__icon"><Trash2 size={22} /></div><div><h2>Deseja realmente excluir este item do estoque?</h2><p>Este item será inativado para preservar movimentações, atendimentos e relatórios vinculados.</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setDeleting(null)} type="button">Cancelar</button><button className="danger-button" onClick={async () => { await onUpdate({ ...deleting, active: false, deletedAt: new Date().toISOString(), deletedBy: demoProfiles[0].id }); setDeleting(null); }} type="button">Excluir item</button></div></section></div>}
+    {deleting && <div className="dialog-backdrop"><section className="dialog-card"><div className="dialog-card__icon"><Trash2 size={22} /></div><div><h2>Deseja realmente excluir este item do estoque?</h2><p>Este item será inativado para preservar movimentações, atendimentos e relatórios vinculados.</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setDeleting(null)} type="button">Cancelar</button><button className="danger-button" onClick={async () => { await onUpdate({ ...deleting, active: false, deletedAt: new Date().toISOString(), deletedBy: currentUserId }); setDeleting(null); }} type="button">Excluir item</button></div></section></div>}
   </div>;
 }
 
@@ -2790,7 +3052,7 @@ function Reports({
   financial: FinancialTransaction[];
   patient: Patient;
   patients: Patient[];
-  profiles: typeof demoProfiles;
+  profiles: Profile[];
   report: string;
   includeHci: boolean;
   hciAvailable: boolean;
@@ -2950,9 +3212,7 @@ function HciView({
   selectedMatch: HciPatientMatch | null;
   onSelectMatch: (match: HciPatientMatch) => void;
 }) {
-  const integratedHistory = selectedMatch?.consentStatus === "authorized"
-    ? demoIntegratedHistories.find((history) => history.patient.id === selectedMatch.patientId)
-    : undefined;
+  let integratedHistory: IntegratedClinicalHistory | undefined;
 
   return (
     <div className="page-stack">
@@ -3242,8 +3502,8 @@ function SettingsView({ company, profile, onCompanyChange, onNotify }: { company
   );
 }
 
-function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
-  const [users, setUsers] = useState(demoProfiles.filter((item) => item.companyId === company.id));
+function SuperAdmin({ company, profiles, onNotify }: { company: Company; profiles: Profile[]; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
+  const [users, setUsers] = useState(profiles.filter((item) => item.companyId === company.id));
   const [open, setOpen] = useState(false);
   const [selectedModules, setSelectedModules] = useState<string[]>(["dashboard", "patients", "schedule"]);
   const [savingUser, setSavingUser] = useState(false);
@@ -3251,6 +3511,10 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [actionUser, setActionUser] = useState<{ user: Profile; action: "reset_password" | "deactivate" | "reactivate" } | null>(null);
   const [showInitialPassword, setShowInitialPassword] = useState(false);
+
+  useEffect(() => {
+    setUsers(profiles.filter((item) => item.companyId === company.id));
+  }, [company.id, profiles]);
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3267,7 +3531,7 @@ function SuperAdmin({ company, onNotify }: { company: Company; onNotify: (title:
         return;
       }
     }
-    const user = { id: editingUser?.id ?? `user-${Date.now()}`, companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as typeof demoProfiles[number]["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
+    const user = { id: editingUser?.id ?? crypto.randomUUID(), companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as Profile["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
     setSavingUser(true);
     setUserMessage("");
     try {
@@ -3578,16 +3842,6 @@ function findExistingUniqueRecordForPatient(
   if (hciByNameAndBirth) return { uniqueMedicalRecordId: hciByNameAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: hciByNameAndBirth.uniqueRecordNumber };
 
   return null;
-}
-
-function filterHciMatches(query: string, matches: HciPatientMatch[]) {
-  const normalized = normalizeText(query);
-  if (!normalized) return matches;
-  return matches.filter((match) =>
-    [match.patientName, match.uniqueRecordNumber, match.companyName, match.birthDate]
-      .filter(Boolean)
-      .some((value) => normalizeText(String(value)).includes(normalized))
-  );
 }
 
 function normalizeText(value: string) {

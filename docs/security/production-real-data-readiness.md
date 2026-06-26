@@ -14,6 +14,7 @@ Motivo principal:
 - o isolamento multiempresa foi validado por simulacao autenticada no banco com `rollback`;
 - o login real visual no app ainda precisa ser confirmado no navegador com as senhas criadas fora do repositorio;
 - o fluxo clinico completo via interface ainda precisa ser executado pelo responsavel antes de receber dados clinicos reais.
+- em 26/06/2026 foi encontrado e corrigido um bloqueio critico: a interface ainda permitia acesso em modo demo/sem sessao real.
 
 ## Itens Ja Validados
 
@@ -46,6 +47,34 @@ Motivo principal:
 5. Validar upload real de logo/asset pela interface.
 6. Habilitar Leaked Password Protection no Supabase Auth, se desejado para producao.
 7. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
+
+## Bloqueio Critico Corrigido em 26/06/2026
+
+Problema encontrado:
+
+- A aplicacao entrava no sistema clinico sem usuario real.
+- O login permitia fluxo equivalente a demo quando o ambiente Supabase nao estava configurado.
+- O estado principal do app carregava dados demo e habilitava o layout interno com um estado local.
+
+Correcoes:
+
+- `src/App.tsx` deixou de usar `demoData` para autenticar/renderizar o sistema.
+- `src/components/LoginScreen.tsx` exige e-mail, senha e retorno valido de `supabase.auth.signInWithPassword`.
+- `isAuthenticated` efetivo agora depende de sessao real, usuario real, `profile` valido, `company_id` e empresa ativa.
+- Acesso sem profile mostra mensagem amigavel de usuario nao vinculado.
+- Empresa bloqueada/inativa mostra mensagem amigavel de indisponibilidade.
+- Fallbacks de plataforma/status retornam `inactive`.
+- Abertura de BA nao confirma sucesso quando falha a sincronizacao com Supabase.
+
+Teste automatizado:
+
+- Foi adicionado teste E2E que abre a aplicacao sem sessao, tenta entrar e confirma que a navegacao interna nao aparece.
+- Os testes clinicos autenticados agora so rodam com credenciais reais fornecidas fora do Git via variaveis locais do Playwright.
+
+Resultado:
+
+- O bloqueio de acesso sem sessao foi corrigido.
+- A validacao real com Usuarios A e B no navegador segue pendente antes de receber dados clinicos reais.
 
 ## Setup Inicial Preparado
 

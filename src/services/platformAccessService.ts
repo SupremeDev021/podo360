@@ -67,7 +67,7 @@ type CompanyPlatformAccessRow = {
 export function getFallbackPlatformAccess(companyId: string): PlatformAccessSnapshot {
   return {
     companyId,
-    access: buildCompanyAccessState("active"),
+    access: buildCompanyAccessState("inactive"),
     features: [],
     loadedFromPlatform: false
   };
@@ -119,5 +119,5 @@ export async function getPlatformAccessSnapshot(companyId: string): Promise<Plat
 function normalizePlatformStatus(status?: string | null): CompanyAccessStatus {
   if (status === "active" || status === "trial" || status === "inactive" || status === "suspended" || status === "cancelled") return status;
   if (status === "blocked" || status === "past_due") return "suspended";
-  return "active";
+  return "inactive";
 }

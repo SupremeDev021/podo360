@@ -361,3 +361,17 @@ Atualizacao de interface em 26/06/2026:
 - Security Advisor foi executado novamente e nao trouxe alerta critico novo de RLS/Storage.
 - `.env.local` nao existe neste workspace, entao login real pela interface ficou pendente.
 - Relatorio detalhado: `docs/security/interface-production-validation-report.md`.
+
+Atualizacao de autenticacao em 26/06/2026:
+
+- Foi identificado que a interface ainda permitia acesso ao sistema sem sessao real, por uso de estado/demo no frontend.
+- `src/App.tsx` foi corrigido para exigir sessao real do Supabase, `profile` ativo, `company_id` valido e status/plataforma liberados antes de renderizar o layout clinico.
+- `src/components/LoginScreen.tsx` foi corrigido para bloquear ambiente Supabase ausente, credenciais vazias ou login invalido.
+- Os fallbacks de status/plataforma passaram a retornar `inactive`, evitando liberar acesso quando a validacao falha.
+- Teste E2E de bloqueio sem sessao real foi adicionado e passou.
+- Os fluxos E2E clinicos agora exigem credenciais reais via variaveis locais e ficaram pulados neste ambiente por seguranca.
+
+Conclusao desta atualizacao:
+
+- O bypass/demo da interface foi removido.
+- Ainda nao liberar dados clinicos reais ate executar login real com Usuarios A e B e validar o fluxo clinico completo pela interface.

@@ -134,3 +134,15 @@ Atualizacao em 26/06/2026:
 - Lint, typecheck e build passaram.
 - O login real no navegador nao foi executado nesta etapa porque `.env.local` nao existe neste workspace e as senhas nao devem ser registradas em logs/documentos.
 - A proxima validacao obrigatoria esta detalhada em `docs/security/interface-production-validation-report.md`.
+
+Atualizacao de autenticacao em 26/06/2026:
+
+- Foi encontrado acesso indevido sem login real na interface, causado por fluxo demo/estado local.
+- O app foi corrigido para renderizar telas clinicas apenas com sessao Supabase real, `profile` valido e empresa ativa.
+- O teste E2E `bloqueia acesso interno sem sessao real` passou.
+- Os testes multiempresa pela interface continuam pendentes porque dependem das credenciais reais dos Usuarios A e B configuradas fora do Git.
+
+Decisao:
+
+- O isolamento multiempresa de banco continua aprovado por simulacao autenticada com rollback.
+- O isolamento visual multiempresa ainda precisa ser repetido pela interface antes de liberar dados clinicos reais.

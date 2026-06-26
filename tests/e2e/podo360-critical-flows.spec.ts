@@ -1,11 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function enterDemo(page: Page) {
+const userAEmail = process.env.PLAYWRIGHT_USER_A_EMAIL;
+const userAPassword = process.env.PLAYWRIGHT_USER_A_PASSWORD;
+
+async function loginAsConfiguredUser(page: Page) {
+  test.skip(!userAEmail || !userAPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para executar fluxos clinicos autenticados.");
+
   await page.goto("/");
   await expect(page.getByText(/Desenvolvido por: SupremeTech/i)).toBeVisible();
   await expect(page.getByRole("link", { name: /Site: https:\/\/www\.supremetechdev\.com\//i })).toHaveAttribute("href", "https://www.supremetechdev.com/");
   await expect(page.getByRole("link", { name: /Falar com suporte/i })).toHaveAttribute("href", "https://wa.me/5511999999999");
   await expect(page.getByText(/@supremetech\.digital/i)).toHaveCount(0);
+  await page.getByLabel(/^E-mail$/i).fill(userAEmail!);
+  await page.getByLabel(/^Senha$/i).fill(userAPassword!);
   await page.getByRole("button", { name: /^Entrar$/i }).click();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Podo360/i })).toBeVisible();
@@ -45,9 +52,23 @@ async function selectWizardRadio(page: Page, fieldsetLabel: RegExp, option: RegE
   await page.locator("fieldset").filter({ hasText: fieldsetLabel }).getByLabel(option).click();
 }
 
+test("bloqueia acesso interno sem sessao real", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Entrar$/i }).click();
+  await expect(page.getByText(/Informe seu e-mail profissional|Acesso indisponivel/i)).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+});
+
 test("Avaliação de Sensibilidade separa pés e mantém fluxo sem 3D", async ({ page }) => {
   test.setTimeout(180_000);
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openMonofilament(page);
 
   await selectWizardRadio(page, /Sensibilidade Monofilamento - Pé D/i, /Presente/i);
@@ -61,7 +82,7 @@ test("Avaliação de Sensibilidade separa pés e mantém fluxo sem 3D", async ({
 });
 
 test("Botões de salvar preservam sessão e não redirecionam para login", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openMonofilament(page);
 
   await saveCurrentDraft(page);
@@ -74,7 +95,7 @@ test("Botões de salvar preservam sessão e não redirecionam para login", async
 });
 
 test("Administração da Clínica abre criação de usuário em tela ampla e responsiva", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await page.getByRole("button", { name: /Administra/i }).click();
   await page.getByRole("button", { name: /Criar usuario|Criar usuário/i }).click();
 
@@ -98,7 +119,7 @@ test("Administração da Clínica abre criação de usuário em tela ampla e res
 });
 
 test("Relatório com IA mostra loading/preview amigável e não expõe JSON cru", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openActiveAttendance(page);
 
   await page.getByRole("button", { name: /Gerar relatorio com IA|Gerar relatório com IA/i }).click();
@@ -111,7 +132,7 @@ test("Relatório com IA mostra loading/preview amigável e não expõe JSON cru"
 });
 
 test("Curativo usa regioes do pe e cancelar finalizacao mantem atendimento aberto", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openActiveAttendance(page);
 
   await expect(page.getByText(/Nascimento/i).first()).toBeVisible();
@@ -162,7 +183,7 @@ test("Curativo usa regioes do pe e cancelar finalizacao mantem atendimento abert
 });
 
 test("Finalizar no fim da Anamnese abre confirmacao e respeita cancelamento", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openActiveAttendance(page);
 
   await page.locator(".stepper").getByRole("button", { name: /Retorno/i }).click();
@@ -175,7 +196,7 @@ test("Finalizar no fim da Anamnese abre confirmacao e respeita cancelamento", as
 });
 
 test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo obrigatorio", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await openActiveAttendance(page);
 
   await page.getByRole("button", { name: /Finalizar atendimento/i }).click();
@@ -205,7 +226,7 @@ test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo o
 });
 
 test("Abertura de atendimento permanece na tela e prontuário fica somente leitura", async ({ page }) => {
-  await enterDemo(page);
+  await loginAsConfiguredUser(page);
   await page.getByRole("button", { name: /Abertura de atendimento/i }).click();
 
   const puField = page.locator('input[name="uniqueRecordNumber"]');

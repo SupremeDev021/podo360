@@ -195,3 +195,42 @@ Somente liberar dados clinicos reais quando todos os itens abaixo forem aprovado
 - Status `active` libera acesso novamente.
 - Security Advisor sem alerta critico novo.
 - Leaked Password Protection habilitado ou formalmente documentado como pendencia aceita.
+
+## Atualizacao de Bloqueio de Autenticacao - 26/06/2026
+
+Foi identificado um bloqueio critico de producao: a interface permitia entrar no sistema sem sessao real do Supabase, funcionando como um modo demo.
+
+Causa raiz encontrada:
+
+- `src/App.tsx` inicializava o estado principal com dados de `demoData`.
+- `src/App.tsx` usava `signedIn` local para renderizar o layout clinico.
+- `src/components/LoginScreen.tsx` chamava um fluxo de acesso demo quando o Supabase nao estava configurado ou apos tentativa de login.
+- Servicos de status retornavam acesso `active` como fallback quando a plataforma nao estava disponivel.
+
+Correcoes aplicadas:
+
+- Removido o acesso demo/bypass do login.
+- Removida a renderizacao do sistema clinico baseada em estado local falso.
+- O app agora exige sessao real do Supabase Auth, `profile` ativo, `company_id` valido e acesso da empresa ativo.
+- Empresa sem acesso valido, Supabase nao configurado, profile ausente ou profile inativo bloqueiam o acesso.
+- Fallbacks de acesso em `companyStatusService` e `platformAccessService` agora retornam `inactive`, nao `active`.
+- Rotas internas nao renderizam o layout clinico sem autenticacao aprovada.
+- O fluxo de abertura de BA nao registra sucesso local quando a sincronizacao com Supabase falha.
+
+Teste automatizado atualizado:
+
+- `tests/e2e/podo360-critical-flows.spec.ts` agora inclui teste obrigatorio de bloqueio sem sessao real.
+- Os fluxos clinicos E2E antigos, que dependiam do modo demo, agora exigem credenciais reais por variaveis locais `PLAYWRIGHT_USER_A_EMAIL` e `PLAYWRIGHT_USER_A_PASSWORD`.
+
+Validacoes executadas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- E2E: 1 teste aprovado validando bloqueio sem sessao real; 8 testes autenticados pulados por ausencia de credenciais locais no ambiente.
+
+Resultado:
+
+- Sem sessao real do Supabase, a interface nao abre navegacao interna.
+- Sem `.env.local`, o login mostra mensagem de ambiente indisponivel e nao entra.
+- A liberacao para dados clinicos reais continua pendente ate login real no navegador e fluxo clinico completo com Usuarios A e B.
