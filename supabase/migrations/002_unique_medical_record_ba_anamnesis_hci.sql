@@ -112,7 +112,7 @@ immutable
 as $$
   select case
     when value is null or length(trim(value)) = 0 then null
-    else encode(digest(lower(regexp_replace(value, '[^a-zA-Z0-9@.]', '', 'g')), 'sha256'), 'hex')
+    else encode(extensions.digest(lower(regexp_replace(value, '[^a-zA-Z0-9@.]', '', 'g')), 'sha256'), 'hex')
   end
 $$;
 

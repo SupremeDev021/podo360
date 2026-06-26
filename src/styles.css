@@ -3086,6 +3086,46 @@ textarea {
   background: #fff;
 }
 
+.procedure-sanding-fieldset {
+  align-content: start;
+}
+
+.procedure-sanding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.procedure-sanding-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.compact-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px));
+  gap: 10px;
+}
+
+.compact-field-grid input,
+.treatment-number-field input,
+.clinical-select-field select {
+  min-height: 38px;
+  padding: 8px 11px;
+  font-size: 0.92rem;
+}
+
+.compact-clear-action {
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 0.86rem;
+}
+
 .foot-region-picker {
   display: grid;
   gap: 12px;
@@ -3336,6 +3376,18 @@ textarea {
   min-height: 38px;
   padding: 8px 11px;
   font-size: 0.92rem;
+}
+
+.treatment-number-field {
+  max-width: 220px;
+}
+
+.clinical-date-field {
+  max-width: 220px;
+}
+
+.clinical-select-field {
+  max-width: 280px;
 }
 
 .hci-search {
@@ -3841,6 +3893,7 @@ td {
 @media (max-width: 860px) {
   .nail-block-grid,
   .procedure-block,
+  .procedure-sanding-grid,
   .index-result-grid,
   .foot-region-selector__fallback,
   .foot-tabs,
@@ -3875,6 +3928,15 @@ td {
   }
 
   .index-number-field {
+    max-width: none;
+  }
+
+  .compact-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .treatment-number-field,
+  .clinical-select-field {
     max-width: none;
   }
 

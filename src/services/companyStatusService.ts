@@ -30,7 +30,7 @@ function normalizeCompanyStatus(input?: string | null, blockedAt?: string | null
     case "suspended":
       return input;
     default:
-      return "active";
+      return "inactive";
   }
 }
 
@@ -45,7 +45,17 @@ export function buildCompanyAccessState(status: CompanyAccessStatus): CompanyAcc
 
 export async function getCompanyAccessState(companyId: string): Promise<CompanyAccessState> {
   if (!companyId || !isSupabaseConfigured || !supabase) {
-    return buildCompanyAccessState("active");
+    return buildCompanyAccessState("inactive");
+  }
+
+  const { data: platformAccess } = await supabase
+    .from("company_platform_access")
+    .select("status")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (platformAccess?.status) {
+    return buildCompanyAccessState(normalizeCompanyStatus(platformAccess.status));
   }
 
   const { data, error } = await supabase

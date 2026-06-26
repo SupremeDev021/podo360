@@ -40,7 +40,7 @@ type AnamnesisWizardProps = {
 const modules: Module[] = [
   { key: "identification", title: "Identificação", description: "Dados básicos da ficha.", fields: [
     { name: "identification_name", label: "Nome", type: "text" },
-    { name: "identification_date", label: "Data", type: "date" },
+    { name: "identification_birth_date", label: "Data de nascimento", type: "date" },
     { name: "identification_age", label: "Idade", type: "number" },
     { name: "identification_profession", label: "Profissão", type: "text" },
     { name: "identification_evaluation_type", label: "Tipo de avaliação", type: "radio", options: ["1ª Avaliação", "Reavaliação", "Retorno"] }
@@ -50,7 +50,8 @@ const modules: Module[] = [
     { name: "main_complaint_notes", label: "Observações livres", type: "textarea" }
   ] },
   { key: "medications", title: "Medicamentos", description: "Medicamentos e observações.", fields: [
-    { name: "medications", label: "Medicamentos em uso", type: "textarea" },
+    { name: "medications_in_use", label: "Medicamentos em uso?", type: "radio", options: ["Sim", "Não"] },
+    { name: "medications", label: "Quais medicações?", type: "textarea" },
     { name: "medications_notes", label: "Observações", type: "textarea" }
   ] },
   { key: "health_history", title: "Histórico de Saúde", description: "Condições relatadas.", fields: [
@@ -113,8 +114,8 @@ const modules: Module[] = [
     { name: "treatment_indication", label: "Indicação de tratamento", type: "textarea" },
     { name: "lasertherapy_joules", label: "Laserterapia (J)", type: "text" },
     { name: "led_joules", label: "LED (J)", type: "text" },
-    { name: "high_frequency_minutes", label: "Alta frequência (minutos)", type: "text" },
-    { name: "electrocautery_minutes", label: "Eletrocauterização (minutos)", type: "text" }
+    { name: "high_frequency_minutes", label: "Alta frequência (min)", type: "text" },
+    { name: "electrocautery_minutes", label: "Eletrocauterização (min)", type: "text" }
   ] },
   { key: "home_care", title: "Orientações Home Care", description: "Orientações para o paciente realizar em casa.", fields: [
     { name: "home_care_guidance", label: "Orientações Home Care", type: "textarea" }
@@ -198,12 +199,15 @@ export function AnamnesisWizard({
   readOnlyMessage = "Não é possível editar atendimento finalizado.",
   onFinishAttendanceRequest
 }: AnamnesisWizardProps) {
+  const initialBirthDate = getTextValue(record?.formData.identification_birth_date) || patient.birthDate;
+  const initialAge = record?.formData.identification_age || calculateAgeValue(initialBirthDate || patient.birthDate);
   const [step, setStep] = useState(record?.currentStep ?? 1);
   const [formData, setFormData] = useState<AnamnesisFormData>({
     identification_name: patient.fullName,
-    identification_age: calculateAgeValue(patient.birthDate),
     identification_profession: patient.profession,
-    ...record?.formData
+    ...record?.formData,
+    identification_birth_date: initialBirthDate,
+    identification_age: initialAge
   });
   const [stepStatuses, setStepStatuses] = useState<Record<string, AnamnesisStepStatus>>(
     () => modules.reduce<Record<string, AnamnesisStepStatus>>((acc, module) => ({ ...acc, [module.key]: getInitialStepStatus(module.key, record?.stepStatuses) }), {})
@@ -213,6 +217,7 @@ export function AnamnesisWizard({
     return Array.isArray(saved) && saved.length && typeof saved[0] === "object" ? saved as UsedProduct[] : [{ name: "", quantity: 1, unit: "un" }];
   });
   const currentModule = modules[step - 1];
+  const currentFields = currentModule.fields.filter((field) => shouldRenderField(field, formData));
   const progress = useMemo(() => Math.round((step / modules.length) * 100), [step]);
   const dressingLocationOptions = useMemo(
     () => (["right", "left"] as FootSide[]).flatMap((side) => footRegionDefinitions.map((region) => withFootSide(region, side))),
@@ -280,7 +285,13 @@ export function AnamnesisWizard({
 
   function updateField(name: string, value: string | number | boolean | string[]) {
     if (readOnly) return;
-    setFormData((current) => ({ ...current, [name]: value }));
+    setFormData((current) => {
+      const next: AnamnesisFormData = { ...current, [name]: value };
+      if (name === "medications_in_use" && value !== "Sim") next.medications = "";
+      if (name === "surgery_history" && value !== "Sim") next.surgery_description = "";
+      if (name === "edema_present" && value !== "Sim") next.edema = "";
+      return next;
+    });
     setStepStatuses((current) => ({ ...current, [currentModule.key]: current[currentModule.key] === "completed" ? "completed" : "in_progress" }));
   }
 
@@ -342,7 +353,7 @@ export function AnamnesisWizard({
         {currentModule.key === "vascular_exams" && (
           <SensitivityBlock disabled={readOnly} formData={formData} onPatch={updateFields} />
         )}
-        {currentModule.key !== "podology_diagnosis" && currentModule.key !== "procedure" && currentModule.key !== "vascular_exams" && currentModule.fields.map((field) => (
+        {currentModule.key !== "podology_diagnosis" && currentModule.key !== "procedure" && currentModule.key !== "vascular_exams" && currentFields.map((field) => (
           field.name === "dressing_products" ? (
             <div className="used-products-editor" key={field.name}>
               {usedProducts.map((usedProduct, index) => {
@@ -549,12 +560,18 @@ function ProcedureBlock({
       </div>
       <CheckboxGroup disabled={disabled} label="Curetagem com cureta" options={procedureGroups.curettage} selected={block.curettage} onToggle={(option, checked) => toggleArray("curettage", option, checked)} />
       <RadioGroup disabled={disabled} label="Debaste plantar" options={procedureGroups.plantar_debridement} selected={block.plantar_debridement} onChange={(value) => patch({ ...block, plantar_debridement: value })} />
-      <fieldset className="option-fieldset clinical-subgroups">
+      <fieldset className="option-fieldset clinical-subgroups procedure-sanding-fieldset">
         <legend>Lixamento</legend>
-        <label><input checked={block.laminar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, laminar_sanding: event.target.checked })} type="checkbox" /> Laminar</label>
-        {block.laminar_sanding && <div className="form-grid form-grid--two"><label>Lixa<input disabled={disabled} value={block.laminar_sanding_file} onChange={(event) => patch({ ...block, laminar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.laminar_sanding_grit} onChange={(event) => patch({ ...block, laminar_sanding_grit: event.target.value })} /></label></div>}
-        <label><input checked={block.plantar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, plantar_sanding: event.target.checked })} type="checkbox" /> Plantar</label>
-        {block.plantar_sanding && <div className="form-grid form-grid--two"><label>Lixa<input disabled={disabled} value={block.plantar_sanding_file} onChange={(event) => patch({ ...block, plantar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.plantar_sanding_grit} onChange={(event) => patch({ ...block, plantar_sanding_grit: event.target.value })} /></label></div>}
+        <div className="procedure-sanding-grid">
+          <section className="procedure-sanding-card">
+            <label className="toggle-row"><input checked={block.laminar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, laminar_sanding: event.target.checked })} type="checkbox" /> Laminar</label>
+            {block.laminar_sanding && <div className="compact-field-grid"><label>Lixa<input disabled={disabled} value={block.laminar_sanding_file} onChange={(event) => patch({ ...block, laminar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.laminar_sanding_grit} onChange={(event) => patch({ ...block, laminar_sanding_grit: event.target.value })} /></label></div>}
+          </section>
+          <section className="procedure-sanding-card">
+            <label className="toggle-row"><input checked={block.plantar_sanding} disabled={disabled} onChange={(event) => patch({ ...block, plantar_sanding: event.target.checked })} type="checkbox" /> Plantar</label>
+            {block.plantar_sanding && <div className="compact-field-grid"><label>Lixa<input disabled={disabled} value={block.plantar_sanding_file} onChange={(event) => patch({ ...block, plantar_sanding_file: event.target.value })} /></label><label>Gramatura<input disabled={disabled} value={block.plantar_sanding_grit} onChange={(event) => patch({ ...block, plantar_sanding_grit: event.target.value })} /></label></div>}
+          </section>
+        </div>
       </fieldset>
       <CheckboxGroup disabled={disabled} label="Finalização" options={procedureGroups.finishing} selected={block.finishing} onToggle={(option, checked) => toggleArray("finishing", option, checked)} />
       <label>Outros procedimentos<textarea disabled={disabled} value={block.other_procedures} onChange={(event) => patch({ ...block, other_procedures: event.target.value })} /></label>
@@ -708,33 +725,56 @@ function FieldRenderer({
     );
   }
 
+  if (field.name === "patient_returned") {
+    return (
+      <label className="clinical-select-field">
+        {field.label}
+        <select disabled={disabled} value={getTextValue(formData.patient_returned)} onChange={(event) => onChange(field.name, event.target.value)}>
+          <option value="">Selecione</option>
+          <option value="Sim">Sim</option>
+          <option value="Não">Não</option>
+        </select>
+      </label>
+    );
+  }
+
   if (field.type === "radio") {
+    const selected = field.name === "medications_in_use" ? getMedicationInUseValue(formData) : getTextValue(formData[field.name]);
     return (
       <fieldset className="option-fieldset">
         <legend>{field.label}</legend>
         <div className="checkbox-grid">
           {field.options.map((option) => (
             <label key={option}>
-              <input checked={formData[field.name] === option} disabled={disabled} onChange={() => onChange(field.name, option)} type="radio" />
+              <input checked={selected === option} disabled={disabled} onChange={() => onChange(field.name, option)} type="radio" />
               {option}
             </label>
           ))}
         </div>
+        {selected && (
+          <button className="ghost-action compact-clear-action" disabled={disabled} onClick={() => onChange(field.name, "")} type="button">
+            Limpar seleção
+          </button>
+        )}
       </fieldset>
     );
   }
 
   const isNumberField = field.type === "number";
+  const isDateField = field.type === "date";
+  const isTreatmentTechnologyField = ["lasertherapy_joules", "led_joules", "high_frequency_minutes", "electrocautery_minutes"].includes(field.name);
   const isCompactIndexField = isNumberField && /^(itb|ihb)_/.test(field.name);
+  const isCompactClinicalField = isNumberField || isDateField || isTreatmentTechnologyField;
 
   return (
-    <label className={isNumberField ? `clinical-number-field${isCompactIndexField ? " index-number-field" : ""}` : undefined}>
+    <label className={isCompactClinicalField ? `clinical-number-field${isCompactIndexField ? " index-number-field" : ""}${isTreatmentTechnologyField ? " treatment-number-field" : ""}${isDateField ? " clinical-date-field" : ""}` : undefined}>
       {field.label}
       <input
-        type={field.type}
+        type={isNumberField ? "number" : isDateField ? "date" : "text"}
+        inputMode={isTreatmentTechnologyField ? "decimal" : undefined}
         disabled={disabled}
         value={String(formData[field.name] || "")}
-        onChange={(event) => onChange(field.name, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
+        onChange={(event) => onChange(field.name, isNumberField && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
       />
     </label>
   );
@@ -799,6 +839,19 @@ function getTextValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function getMedicationInUseValue(formData: AnamnesisFormData) {
+  const current = formData.medications_in_use;
+  if (typeof current === "string") return current;
+  return getTextValue(formData.medications) ? "Sim" : "";
+}
+
+function shouldRenderField(field: Field, formData: AnamnesisFormData) {
+  if (field.name === "medications") return getMedicationInUseValue(formData) === "Sim";
+  if (field.name === "surgery_description") return getTextValue(formData.surgery_history) === "Sim";
+  if (field.name === "edema") return getTextValue(formData.edema_present) === "Sim";
+  return true;
+}
+
 function getInitialStepStatus(key: string, statuses?: Record<string, AnamnesisStepStatus>) {
   if (!statuses) return "not_started";
   if (statuses[key]) return statuses[key];
@@ -811,8 +864,17 @@ function getInitialStepStatus(key: string, statuses?: Record<string, AnamnesisSt
 function normalizeAnamnesisFormData(data: AnamnesisFormData): AnamnesisFormData {
   const itb = calculateItb(data);
   const ihb = calculateIhb(data);
+  const medicationsInUse = getMedicationInUseValue(data);
+  const surgeryHistory = getTextValue(data.surgery_history);
+  const edemaPresent = getTextValue(data.edema_present);
+  const patientReturned = getTextValue(data.patient_returned);
   return {
     ...data,
+    medications_in_use: medicationsInUse,
+    medications: medicationsInUse === "Sim" ? getTextValue(data.medications) : "",
+    surgery_description: surgeryHistory === "Sim" ? getTextValue(data.surgery_description) : "",
+    edema: edemaPresent === "Sim" ? getTextValue(data.edema) : "",
+    patient_returned: patientReturned === "Sim" || patientReturned === "Não" ? patientReturned : "",
     block_14: getNailBlockData(data) as unknown as Record<string, unknown>,
     block_15: getProcedureBlockData(data) as unknown as Record<string, unknown>,
     itb_right_result: itb.right?.value ?? "",

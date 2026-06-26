@@ -25,7 +25,7 @@ import type { Company } from "../types";
 
 type LoginScreenProps = {
   company: Company;
-  onDemoAccess: () => void;
+  onLoginSuccess?: () => void;
 };
 
 type Feedback = {
@@ -51,7 +51,7 @@ function getLoginErrorMessage(message: string) {
   return "Nao foi possivel entrar agora. Tente novamente ou contate o administrador da sua clinica.";
 }
 
-export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
+export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,8 +75,7 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
     event.preventDefault();
 
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback({ tone: "success", message: "Acesso liberado. Preparando seu painel..." });
-      window.setTimeout(onDemoAccess, 350);
+      setFeedback({ tone: "danger", message: "Acesso indisponivel. Configure o ambiente oficial do Supabase para entrar." });
       return;
     }
 
@@ -91,15 +90,15 @@ export function LoginScreen({ company, onDemoAccess }: LoginScreenProps) {
     setFeedback({ tone: "info", message: "Validando suas credenciais em ambiente seguro..." });
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
 
-      if (error) {
-        setFeedback({ tone: "danger", message: getLoginErrorMessage(error.message) });
+      if (error || !data.session || !data.user) {
+        setFeedback({ tone: "danger", message: error ? getLoginErrorMessage(error.message) : "Nao foi possivel validar a sessao. Tente novamente." });
         return;
       }
 
       setFeedback({ tone: "success", message: "Acesso autorizado. Carregando seu ambiente clinico..." });
-      window.setTimeout(onDemoAccess, 350);
+      window.setTimeout(() => onLoginSuccess?.(), 350);
     } catch {
       setFeedback({ tone: "danger", message: "Falha de conexao. Verifique sua internet e tente novamente." });
     } finally {
