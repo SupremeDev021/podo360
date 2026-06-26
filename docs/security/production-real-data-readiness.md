@@ -228,3 +228,11 @@ Somente declarar pronto para dados clinicos reais quando:
 O banco esta estruturado e endurecido em uma boa base inicial. Os usuarios Auth e profiles ja foram criados com vinculo correto, e os testes autenticados de RLS/Storage passaram por simulacao segura com rollback.
 
 Ainda nao liberar dados clinicos reais ate validar login visual, fluxo clinico completo, relatorios/PDF e upload real pela interface usando as senhas criadas fora do repositorio.
+
+Atualizacao de interface em 26/06/2026:
+
+- Lint, typecheck e build passaram.
+- Servidor local respondeu `HTTP 200`.
+- `.env.local` nao existe neste workspace, portanto a interface local ainda nao aponta ao Supabase oficial.
+- Login real no navegador, fluxo clinico completo, relatorios/PDF, upload real e isolamento visual multiempresa continuam pendentes.
+- Detalhes registrados em `docs/security/interface-production-validation-report.md`.

@@ -127,3 +127,10 @@ Ainda nao liberar dados clinicos reais ate validar:
 - relatorios/PDF pela interface;
 - upload real de asset/logo pela interface;
 - Security Advisor apos fluxo clinico completo pela interface.
+
+Atualizacao em 26/06/2026:
+
+- A interface local respondeu `HTTP 200`.
+- Lint, typecheck e build passaram.
+- O login real no navegador nao foi executado nesta etapa porque `.env.local` nao existe neste workspace e as senhas nao devem ser registradas em logs/documentos.
+- A proxima validacao obrigatoria esta detalhada em `docs/security/interface-production-validation-report.md`.

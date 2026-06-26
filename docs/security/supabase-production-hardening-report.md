@@ -353,3 +353,11 @@ Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
 ## Conclusao
 
 A base esta melhor endurecida para producao, os usuarios iniciais estao vinculados a suas empresas e o isolamento RLS/Storage passou em testes autenticados por banco com rollback. Ainda nao deve receber dados clinicos reais ate validacao de login e fluxo clinico completo pela interface.
+
+Atualizacao de interface em 26/06/2026:
+
+- Lint, typecheck e build passaram.
+- Servidor local respondeu `HTTP 200`.
+- Security Advisor foi executado novamente e nao trouxe alerta critico novo de RLS/Storage.
+- `.env.local` nao existe neste workspace, entao login real pela interface ficou pendente.
+- Relatorio detalhado: `docs/security/interface-production-validation-report.md`.
