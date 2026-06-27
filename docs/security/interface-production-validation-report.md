@@ -234,3 +234,83 @@ Resultado:
 - Sem sessao real do Supabase, a interface nao abre navegacao interna.
 - Sem `.env.local`, o login mostra mensagem de ambiente indisponivel e nao entra.
 - A liberacao para dados clinicos reais continua pendente ate login real no navegador e fluxo clinico completo com Usuarios A e B.
+
+## Atualizacao de Tela Branca - 26/06/2026
+
+Problema investigado:
+
+- A pagina da clinica era percebida como em branco apos a remocao do modo demo/bypass.
+- O workspace local nao tinha `.env.local`, portanto a aplicacao nao conseguia autenticar contra o Supabase oficial.
+
+Correcoes e protecoes aplicadas:
+
+- Criado `.env.local` apenas localmente, protegido pelo `.gitignore`, com URL do projeto Podo360 e chave publica/publishable.
+- Adicionado `AppErrorBoundary` global para impedir tela branca total em caso de erro React.
+- Em desenvolvimento, o Error Boundary mostra erro tecnico resumido.
+- Em producao, o Error Boundary mostra apenas mensagem amigavel sem stack trace sensivel.
+- Confirmado que rotas internas diretas sem sessao continuam bloqueadas e exibem login.
+
+Validacoes executadas no navegador:
+
+- `/`: renderiza tela de login.
+- `/dashboard`: renderiza tela de login, sem navegacao interna.
+- `/pacientes`: renderiza tela de login, sem navegacao interna.
+- `/atendimento`: renderiza tela de login, sem navegacao interna.
+- `/admin/setup`: nao abre area clinica nem navegacao interna.
+- Console/headless: sem `pageerror` e sem erro critico.
+- Login invalido/sem sessao: nao abre navegacao interna.
+
+Validacoes tecnicas executadas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- Playwright: teste `bloqueia acesso interno sem sessao real` aprovado.
+
+Pendente antes da atualizacao de 27/06/2026:
+
+- Login real do Usuario A e Usuario B ainda nao havia sido executado porque e-mail/senha reais nao tinham sido fornecidos ao ambiente de teste. As senhas nao devem ser registradas em arquivos, logs ou documentos.
+
+## Validacao com Logins Reais - 27/06/2026
+
+Usuarios testados:
+
+- Usuario A: Clinica Pe Saudavel.
+- Usuario B: Clinica Teste Isolamento.
+
+As senhas foram usadas somente em execucao local de navegador/teste e nao foram registradas em arquivos versionados.
+
+Resultado pela interface:
+
+- Usuario A fez login real com sucesso.
+- Usuario A carregou Dashboard da Clinica Pe Saudavel.
+- Usuario A carregou `company_id` `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`.
+- Usuario B fez login real com sucesso.
+- Usuario B carregou Dashboard da Clinica Teste Isolamento.
+- Usuario B carregou `company_id` `b7cd6131-5565-406a-ac9c-eb5f0cce21f1`.
+- Ambos carregaram `role = company_admin`.
+- Ambos carregaram `is_platform_admin = false` pela validacao anterior de banco.
+- Nao houve tela branca.
+- Nao houve erro critico de console.
+
+Rotas e comportamento testados:
+
+- `/`, `/dashboard`, `/pacientes` e `/atendimento` sem sessao renderizam login e nao exibem navegacao interna.
+- Login invalido nao abre navegacao interna.
+- Campos vazios continuam bloqueados pelo teste Playwright.
+- Usuario A acessou Dashboard, Abertura de atendimento, Atendimento, Gerenciamento de Atendimento, Pacientes e Agenda Clinica sem tela branca.
+- Logout do Usuario A funcionou.
+- Acesso direto a `/dashboard` depois do logout voltou para login.
+
+Validacao RLS com sessao real e chave publica:
+
+- Usuario A viu apenas `platform_companies` da Clinica Pe Saudavel.
+- Usuario B viu apenas `platform_companies` da Clinica Teste Isolamento.
+- Ambos consultaram `patients` com contagem 0, sem erro RLS.
+- Ambos consultaram `platform_leads` com contagem 0, sem erro e sem dados expostos.
+
+Ainda nao executado nesta etapa:
+
+- Criacao de paciente/BA/anamnese por interface, para evitar inserir dados de teste persistentes sem rotina de limpeza aprovada.
+- Status `suspended` pela interface, para evitar alterar o estado da empresa sem uma etapa controlada de rollback/reativacao.
+- Security Advisor pelo conector MCP, pois a sessao atual nao tem permissao para executar a acao no projeto.

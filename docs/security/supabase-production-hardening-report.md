@@ -375,3 +375,22 @@ Conclusao desta atualizacao:
 
 - O bypass/demo da interface foi removido.
 - Ainda nao liberar dados clinicos reais ate executar login real com Usuarios A e B e validar o fluxo clinico completo pela interface.
+
+Atualizacao de tela branca em 26/06/2026:
+
+- `.env.local` estava ausente no workspace local e foi criado somente localmente, fora do Git.
+- Foi adicionado Error Boundary global em `src/main.tsx` para impedir tela branca total.
+- Rotas `/`, `/dashboard`, `/pacientes`, `/atendimento` e `/admin/setup` renderizaram tela de login/estado seguro sem navegacao interna quando nao havia sessao.
+- Console headless nao registrou erro critico.
+- Lint, typecheck, build e teste Playwright de acesso sem sessao passaram.
+- Login real ficou pendente nesta etapa ate o fornecimento de credenciais reais fora de arquivos versionados.
+
+Atualizacao de login real em 27/06/2026:
+
+- Usuario A autenticou pela interface e carregou Clinica Pe Saudavel.
+- Usuario B autenticou pela interface e carregou Clinica Teste Isolamento.
+- `company_id` e role foram carregados corretamente para ambos.
+- Rotas internas sem sessao permanecem bloqueadas.
+- Logout e acesso direto a rota protegida apos logout foram validados.
+- Validacao RLS com sessao real confirmou que cada usuario enxerga somente a propria empresa em `platform_companies`.
+- O conector Supabase MCP desta sessao nao tinha permissao para executar SQL/Security Advisor no projeto; a revisao do Advisor deve ser repetida no painel ou em sessao com permissao adequada.

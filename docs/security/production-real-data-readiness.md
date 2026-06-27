@@ -76,6 +76,59 @@ Resultado:
 - O bloqueio de acesso sem sessao foi corrigido.
 - A validacao real com Usuarios A e B no navegador segue pendente antes de receber dados clinicos reais.
 
+## Tela Branca e Ambiente Local - 26/06/2026
+
+Foi investigada nova ocorrencia de pagina em branco apos a obrigatoriedade de autenticacao real.
+
+Causa local encontrada:
+
+- `.env.local` estava ausente no workspace, entao a aplicacao nao tinha as variaveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` para autenticar no Supabase Podo360.
+
+Acao segura:
+
+- `.env.local` foi criado apenas localmente e continua protegido pelo Git.
+- Nenhuma chave secreta, senha, token ou `service_role` foi commitado.
+- Foi adicionado Error Boundary global para evitar tela branca total caso algum componente React falhe.
+
+Validado:
+
+- Tela de login renderiza.
+- Rotas internas sem sessao nao entram.
+- Navegacao interna nao aparece sem sessao real.
+- Console do navegador nao apresentou erro critico no teste headless.
+- Lint, typecheck, build e teste Playwright de bloqueio sem sessao passaram.
+
+Ainda pendente apos a correcao de ambiente:
+
+- Fluxo clinico completo autenticado com dados ficticios controlados.
+- Isolamento visual multiempresa pela interface com dados criados e limpos de forma segura.
+- Upload real, relatorios/PDF e status `suspended` pela interface.
+
+## Validacao Real de Login - 27/06/2026
+
+Resultado:
+
+- Usuario A entrou pela interface e carregou Clinica Pe Saudavel.
+- Usuario A carregou `company_id` `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`.
+- Usuario B entrou pela interface e carregou Clinica Teste Isolamento.
+- Usuario B carregou `company_id` `b7cd6131-5565-406a-ac9c-eb5f0cce21f1`.
+- Dashboard abriu para ambos.
+- Nao houve tela branca nem erro critico de console.
+- Logout foi validado com Usuario A.
+- Acesso direto a rota protegida apos logout voltou para login.
+
+Validacao de isolamento por sessao real:
+
+- Usuario A consultou somente a propria empresa em `platform_companies`.
+- Usuario B consultou somente a propria empresa em `platform_companies`.
+- `patients` retornou contagem 0 para ambos sem erro de RLS.
+- `platform_leads` retornou contagem 0 para ambos sem expor dados globais.
+
+Status atualizado:
+
+- Autenticacao obrigatoria e protecao basica de rotas estao aprovadas.
+- Ainda nao declarar liberado para dados clinicos reais ate testar fluxo clinico completo com dados ficticios controlados, limpeza/rollback, upload real, relatorios/PDF, status `suspended` e Security Advisor com acesso ao projeto.
+
 ## Setup Inicial Preparado
 
 Foi preparado um caminho seguro para criacao do primeiro usuario sem versionar senha:
