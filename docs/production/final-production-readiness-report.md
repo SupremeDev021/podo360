@@ -10,7 +10,8 @@ Status:
 
 Pendencia operacional nao bloqueante:
 
-- habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se disponivel.
+- Leaked Password Protection nao foi habilitado porque o recurso exige Supabase Pro ou superior no projeto atual.
+- Reavaliar a ativacao apos upgrade do plano/projeto.
 
 ## Admin Global
 
@@ -46,4 +47,4 @@ O Admin Global esta apto para producao.
 
 Pendencia operacional nao bloqueante antes do go-live final:
 
-- habilitar Leaked Password Protection no painel Supabase Auth, se disponivel no projeto/plano.
+- Leaked Password Protection permanece documentado como pendencia operacional porque exige Supabase Pro ou superior.

@@ -234,7 +234,8 @@ npx playwright test podo360-global-admin
 
 Permanece como pendencia operacional nao bloqueante ja documentada:
 
-- habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se disponivel no plano/projeto.
+- Leaked Password Protection nao foi habilitado porque o painel Supabase indicou exigencia de plano Pro ou superior.
+- Reavaliar apos upgrade do plano/projeto.
 
 ## Decisao
 
@@ -252,4 +253,4 @@ Motivos:
 
 Pendencia operacional nao bloqueante antes do go-live final:
 
-- habilitar Leaked Password Protection no painel Supabase Auth, se o recurso estiver disponivel no projeto/plano.
+- Leaked Password Protection exige Supabase Pro ou superior no projeto atual.

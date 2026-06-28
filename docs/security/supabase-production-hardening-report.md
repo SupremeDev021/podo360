@@ -336,7 +336,7 @@ Avisos restantes:
 Classificacao:
 
 - Functions `SECURITY DEFINER`: aceitas temporariamente, pois sao helpers/RPCs usados por RLS e fluxos clinicos. Devem ser reavaliadas depois do teste completo pela interface.
-- Leaked Password Protection: recomendacao de hardening de Auth. Habilitar no painel Supabase antes da entrada real em producao.
+- Leaked Password Protection: recomendacao de hardening de Auth. O painel Supabase indicou exigencia de plano Pro ou superior; manter como pendencia operacional nao bloqueante ate upgrade.
 
 Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
 
@@ -346,7 +346,7 @@ Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
 2. Testar abertura de atendimento pela interface.
 3. Testar anamnese, imagens, relatorios, PDF e finalizacao pela interface.
 4. Testar upload real de asset/logo pela interface.
-5. Habilitar/revisar Leaked Password Protection no Supabase Auth.
+5. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
 6. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
 7. Rodar Security Advisor novamente apos fluxo clinico completo pela interface.
 
@@ -427,7 +427,7 @@ Atualizacao de Security Advisor e Admin Clinica em 28/06/2026:
 
 Pendencias de hardening antes de producao real:
 
-1. Habilitar ou documentar formalmente Leaked Password Protection no painel Supabase Auth.
+1. Leaked Password Protection documentado como indisponivel no plano atual; reavaliar apos upgrade.
 2. Otimizar policies apontadas por `auth_rls_initplan`.
 3. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
 4. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
@@ -451,7 +451,7 @@ Atualizacao de hardening RLS em 28/06/2026:
 
 Pendencias atualizadas:
 
-1. Habilitar ou documentar formalmente Leaked Password Protection no painel Supabase Auth.
+1. Leaked Password Protection documentado como indisponivel no plano atual; reavaliar apos upgrade.
 2. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
 3. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
 4. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.
@@ -474,14 +474,14 @@ Atualizacao final de Storage/Status/Advisor em 28/06/2026:
 
 Pendencias restantes:
 
-1. Habilitar Leaked Password Protection no painel Supabase Auth, se disponivel.
+1. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
 2. Consolidar/revisar policies apontadas por `multiple_permissive_policies` como melhoria de performance.
 3. Avaliar mover RPCs sensiveis para schema privado ou Edge Functions em etapa futura.
 
 Decisao:
 
 - Sem alerta critico novo de RLS ou Storage.
-- A base fica apta para producao com dados clinicos reais, com a pendencia operacional de Leaked Password Protection documentada.
+- A base fica apta para producao com dados clinicos reais, com a pendencia operacional de Leaked Password Protection documentada como indisponivel no plano atual.
 
 Atualizacao Admin Global em 28/06/2026:
 
@@ -504,4 +504,4 @@ Security Advisor reexecutado apos a validacao:
   - 15 `authenticated_security_definer_function_executable`;
   - 1 `auth_leaked_password_protection`.
 - As functions `SECURITY DEFINER` permanecem aceitas temporariamente por uso em helpers/RPCs de RLS e fluxos clinicos/admin.
-- Leaked Password Protection continua pendencia operacional para habilitar no painel Supabase Auth, se disponivel.
+- Leaked Password Protection continua pendencia operacional porque exige Supabase Pro ou superior no projeto atual.

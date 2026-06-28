@@ -21,7 +21,8 @@ Motivo:
 
 Pendencia operacional nao bloqueante:
 
-- habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se o recurso estiver disponivel no projeto/plano.
+- Leaked Password Protection nao foi habilitado porque o recurso exige Supabase Pro ou superior no projeto atual.
+- Reavaliar a ativacao apos upgrade do plano/projeto.
 
 ## Itens Ja Validados
 
@@ -51,7 +52,7 @@ Nenhum bloqueio critico restante apos a rodada final de 28/06/2026.
 
 Pendencias posteriores recomendadas:
 
-1. Habilitar Leaked Password Protection no Supabase Auth.
+1. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
 2. Consolidar policies permissivas multiplas para reduzir warnings de performance.
 3. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
 
@@ -292,7 +293,7 @@ Security Advisor em 25/06/2026:
 
 - Sem alerta critico novo de RLS/storage nas validacoes executadas.
 - Warnings restantes: functions `SECURITY DEFINER` executaveis por `authenticated`, aceitas temporariamente porque sao helpers/RPCs do app.
-- Warning adicional: Leaked Password Protection desabilitado no Supabase Auth. Recomenda-se habilitar no painel do Supabase antes da producao real.
+- Warning adicional: Leaked Password Protection desabilitado no Supabase Auth. O painel indicou que o recurso exige Supabase Pro ou superior; ficou como pendencia operacional nao bloqueante.
 
 ## Criterio de Liberacao
 
@@ -508,7 +509,7 @@ Pendencias restantes:
 - Upload real/Storage pela interface.
 - Teste de status `suspended`/reativacao pela interface.
 - Reexecucao do Supabase Security Advisor apos a rodada E2E completa.
-- Habilitar ou documentar Leaked Password Protection no painel Supabase Auth.
+- Leaked Password Protection documentado como indisponivel no plano atual por exigir Supabase Pro ou superior.
 - Confirmar se PUs gerados pelos pacientes ficticios foram removidos ou se ha registros orfaos em `unique_medical_records`.
 
 Decisao daquela rodada:
@@ -535,4 +536,4 @@ Resultado:
 Decisao:
 
 - Admin Global apto para producao.
-- Pendencia operacional nao bloqueante: habilitar Leaked Password Protection no painel Supabase Auth, se disponivel.
+- Pendencia operacional nao bloqueante: Leaked Password Protection exige Supabase Pro ou superior no projeto atual.

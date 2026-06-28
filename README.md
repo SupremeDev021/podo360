@@ -23,7 +23,7 @@ Crie um arquivo `.env` baseado em `.env.example`:
 VITE_SUPABASE_URL=https://seu-projeto.supabase.co
 VITE_SUPABASE_ANON_KEY=sua-chave-anon-publica
 VITE_APP_URL=http://localhost:5173
-VITE_AI_PROVIDER=mock
+VITE_AI_PROVIDER=
 VITE_AI_REFERRAL_FUNCTION_URL=
 ```
 
@@ -50,7 +50,7 @@ No frontend, essas cores alimentam variaveis CSS e mudam o visual do sistema sem
 
 ## IA
 
-O servico `src/services/aiReferralReportService.ts` monta o contexto clinico e hoje retorna um mock profissional. A integracao real deve substituir o trecho indicado no servico por uma chamada segura em backend/serverless function, evitando expor chaves privadas no frontend.
+O servico `src/services/aiReferralReportService.ts` monta o contexto clinico e possui fallback local para desenvolvimento/validacao. Para producao com IA real, configure uma chamada segura em backend/serverless function e nunca exponha chaves privadas no frontend.
 
 ## Build e producao
 
@@ -68,6 +68,7 @@ Para publicar em producao:
 3. Defina as URLs permitidas no Supabase Auth.
 4. Crie buckets privados/publicos conforme necessidade: logos, anexos de pacientes e fotos de curativos.
 5. Mantenha qualquer chave secreta de IA em uma Function ou backend, nunca em `VITE_*`.
+6. O Leaked Password Protection do Supabase Auth foi revisado; no projeto atual ele exige Supabase Pro ou superior e ficou documentado como pendencia operacional nao bloqueante ate upgrade do plano.
 
 Este repositorio nao inclui chaves reais. Use `.env.example` como base e mantenha `.env` fora do Git.
 
