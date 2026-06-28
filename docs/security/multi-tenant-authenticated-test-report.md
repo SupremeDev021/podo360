@@ -159,3 +159,21 @@ Decisao adicional:
 
 - O isolamento de gerenciamento de funcionarios por empresa foi reforcado.
 - Ainda falta repetir o isolamento visual completo pela interface com criacao controlada de paciente/BA/anamnese para Empresa A e Empresa B antes de liberar dados clinicos reais.
+
+Atualizacao final - 28/06/2026:
+
+- Playwright autenticado final executado com Usuario A e Usuario B.
+- Login real, bloqueio sem sessao, logout, BA, anamnese critica, finalizacao/reabertura, relatorio com IA e administracao da clinica foram aprovados.
+- Upload real de logo/asset pela interface foi aprovado para as duas empresas no bucket `company-assets`.
+- Usuario A nao conseguiu listar assets da Empresa B.
+- Usuario B nao conseguiu listar assets da Empresa A.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Status `suspended` da Empresa B bloqueou login pela interface.
+- Reativacao para `active` liberou login novamente.
+- Dados ficticios criados por Playwright foram removidos por prefixo.
+- PUs orfaos de teste em `unique_medical_records` foram removidos.
+
+Decisao final:
+
+- Isolamento multiempresa autenticado e isolamento de Storage aprovados para a rodada final.
+- Apto para producao com dados clinicos reais, mantendo como pendencia operacional a habilitacao do Leaked Password Protection no painel Supabase Auth.

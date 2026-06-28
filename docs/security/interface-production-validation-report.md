@@ -475,3 +475,66 @@ Pendencias antes de liberar dados clinicos reais:
 Decisao:
 
 - Ainda nao apto para producao com dados clinicos reais.
+
+## Rodada Final de Storage, Status e Advisor - 28/06/2026
+
+Credenciais:
+
+- Usadas apenas via `.env.test.local`, ignorado pelo Git.
+- Nenhuma senha foi registrada neste documento ou em arquivo versionado.
+
+Upload real / Storage:
+
+- Upload real pela tela `Identidade` aprovado para Usuario A e Usuario B.
+- Bucket usado: `company-assets`.
+- Paths de teste criados:
+  - `d4666e95-0278-4cfb-b805-0b93b6bc4d4a/logo/...TESTE_PRODUCAO_PODO360_LOGO_A.svg`
+  - `b7cd6131-5565-406a-ac9c-eb5f0cce21f1/logo/...TESTE_PRODUCAO_PODO360_LOGO_B.svg`
+- Paths de teste removidos pelo proprio teste.
+- Usuario A nao conseguiu listar assets da Empresa B.
+- Usuario B nao conseguiu listar assets da Empresa A.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+
+Status da empresa:
+
+- Empresa B foi alterada temporariamente para `suspended`.
+- Login do Usuario B foi bloqueado pela interface.
+- Dashboard nao abriu.
+- Mensagem amigavel exibida.
+- Empresa B foi reativada para `active`.
+- Login do Usuario B voltou a funcionar.
+- Empresa B ficou `active` ao final.
+
+Limpeza:
+
+- Dados ficticios com prefixo `TESTE_PRODUCAO_PODO360_` foram removidos.
+- PUs orfaos de teste em `unique_medical_records` foram removidos.
+- Consulta final retornou 0 pacientes, 0 PUs e 0 objetos de Storage com o prefixo de teste.
+
+Supabase Security Advisor:
+
+- Reexecutado apos upload, status e limpeza.
+- Sem alerta critico novo de RLS ou Storage.
+- Avisos restantes:
+  - 15 warnings `authenticated_security_definer_function_executable`;
+  - 1 warning `auth_leaked_password_protection`;
+  - 29 warnings `multiple_permissive_policies`.
+- As functions `SECURITY DEFINER` restantes possuem `search_path=public` e foram mantidas temporariamente por serem usadas por RLS/RPCs clinicas.
+- Leaked Password Protection permanece pendente para habilitacao manual no painel Supabase Auth, se disponivel no projeto/plano.
+
+Validacoes tecnicas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- Playwright autenticado final: aprovado.
+- Playwright de status `suspended`: aprovado em rodada controlada.
+
+Documento complementar:
+
+- `docs/production/final-storage-and-advisor-validation.md`
+
+Decisao:
+
+- Apto para producao com dados clinicos reais.
+- Pendencia operacional nao bloqueante: habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se o recurso estiver disponivel.

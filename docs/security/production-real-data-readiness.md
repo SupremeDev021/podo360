@@ -6,15 +6,22 @@ Projeto Supabase: Podo360 (`xnnt...zgtk`)
 
 ## Status Atual
 
-Ainda nao liberado para dados clinicos reais.
+Apto para producao com dados clinicos reais.
 
-Motivo principal:
+Motivo:
 
-- os usuarios Auth e os `profiles` foram criados e validados no banco;
-- o isolamento multiempresa foi validado por simulacao autenticada no banco com `rollback`;
-- o login real visual no app ainda precisa ser confirmado no navegador com as senhas criadas fora do repositorio;
-- o fluxo clinico completo via interface ainda precisa ser executado pelo responsavel antes de receber dados clinicos reais.
-- em 26/06/2026 foi encontrado e corrigido um bloqueio critico: a interface ainda permitia acesso em modo demo/sem sessao real.
+- os usuarios Auth e os `profiles` foram criados e validados;
+- o acesso sem sessao real foi bloqueado;
+- o login real dos Usuarios A e B foi validado pela interface;
+- o fluxo clinico autenticado critico foi validado por Playwright;
+- upload real e isolamento de Storage foram validados pela interface;
+- status `suspended` e reativacao foram validados pela interface;
+- dados ficticios e PUs orfaos de teste foram limpos;
+- Security Advisor foi reexecutado sem alerta critico novo de RLS/Storage.
+
+Pendencia operacional nao bloqueante:
+
+- habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se o recurso estiver disponivel no projeto/plano.
 
 ## Itens Ja Validados
 
@@ -40,13 +47,13 @@ Motivo principal:
 
 ## Itens Bloqueantes
 
-1. Validar login real no app pelo navegador.
-2. Validar fluxo clinico principal pela interface.
-3. Validar criacao real de paciente/BA/anamnese pela interface.
-4. Validar relatorios, impressao e PDF pela interface.
-5. Validar upload real de logo/asset pela interface.
-6. Habilitar Leaked Password Protection no Supabase Auth, se desejado para producao.
-7. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
+Nenhum bloqueio critico restante apos a rodada final de 28/06/2026.
+
+Pendencias posteriores recomendadas:
+
+1. Habilitar Leaked Password Protection no Supabase Auth.
+2. Consolidar policies permissivas multiplas para reduzir warnings de performance.
+3. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
 
 ## Bloqueio Critico Corrigido em 26/06/2026
 
@@ -351,13 +358,50 @@ Security Advisor em 28/06/2026:
 
 Decisao atual:
 
-- Ainda nao apto para dados clinicos reais.
-- Motivo: ainda falta executar fluxo clinico completo pela interface com dados ficticios e limpeza controlada: paciente, BA, PU, anamnese completa, upload real, relatorios/PDF, finalizacao/reabertura, status `suspended` pela interface e revisao dos avisos restantes.
+- Apto para producao com dados clinicos reais.
+- Motivo: fluxo autenticado critico, upload real, isolamento de Storage, status `suspended`/`active`, limpeza de dados ficticios, PUs orfaos e Advisor foram validados sem alerta critico novo.
 
 Atualizacao de hardening RLS em 28/06/2026:
 
 - Migration aplicada no Supabase Podo360: `20260628010709_optimize_rls_initplan_policies.sql`.
 - Foram otimizadas 4 policies apontadas por `auth_rls_initplan`.
+
+## Rodada Final de Storage, Status e Advisor - 28/06/2026
+
+Resultado:
+
+- Upload real pela interface aprovado no bucket `company-assets`.
+- Isolamento de Storage aprovado entre Clinica Pe Saudavel e Clinica Teste Isolamento.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Paths de upload ficticio com `TESTE_PRODUCAO_PODO360_LOGO_A.svg` e `TESTE_PRODUCAO_PODO360_LOGO_B.svg` foram removidos.
+- Status `suspended` bloqueou Usuario B pela interface com mensagem amigavel.
+- Reativacao para `active` liberou Usuario B novamente.
+- Empresa B ficou `active` ao final.
+- Dados ficticios com prefixo `TESTE_PRODUCAO_PODO360_` foram limpos.
+- PUs orfaos de teste em `unique_medical_records` foram removidos.
+- Consulta final retornou 0 pacientes, 0 PUs e 0 objetos de Storage com prefixo de teste.
+
+Security Advisor:
+
+- Reexecutado apos a rodada final.
+- Sem alerta critico novo de RLS ou Storage.
+- Avisos restantes:
+  - 15 functions `SECURITY DEFINER` executaveis por `authenticated`;
+  - 1 aviso de Leaked Password Protection desabilitado;
+  - 29 avisos `multiple_permissive_policies`.
+- As functions restantes possuem `search_path=public` e permanecem aceitas temporariamente por serem helpers/RPCs usados por RLS e fluxos clinicos.
+
+Validacoes tecnicas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- Playwright autenticado final: aprovado.
+- Playwright de status `suspended`: aprovado em rodada controlada.
+
+Documento complementar:
+
+- `docs/production/final-storage-and-advisor-validation.md`
 - Security Advisor reexecutado apos a migration:
   - total de avisos reduziu de 49 para 45;
   - `auth_rls_initplan` deixou de aparecer;

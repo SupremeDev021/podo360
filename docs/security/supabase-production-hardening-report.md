@@ -455,3 +455,30 @@ Pendencias atualizadas:
 2. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
 3. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
 4. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.
+
+Atualizacao final de Storage/Status/Advisor em 28/06/2026:
+
+- Upload real pela interface aprovado no bucket `company-assets`.
+- Isolamento de Storage aprovado entre Usuario A e Usuario B.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Status `suspended` da Empresa B bloqueou login pela interface com mensagem amigavel.
+- Empresa B foi reativada para `active` e voltou a acessar.
+- Dados ficticios e PUs orfaos com prefixo `TESTE_PRODUCAO_PODO360_` foram limpos.
+- Consulta final retornou 0 pacientes, 0 PUs e 0 objetos de Storage com prefixo de teste.
+- Security Advisor reexecutado:
+  - `auth_rls_initplan`: 0;
+  - `multiple_permissive_policies`: 29;
+  - `authenticated_security_definer_function_executable`: 15;
+  - `auth_leaked_password_protection`: 1.
+- As 15 functions sinalizadas possuem `search_path=public` e permanecem aceitas temporariamente por uso em RLS/RPCs clinicas.
+
+Pendencias restantes:
+
+1. Habilitar Leaked Password Protection no painel Supabase Auth, se disponivel.
+2. Consolidar/revisar policies apontadas por `multiple_permissive_policies` como melhoria de performance.
+3. Avaliar mover RPCs sensiveis para schema privado ou Edge Functions em etapa futura.
+
+Decisao:
+
+- Sem alerta critico novo de RLS ou Storage.
+- A base fica apta para producao com dados clinicos reais, com a pendencia operacional de Leaked Password Protection documentada.
