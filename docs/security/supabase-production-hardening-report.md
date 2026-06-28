@@ -432,3 +432,26 @@ Pendencias de hardening antes de producao real:
 3. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
 4. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
 5. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.
+
+Atualizacao de hardening RLS em 28/06/2026:
+
+- Criada e aplicada migration `20260628010709_optimize_rls_initplan_policies.sql`.
+- Policies ajustadas:
+  - `platform admins read admin users`;
+  - `profiles are isolated`;
+  - `users read own module permissions`;
+  - `admins create attendance audit logs`.
+- A logica de autorizacao foi preservada; as chamadas `auth.uid()`, `current_company_id()`, `current_role()` e `is_platform_admin()` foram encapsuladas com `select` para evitar reavaliacao por linha.
+- Security Advisor reexecutado:
+  - total de avisos: 45;
+  - `auth_rls_initplan`: 0;
+  - `multiple_permissive_policies`: 29;
+  - `authenticated_security_definer_function_executable`: 15;
+  - `auth_leaked_password_protection`: 1.
+
+Pendencias atualizadas:
+
+1. Habilitar ou documentar formalmente Leaked Password Protection no painel Supabase Auth.
+2. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
+3. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
+4. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.

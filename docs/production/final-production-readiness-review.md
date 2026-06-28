@@ -38,13 +38,26 @@ A base ja possui autenticacao real, usuarios Auth, profiles vinculados, RLS/Stor
 
 Executado via Supabase CLI no projeto Podo360.
 
-Resumo:
+Resumo inicial:
 
 - 49 avisos.
 - Nenhum alerta critico novo listado na saida resumida.
 - 15 `authenticated_security_definer_function_executable`.
 - 1 `auth_leaked_password_protection`.
 - 4 `auth_rls_initplan`.
+- 29 `multiple_permissive_policies`.
+
+Hardening aplicado:
+
+- Migration `20260628010709_optimize_rls_initplan_policies.sql` aplicada no Supabase Podo360.
+- 4 avisos `auth_rls_initplan` eliminados.
+
+Resumo apos hardening:
+
+- 45 avisos.
+- Nenhum alerta critico novo listado na saida resumida.
+- 15 `authenticated_security_definer_function_executable`.
+- 1 `auth_leaked_password_protection`.
 - 29 `multiple_permissive_policies`.
 
 ## Pendencias obrigatorias
@@ -62,7 +75,7 @@ Resumo:
 3. Validar status `suspended` pela interface com reativacao ao final.
 4. Reavaliar functions `SECURITY DEFINER` restantes.
 5. Habilitar ou justificar formalmente Leaked Password Protection.
-6. Otimizar/revisar policies apontadas por `auth_rls_initplan` e `multiple_permissive_policies`.
+6. Revisar/consolidar policies apontadas por `multiple_permissive_policies`.
 7. Repetir Security Advisor apos o fluxo clinico completo.
 
 ## Decisao

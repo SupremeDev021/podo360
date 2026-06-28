@@ -353,3 +353,17 @@ Decisao atual:
 
 - Ainda nao apto para dados clinicos reais.
 - Motivo: ainda falta executar fluxo clinico completo pela interface com dados ficticios e limpeza controlada: paciente, BA, PU, anamnese completa, upload real, relatorios/PDF, finalizacao/reabertura, status `suspended` pela interface e revisao dos avisos restantes.
+
+Atualizacao de hardening RLS em 28/06/2026:
+
+- Migration aplicada no Supabase Podo360: `20260628010709_optimize_rls_initplan_policies.sql`.
+- Foram otimizadas 4 policies apontadas por `auth_rls_initplan`.
+- Security Advisor reexecutado apos a migration:
+  - total de avisos reduziu de 49 para 45;
+  - `auth_rls_initplan` deixou de aparecer;
+  - permanecem 29 `multiple_permissive_policies`, 15 `authenticated_security_definer_function_executable` e 1 `auth_leaked_password_protection`.
+
+Decisao apos hardening:
+
+- A reducao dos avisos melhora a postura de seguranca/performance.
+- Ainda nao apto para dados clinicos reais ate concluir o fluxo clinico completo pela interface e revisar os avisos restantes sem quebrar RLS/RPCs do app.

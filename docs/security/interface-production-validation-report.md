@@ -363,3 +363,23 @@ Decisao desta etapa:
 - A tela branca/ausencia de Administracao da Clinica para `company_admin` foi corrigida.
 - A criacao de funcionarios agora segue convite seguro, sem senha em frontend.
 - Ainda nao liberar dados clinicos reais enquanto nao houver teste completo pela interface com criacao controlada de paciente, BA, anamnese, upload, relatorios/PDF, status suspenso pela interface e limpeza dos dados ficticios.
+
+## Hardening RLS - 28/06/2026
+
+Acao executada:
+
+- Criada e aplicada a migration `20260628010709_optimize_rls_initplan_policies.sql`.
+- Policies ajustadas:
+  - `platform admins read admin users`;
+  - `profiles are isolated`;
+  - `users read own module permissions`;
+  - `admins create attendance audit logs`.
+
+Resultado:
+
+- Os 4 avisos `auth_rls_initplan` foram eliminados no Security Advisor.
+- Security Advisor passou de 49 para 45 avisos.
+- Avisos restantes:
+  - 29 `multiple_permissive_policies`;
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`.
