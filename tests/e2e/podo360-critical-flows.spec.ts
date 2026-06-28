@@ -2,20 +2,30 @@ import { expect, test, type Page } from "@playwright/test";
 
 const userAEmail = process.env.PLAYWRIGHT_USER_A_EMAIL;
 const userAPassword = process.env.PLAYWRIGHT_USER_A_PASSWORD;
+const userBEmail = process.env.PLAYWRIGHT_USER_B_EMAIL;
+const userBPassword = process.env.PLAYWRIGHT_USER_B_PASSWORD;
 
-async function loginAsConfiguredUser(page: Page) {
-  test.skip(!userAEmail || !userAPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para executar fluxos clinicos autenticados.");
-
+async function loginWithCredentials(page: Page, email: string, password: string) {
   await page.goto("/");
   await expect(page.getByText(/Desenvolvido por: SupremeTech/i)).toBeVisible();
   await expect(page.getByRole("link", { name: /Site: https:\/\/www\.supremetechdev\.com\//i })).toHaveAttribute("href", "https://www.supremetechdev.com/");
   await expect(page.getByRole("link", { name: /Falar com suporte/i })).toHaveAttribute("href", "https://wa.me/5511999999999");
   await expect(page.getByText(/@supremetech\.digital/i)).toHaveCount(0);
-  await page.getByLabel(/^E-mail$/i).fill(userAEmail!);
-  await page.getByLabel(/^Senha$/i).fill(userAPassword!);
+  await page.getByLabel(/^E-mail$/i).fill(email);
+  await page.getByLabel(/^Senha$/i).fill(password);
   await page.getByRole("button", { name: /^Entrar$/i }).click();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Podo360/i })).toBeVisible();
+}
+
+async function loginAsConfiguredUser(page: Page) {
+  test.skip(!userAEmail || !userAPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para executar fluxos clinicos autenticados.");
+  await loginWithCredentials(page, userAEmail!, userAPassword!);
+}
+
+async function loginAsConfiguredUserB(page: Page) {
+  test.skip(!userBEmail || !userBPassword, "Configure PLAYWRIGHT_USER_B_EMAIL e PLAYWRIGHT_USER_B_PASSWORD para executar fluxos multiempresa autenticados.");
+  await loginWithCredentials(page, userBEmail!, userBPassword!);
 }
 
 async function openActiveAttendance(page: Page) {
@@ -77,6 +87,26 @@ test("bloqueia acesso interno sem sessao real", async ({ page }) => {
   await page.getByLabel(/^Senha$/i).fill("senha-invalida");
   await page.getByRole("button", { name: /^Entrar$/i }).click();
   await expect(page.getByText(/E-mail ou senha incorretos|Nao foi possivel entrar/i)).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+});
+
+test("Usuario B autentica e nao carrega dados visuais da Empresa A", async ({ page }) => {
+  await loginAsConfiguredUserB(page);
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
+  await expect(page.getByText(/Clinica Pe Saudavel|Cl.nica Pe Saudavel/i)).toHaveCount(0);
+  await page.getByRole("button", { name: /Pacientes/i }).click();
+  await expect(page.getByRole("heading", { name: /Pacientes/i })).toBeVisible();
+  await expect(page.getByText(/TESTE_PRODUCAO_PODO360_PACIENTE_A/i)).toHaveCount(0);
+});
+
+test("Logout encerra sessao e bloqueia rota protegida", async ({ page }) => {
+  await loginAsConfiguredUser(page);
+  await page.getByRole("button", { name: /Sair da conta/i }).click();
+  await expect(page.getByRole("dialog", { name: /Deseja realmente sair da conta/i })).toBeVisible();
+  await page.getByRole("button", { name: /^Sair da conta$/i }).click();
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
 });
 

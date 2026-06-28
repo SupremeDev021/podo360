@@ -98,6 +98,8 @@ Resultado:
 
 - Sem sessao, rotas internas continuam bloqueadas.
 - Credenciais invalidas nao entram.
+- Suite E2E preparada com testes para Usuario B e logout.
+- Resultado atual: 11 testes encontrados, 1 aprovado sem sessao e 10 pulados por ausencia de variaveis autenticadas.
 - Nao foi criado dado ficticio persistente.
 - Nenhuma limpeza foi necessaria.
 - Security Advisor permanece com 45 avisos:

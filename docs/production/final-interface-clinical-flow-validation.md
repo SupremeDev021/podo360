@@ -38,6 +38,17 @@ Teste Playwright reforcado:
 
 Resultado: aprovado.
 
+Atualizacao E2E:
+
+- A suite `tests/e2e/podo360-critical-flows.spec.ts` agora tambem possui testes preparados para:
+  - login do Usuario B;
+  - verificacao visual basica de isolamento da Empresa B;
+  - logout e bloqueio de rota protegida apos encerramento da sessao.
+- Resultado nesta rodada:
+  - 11 testes encontrados;
+  - 1 executado e aprovado sem credenciais;
+  - 10 pulados automaticamente por ausencia de variaveis locais autenticadas.
+
 ## Fluxos autenticados
 
 Nao executados nesta rodada.
