@@ -27,3 +27,4 @@ public/models/*debug*.png
 public/models/*report.json
 scripts/setup/create-initial-user.local.ts
 scripts/setup/*.local.ts
+scripts/cleanup/*.local.cjs

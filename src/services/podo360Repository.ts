@@ -4,7 +4,12 @@ import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, Au
 export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
 export const OPEN_ATTENDANCE_EXISTS_ERROR = "open_attendance_exists";
 
-const openAttendanceStatuses = ["ba_open", "waiting", "in_progress", "reopened", "paused"];
+const openAttendanceStatuses = ["ba_open", "waiting", "in_progress", "paused"];
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | undefined) {
+  return Boolean(value && uuidPattern.test(value));
+}
 
 async function assertAttendanceEditable(attendanceId: string | undefined, companyId: string | undefined) {
   if (!attendanceId || !companyId || !isSupabaseConfigured || !supabase) return;
@@ -41,8 +46,8 @@ export async function createPatient(patient: Patient) {
     .from("patients")
     .insert({
       company_id: patient.companyId,
-      unique_medical_record_id: patient.uniqueMedicalRecordId,
-      unique_record_number: patient.uniqueRecordNumber,
+      unique_medical_record_id: isUuid(patient.uniqueMedicalRecordId) ? patient.uniqueMedicalRecordId : undefined,
+      unique_record_number: patient.uniqueRecordNumber?.startsWith("PU-") ? patient.uniqueRecordNumber : undefined,
       full_name: patient.fullName,
       cpf: patient.cpf,
       rg: patient.rg,
@@ -153,10 +158,19 @@ export async function saveAnamnesisRecord(record: AnamnesisRecord) {
   if (!isSupabaseConfigured || !supabase) return null;
   await assertAttendanceEditable(record.attendanceId, record.companyId);
 
+  const existingRecord = isUuid(record.id)
+    ? { id: record.id }
+    : (await supabase
+        .from("anamnesis_records")
+        .select("id")
+        .eq("company_id", record.companyId)
+        .eq("attendance_id", record.attendanceId)
+        .maybeSingle()).data;
+
   const { data, error } = await supabase
     .from("anamnesis_records")
     .upsert({
-      id: record.id,
+      id: existingRecord?.id,
       company_id: record.companyId,
       patient_id: record.patientId,
       unique_medical_record_id: record.uniqueMedicalRecordId,
@@ -359,7 +373,6 @@ export async function createAttendanceBa(attendance: Attendance) {
       patient_id: attendance.patientId,
       unique_medical_record_id: attendance.uniqueMedicalRecordId,
       unique_record_number: attendance.uniqueRecordNumber,
-      ba_number: attendance.baNumber,
       status: attendance.status,
       opened_at: attendance.openedAt,
       opened_by: attendance.openedBy,

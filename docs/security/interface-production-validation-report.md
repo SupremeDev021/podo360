@@ -409,3 +409,69 @@ Dados de teste:
 Documento complementar:
 
 - `docs/production/final-interface-clinical-flow-validation.md`
+
+## Rodada E2E Autenticada Completa - 28/06/2026
+
+Credenciais:
+
+- Usadas apenas via `.env.test.local`, ignorado pelo Git.
+- Nenhuma senha foi registrada neste documento ou em arquivo versionado.
+
+Resultado:
+
+- Playwright autenticado: 11/11 testes aprovados.
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+
+Fluxos aprovados:
+
+- Bloqueio sem sessao real.
+- Login real do Usuario A.
+- Login real do Usuario B.
+- Logout e bloqueio de rota protegida apos logout.
+- Criacao real de paciente ficticio.
+- Abertura real de BA.
+- Geracao real de Prontuario de Evolucao/PU.
+- Bloqueio de BA duplicado.
+- Inicio de atendimento.
+- Salvamento de rascunho da Anamnese.
+- Avaliacao de Sensibilidade.
+- Curativo.
+- Cancelamento de finalizacao sem finalizar.
+- Finalizacao confirmada.
+- Bloqueio de edicao apos finalizacao.
+- Reabertura pelo Gerenciamento de Atendimento.
+- Relatorio com IA sem JSON cru.
+- Administracao da Clinica com convite seguro.
+
+Bugs corrigidos nesta rodada:
+
+- Paciente novo agora e sincronizado no Supabase antes da abertura do BA.
+- Estado local do BA agora usa `attendance.id` e `ba_number` reais retornados pelo Supabase.
+- Filtro remoto de BA aberto foi alinhado ao enum real do banco, sem `reopened`.
+- Salvamento de Anamnese agora usa UUID real de `anamnesis_records`.
+- Teste de logout agora clica no botao correto dentro do modal.
+
+Dados ficticios:
+
+- Prefixo usado: `TESTE_PRODUCAO_PODO360_`.
+- 22 pacientes ficticios encontrados e removidos por filtro `company_id` + prefixo.
+- Nenhum dado real foi usado.
+
+Documento complementar:
+
+- `docs/production/final-authenticated-e2e-validation-report.md`
+- `docs/production/test-data-cleanup-report.md`
+
+Pendencias antes de liberar dados clinicos reais:
+
+- Upload real de imagem/logo/asset pela interface.
+- Isolamento de Storage por upload real pela interface.
+- Status `suspended`/reativacao pela interface.
+- Reexecucao do Supabase Security Advisor apos esta rodada completa.
+- Habilitar ou documentar formalmente Leaked Password Protection no painel Supabase Auth.
+
+Decisao:
+
+- Ainda nao apto para producao com dados clinicos reais.

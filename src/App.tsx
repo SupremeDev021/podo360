@@ -48,7 +48,7 @@ import { generateReferralReport } from "./services/aiReferralReportService";
 import { COMPANY_ACCESS_UNAVAILABLE_MESSAGE } from "./services/companyStatusService";
 import { getPlatformAccessSnapshot } from "./services/platformAccessService";
 import { roleLabel } from "./services/rbac";
-import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -612,8 +612,19 @@ export function App() {
       await handleCreateProduct({ id: `stock-${Date.now()}-${item.name}`, companyId: record.companyId, name: item.name.trim(), category: item.category || "Outros", internalCode: `OUT-${Date.now()}`, currentQuantity: 0, minimumQuantity: 0, unit: item.unit || "un", costValue: 0, saleValue: item.unitPrice || 0, supplier: "", active: true });
     }
     try {
-      await Promise.all([saveAnamnesisRecord(record), saveAttendanceUsedProducts(record, usedProducts)]);
+      const savedRecord = await saveAnamnesisRecord(record);
+      const persistedRecord = savedRecord
+        ? {
+            ...record,
+            id: savedRecord.id,
+            createdAt: savedRecord.created_at ?? record.createdAt,
+            updatedAt: savedRecord.updated_at ?? record.updatedAt
+          }
+        : record;
+      await saveAttendanceUsedProducts(persistedRecord, usedProducts);
+      setAnamneses((current) => current.map((item) => (item.id === record.id ? persistedRecord : item)));
     } catch (error) {
+      console.error("Erro ao salvar anamnese", error);
       if (handleFinalizedWriteError(error)) return;
       throw error;
     }
@@ -683,7 +694,7 @@ export function App() {
 
     const nextBaNumber = generateBaNumber(company.id, attendances);
     const openedAt = new Date().toISOString();
-    const attendance: Attendance = {
+    let attendance: Attendance = {
       id: `attendance-${attendances.length + 1}`,
       companyId: company.id,
       patientId: patient.id,
@@ -715,13 +726,26 @@ export function App() {
 
     setBaSubmitting(true);
     try {
-      await createAttendanceBa(attendance);
+      const createdAttendance = await createAttendanceBa(attendance);
+      if (createdAttendance) {
+        attendance = {
+          ...attendance,
+          id: createdAttendance.id,
+          uniqueMedicalRecordId: createdAttendance.unique_medical_record_id ?? attendance.uniqueMedicalRecordId,
+          uniqueRecordNumber: createdAttendance.unique_record_number ?? attendance.uniqueRecordNumber,
+          baNumber: createdAttendance.ba_number ?? attendance.baNumber,
+          status: createdAttendance.status ?? attendance.status,
+          openedAt: createdAttendance.opened_at ?? attendance.openedAt,
+          attendanceDate: createdAttendance.attendance_date ?? attendance.attendanceDate
+        };
+      }
     } catch (error) {
       if (error instanceof Error && error.message === OPEN_ATTENDANCE_EXISTS_ERROR) {
         notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
         setBaSubmitting(false);
         return false;
       }
+      console.error("Erro ao sincronizar BA", error);
       notify("Erro ao abrir BA", "Nao foi possivel sincronizar o novo BA com o ambiente online. Tente novamente.", "danger");
       setBaSubmitting(false);
       return false;
@@ -774,7 +798,7 @@ export function App() {
       notify("Paciente ja possui Prontuário de Evolução", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
     }
 
-    const patient: Patient = existingPatient ?? {
+    let patient: Patient = existingPatient ?? {
       id: `patient-${patients.length + 1}`,
       companyId: company.id,
       uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
@@ -808,6 +832,25 @@ export function App() {
         setSelectedPatientId(existingPatient.id);
         setActiveAttendanceId(openAttendance.id);
         notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
+        return false;
+      }
+    }
+
+    if (!existingPatient) {
+      try {
+        const createdPatient = await createPatient(patient);
+        if (createdPatient) {
+          patient = {
+            ...patient,
+            id: createdPatient.id,
+            uniqueMedicalRecordId: createdPatient.unique_medical_record_id,
+            uniqueRecordNumber: createdPatient.unique_record_number,
+            createdAt: createdPatient.created_at ?? patient.createdAt
+          };
+        }
+      } catch (error) {
+        console.error("Erro ao sincronizar paciente antes do BA", error);
+        notify("Erro ao abrir BA", "Nao foi possivel sincronizar o paciente com o ambiente online. Tente novamente.", "danger");
         return false;
       }
     }

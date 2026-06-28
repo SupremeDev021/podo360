@@ -382,3 +382,56 @@ Bloqueio atual:
 - As variaveis locais de teste autenticado `PLAYWRIGHT_USER_A_EMAIL`, `PLAYWRIGHT_USER_A_PASSWORD`, `PLAYWRIGHT_USER_B_EMAIL` e `PLAYWRIGHT_USER_B_PASSWORD` nao estavam configuradas.
 - As senhas reais nao foram gravadas em comandos, arquivos, logs ou documentos.
 - Por isso, paciente/BA/PU/anamnese/upload/relatorios/finalizacao/reabertura/status suspended continuam pendentes pela interface.
+
+## Atualizacao E2E Autenticada - 28/06/2026
+
+As variaveis locais de teste autenticado foram configuradas em `.env.test.local`, arquivo ignorado pelo Git.
+
+Validacoes aprovadas:
+
+- Playwright autenticado: 11/11 testes aprovados.
+- Login real do Usuario A.
+- Login real do Usuario B.
+- Bloqueio sem sessao real.
+- Credenciais invalidas bloqueadas.
+- Logout bloqueia rotas protegidas.
+- Criacao real de paciente ficticio.
+- Abertura real de BA.
+- Geracao real de PU/Prontuario de Evolucao.
+- Bloqueio de BA duplicado.
+- Salvamento de Anamnese.
+- Finalizacao com confirmacao.
+- Cancelamento da finalizacao sem finalizar.
+- Bloqueio de edicao apos finalizacao.
+- Reabertura pelo Gerenciamento de Atendimento.
+- Relatorio com IA sem JSON cru.
+- Administracao da Clinica com convite seguro.
+
+Bugs corrigidos:
+
+- Paciente novo agora e persistido no Supabase antes da criacao do BA.
+- BA local agora usa `id` e `ba_number` retornados pelo banco.
+- Query remota de BA aberto nao usa mais status `reopened`, inexistente no enum remoto atual.
+- Anamnese agora salva com UUID real em `anamnesis_records`.
+
+Limpeza:
+
+- Foram removidos 22 pacientes ficticios com prefixo `TESTE_PRODUCAO_PODO360_`, filtrando por `company_id` da Clinica Pe Saudavel.
+
+Validacoes tecnicas finais:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+
+Pendencias restantes:
+
+- Upload real/Storage pela interface.
+- Teste de status `suspended`/reativacao pela interface.
+- Reexecucao do Supabase Security Advisor apos a rodada E2E completa.
+- Habilitar ou documentar Leaked Password Protection no painel Supabase Auth.
+- Confirmar se PUs gerados pelos pacientes ficticios foram removidos ou se ha registros orfaos em `unique_medical_records`.
+
+Decisao atual:
+
+- Ainda nao apto para producao com dados clinicos reais.
