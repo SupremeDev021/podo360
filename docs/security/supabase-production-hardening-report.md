@@ -482,3 +482,13 @@ Decisao:
 
 - Sem alerta critico novo de RLS ou Storage.
 - A base fica apta para producao com dados clinicos reais, com a pendencia operacional de Leaked Password Protection documentada.
+
+Atualizacao Admin Global em 28/06/2026:
+
+- Admin Global implementado com login real Supabase Auth.
+- Permissao baseada em `platform_admin_users`.
+- Usuario clinico comum foi bloqueado no teste E2E.
+- Consultas administrativas usam RLS existente e chave publica do frontend, nao `service_role`.
+- Tabelas integradas: `platform_companies`, `platform_plans`, `platform_company_subscriptions`, `platform_features`, `platform_leads`, `platform_announcements`, `platform_admin_audit_logs`, `platform_company_status_logs`, `platform_admin_users`.
+- Consulta segura indicou `total_platform_admins = 0` e `active_platform_admins = 0`.
+- Pendencia: cadastrar o primeiro Admin Global ativo e reexecutar teste E2E autorizado.

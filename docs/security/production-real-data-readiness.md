@@ -402,6 +402,35 @@ Validacoes tecnicas:
 Documento complementar:
 
 - `docs/production/final-storage-and-advisor-validation.md`
+
+## Admin Global - 28/06/2026
+
+Foi criada a area de Admin Global em `/admin`, separada do sistema clinico.
+
+Resumo:
+
+- Login real em `/admin/login`.
+- Autorizacao por `platform_admin_users`.
+- Usuario clinico comum nao acessa Admin Global.
+- Dashboard, Empresas, Planos, Assinaturas, Leads, Usuarios Admin, Avisos, Auditoria e Configuracoes consomem Supabase real.
+- Avisos globais agora sao consumidos pelo sistema clinico via `platform_announcements`.
+- Sem `service_role` no frontend.
+- Sem usuario/senha hardcoded.
+- Sem mock no Admin Global.
+
+Validado:
+
+- Admin sem sessao mostra login.
+- Rota direta `/admin/empresas` sem sessao mostra login.
+- Campos vazios bloqueiam login.
+- Credenciais invalidas bloqueiam login.
+- Usuario clinico autenticado e bloqueado no Admin Global.
+- Lint, typecheck e build aprovados.
+
+Pendencia operacional:
+
+- `platform_admin_users` esta vazio (`active_platform_admins = 0`), portanto ainda falta cadastrar um Admin Global ativo para validar o dashboard autorizado real.
+- Detalhes em `docs/admin/global-admin-production-readiness.md`.
 - Security Advisor reexecutado apos a migration:
   - total de avisos reduziu de 49 para 45;
   - `auth_rls_initplan` deixou de aparecer;

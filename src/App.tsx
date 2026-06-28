@@ -36,6 +36,7 @@ import type { FormEvent, ReactNode } from "react";
 import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
 import { FootSensitivityMap3D } from "./components/FootSensitivityMap3D";
+import { GlobalAdminApp } from "./components/GlobalAdminApp";
 import { ImageEvolutionComparison } from "./components/ImageEvolutionComparison";
 import { Layout, type ViewKey } from "./components/Layout";
 import { LoginScreen } from "./components/LoginScreen";
@@ -296,6 +297,11 @@ function allowedViewsForProfile(profile: Profile): ViewKey[] {
 }
 
 export function App() {
+  if (window.location.pathname.startsWith("/admin")) return <GlobalAdminApp />;
+  return <ClinicApp />;
+}
+
+function ClinicApp() {
   const [company, setCompany] = useState<Company>(loginCompanyPlaceholder);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
