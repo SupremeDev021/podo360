@@ -394,3 +394,41 @@ Atualizacao de login real em 27/06/2026:
 - Logout e acesso direto a rota protegida apos logout foram validados.
 - Validacao RLS com sessao real confirmou que cada usuario enxerga somente a propria empresa em `platform_companies`.
 - O conector Supabase MCP desta sessao nao tinha permissao para executar SQL/Security Advisor no projeto; a revisao do Advisor deve ser repetida no painel ou em sessao com permissao adequada.
+
+Atualizacao de Security Advisor e Admin Clinica em 28/06/2026:
+
+- Security Advisor executado pela Supabase CLI linkada ao projeto Podo360.
+- Total retornado: 49 avisos.
+- Nao foi listado alerta critico novo de RLS ou Storage na saida resumida.
+- Grupos de avisos:
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`;
+  - 4 `auth_rls_initplan`;
+  - 29 `multiple_permissive_policies`.
+- Funcoes `SECURITY DEFINER` sinalizadas:
+  - `can_access_company`;
+  - `cancel_attendance_finalization`;
+  - `current_company_id`;
+  - `current_profile`;
+  - `current_role`;
+  - `has_attendance_management_access`;
+  - `has_clinical_write_access`;
+  - `has_financial_access`;
+  - `has_hci_enabled`;
+  - `has_hci_view_access`;
+  - `has_valid_hci_consent`;
+  - `is_platform_admin`;
+  - `is_super_admin`;
+  - `mark_attendance_finished`;
+  - `mark_attendance_started`.
+- Decisao: manter temporariamente porque sao helpers/RPCs de RLS e fluxo clinico, mas revisar grants, schema privado ou Edge Functions antes da liberacao final.
+- Administracao da Clinica foi restaurada para `company_admin`, com criacao de funcionarios por convite seguro e sem senha manual no frontend.
+- Edge Function `admin-create-company-user` foi implantada com validacao de role clinico e bloqueio de gerenciamento cross-company para `company_admin`.
+
+Pendencias de hardening antes de producao real:
+
+1. Habilitar ou documentar formalmente Leaked Password Protection no painel Supabase Auth.
+2. Otimizar policies apontadas por `auth_rls_initplan`.
+3. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
+4. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
+5. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.

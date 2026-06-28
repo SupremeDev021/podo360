@@ -103,8 +103,9 @@ test("Administração da Clínica abre criação de usuário em tela ampla e res
   await expect(page.getByLabel(/^Nome$/i)).toBeVisible();
   await expect(page.getByRole("textbox", { name: /^E-mail$/i })).toBeVisible();
   await expect(page.getByLabel(/Perfil/i)).toBeVisible();
-  await expect(page.getByLabel(/Senha de primeiro acesso/i)).toBeVisible();
-  await expect(page.getByLabel(/Confirmar senha/i)).toBeVisible();
+  await expect(page.getByText(/convite seguro/i)).toBeVisible();
+  await expect(page.locator('select[name="role"]')).not.toContainText(/Super Admin|plataforma/i);
+  await expect(page.locator('input[name="temporaryPassword"], input[name="confirmPassword"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Salvar usu/i })).toBeVisible();
 
   const formBox = await page.locator(".user-management-page").boundingBox();

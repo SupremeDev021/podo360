@@ -6,6 +6,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
+const clinicRoles = new Set(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"]);
+
+function assertClinicRole(role: unknown) {
+  if (typeof role !== "string" || !clinicRoles.has(role)) {
+    throw new Error("Perfil clinico invalido.");
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -27,9 +35,10 @@ Deno.serve(async (request) => {
     if (caller.role !== "super_admin" && caller.company_id !== body.companyId) throw new Error("Admin da empresa so pode criar usuarios na propria empresa.");
 
     if (body.action) {
-      if (caller.role !== "super_admin") throw new Error("Somente Super Admin pode gerenciar perfis existentes.");
-      const { data: target, error: targetError } = await admin.from("profiles").select("id, email, company_id").eq("id", body.userId).single();
+      const { data: target, error: targetError } = await admin.from("profiles").select("id, email, company_id, full_name, role").eq("id", body.userId).single();
       if (targetError || !target) throw new Error("Usuario nao encontrado.");
+      if (caller.role !== "super_admin" && target.company_id !== caller.company_id) throw new Error("Admin da empresa so pode gerenciar usuarios da propria empresa.");
+      if (caller.role !== "super_admin" && target.role === "super_admin") throw new Error("Admin da empresa nao pode gerenciar Super Admin.");
 
       if (body.action === "reset_password") {
         const { error } = await admin.auth.resetPasswordForEmail(target.email);
@@ -37,11 +46,12 @@ Deno.serve(async (request) => {
         return new Response(JSON.stringify({ resetSent: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      if (body.action === "update") assertClinicRole(body.role);
       const active = body.action === "deactivate" ? false : body.action === "reactivate" ? true : body.active;
       const { error: updateError } = await admin.from("profiles").update({
-        company_id: body.companyId,
-        full_name: body.fullName,
-        role: body.role,
+        company_id: caller.role === "super_admin" ? body.companyId : target.company_id,
+        full_name: body.fullName ?? target.full_name,
+        role: body.action === "update" ? body.role : target.role,
         active,
         disabled_at: active === false ? new Date().toISOString() : null,
         disabled_by: active === false ? authData.user.id : null
@@ -59,6 +69,7 @@ Deno.serve(async (request) => {
       return new Response(JSON.stringify({ updated: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    assertClinicRole(body.role);
     const { data: invite, error: inviteError } = await admin.auth.admin.inviteUserByEmail(body.email, {
       data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
     });

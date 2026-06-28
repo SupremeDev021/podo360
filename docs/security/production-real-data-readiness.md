@@ -318,3 +318,38 @@ Atualizacao de interface em 26/06/2026:
 - `.env.local` nao existe neste workspace, portanto a interface local ainda nao aponta ao Supabase oficial.
 - Login real no navegador, fluxo clinico completo, relatorios/PDF, upload real e isolamento visual multiempresa continuam pendentes.
 - Detalhes registrados em `docs/security/interface-production-validation-report.md`.
+
+## Atualizacao de Administracao da Clinica - 28/06/2026
+
+Correcoes aplicadas:
+
+- `company_admin` voltou a acessar "Administracao da Clinica" pelo menu.
+- A tela de funcionarios da clinica deixou de oferecer criacao de `super_admin`.
+- A criacao de funcionarios deixou de pedir senha manual e passou a orientar convite seguro por e-mail.
+- A Edge Function `admin-create-company-user` agora valida roles clinicos e limita `company_admin` a usuarios da propria empresa.
+- A Edge Function foi implantada no projeto Supabase Podo360.
+
+Validacoes executadas:
+
+- Interface de Administracao da Clinica abriu para Usuario A.
+- Modal de criacao de usuario abriu sem tela branca.
+- Roles exibidas: apenas perfis clinicos.
+- Campos de senha manual ausentes.
+- Teste negativo da Edge Function bloqueou tentativa de criar `super_admin`.
+- Teste negativo da Edge Function bloqueou tentativa de atualizar usuario de outra empresa.
+- Lint, typecheck, build e Playwright do fluxo de administracao passaram.
+
+Security Advisor em 28/06/2026:
+
+- Executado via Supabase CLI.
+- Sem alerta critico novo listado na saida resumida.
+- Avisos restantes:
+  - 15 functions `SECURITY DEFINER` executaveis por `authenticated`;
+  - 1 aviso de Leaked Password Protection desabilitado;
+  - 4 avisos `auth_rls_initplan`;
+  - 29 avisos `multiple_permissive_policies`.
+
+Decisao atual:
+
+- Ainda nao apto para dados clinicos reais.
+- Motivo: ainda falta executar fluxo clinico completo pela interface com dados ficticios e limpeza controlada: paciente, BA, PU, anamnese completa, upload real, relatorios/PDF, finalizacao/reabertura, status `suspended` pela interface e revisao dos avisos restantes.

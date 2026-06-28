@@ -314,3 +314,52 @@ Ainda nao executado nesta etapa:
 - Criacao de paciente/BA/anamnese por interface, para evitar inserir dados de teste persistentes sem rotina de limpeza aprovada.
 - Status `suspended` pela interface, para evitar alterar o estado da empresa sem uma etapa controlada de rollback/reativacao.
 - Security Advisor pelo conector MCP, pois a sessao atual nao tem permissao para executar a acao no projeto.
+
+## Revisao Final Parcial - 28/06/2026
+
+Escopo executado nesta etapa:
+
+- Restaurada a Administracao da Clinica para usuarios `company_admin`.
+- Validado que a tela de criacao de funcionarios abre pela interface com Usuario A.
+- Removida a solicitacao de senha manual na criacao de funcionarios.
+- Mantido fluxo por convite seguro do Supabase Auth, sem armazenar ou exibir senha no frontend.
+- Removida a opcao de criar `super_admin` pela tela da clinica.
+- Ajustada Edge Function `admin-create-company-user` para permitir que `company_admin` gerencie apenas usuarios da propria empresa.
+- Edge Function atualizada no projeto Supabase Podo360.
+
+Validacoes pela interface:
+
+- Usuario A acessou "Administracao da Clinica".
+- Modal "Criar usuario" abriu sem tela branca.
+- Perfil de plataforma/Super Admin nao apareceu no seletor da clinica.
+- Campos de senha manual nao apareceram.
+- Mensagem de convite seguro apareceu.
+- Sem erro critico de console no fluxo validado.
+
+Validacoes de seguranca da Edge Function:
+
+- Usuario A tentou criar usuario com role `super_admin`: bloqueado.
+- Usuario A tentou atualizar usuario da Empresa B: bloqueado.
+- Nenhum funcionario de teste foi persistido nesta validacao.
+
+Security Advisor via Supabase CLI:
+
+- Executado com `supabase db advisors --linked --output json`.
+- Resultado: 49 avisos, sem alerta critico novo listado na saida resumida.
+- Avisos agrupados:
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`;
+  - 4 `auth_rls_initplan`;
+  - 29 `multiple_permissive_policies`.
+
+Classificacao:
+
+- Avisos de `SECURITY DEFINER`: aceitos temporariamente porque envolvem helpers/RPCs usados por RLS e fluxos clinicos, mas devem ser revisados antes da liberacao final.
+- `auth_leaked_password_protection`: pendente de habilitacao/revisao no painel Supabase Auth.
+- `auth_rls_initplan` e `multiple_permissive_policies`: pendencias de hardening/performance e reducao de ruido de policies; nao indicaram vazamento confirmado nos testes atuais, mas devem ser tratados antes da producao plena.
+
+Decisao desta etapa:
+
+- A tela branca/ausencia de Administracao da Clinica para `company_admin` foi corrigida.
+- A criacao de funcionarios agora segue convite seguro, sem senha em frontend.
+- Ainda nao liberar dados clinicos reais enquanto nao houver teste completo pela interface com criacao controlada de paciente, BA, anamnese, upload, relatorios/PDF, status suspenso pela interface e limpeza dos dados ficticios.

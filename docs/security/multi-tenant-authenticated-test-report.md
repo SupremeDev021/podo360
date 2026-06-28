@@ -146,3 +146,16 @@ Decisao:
 
 - O isolamento multiempresa de banco continua aprovado por simulacao autenticada com rollback.
 - O isolamento visual multiempresa ainda precisa ser repetido pela interface antes de liberar dados clinicos reais.
+
+Atualizacao de Administracao da Clinica - 28/06/2026:
+
+- A tela "Administracao da Clinica" foi liberada para `company_admin`.
+- A criacao de funcionarios foi limitada a perfis clinicos.
+- `company_admin` nao consegue criar usuario com role `super_admin`.
+- `company_admin` nao consegue atualizar usuario de outra empresa pela Edge Function `admin-create-company-user`.
+- A validacao foi feita com Usuario A e sessao real, sem persistir funcionario de teste.
+
+Decisao adicional:
+
+- O isolamento de gerenciamento de funcionarios por empresa foi reforcado.
+- Ainda falta repetir o isolamento visual completo pela interface com criacao controlada de paciente/BA/anamnese para Empresa A e Empresa B antes de liberar dados clinicos reais.
