@@ -40,12 +40,14 @@ const featureItems = [
   { icon: Sparkles, label: "Relatórios com IA", detail: "Inteligência para decisões" }
 ];
 
+const CONNECTION_UNAVAILABLE_MESSAGE = "Nao foi possivel conectar ao servico no momento. Tente novamente em instantes ou entre em contato com o suporte.";
+
 function getLoginErrorMessage(message: string) {
   const normalized = message.toLowerCase();
 
   if (normalized.includes("invalid login credentials")) return "E-mail ou senha incorretos. Revise os dados e tente novamente.";
   if (normalized.includes("email not confirmed")) return "Confirme seu e-mail antes de acessar o sistema.";
-  if (normalized.includes("failed to fetch") || normalized.includes("network")) return "Nao foi possivel conectar ao servidor. Verifique sua internet e tente novamente.";
+  if (normalized.includes("failed to fetch") || normalized.includes("network")) return CONNECTION_UNAVAILABLE_MESSAGE;
   if (normalized.includes("too many requests")) return "Muitas tentativas em pouco tempo. Aguarde alguns instantes e tente novamente.";
 
   return "Nao foi possivel entrar agora. Tente novamente ou contate o administrador da sua clinica.";
@@ -75,7 +77,10 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
     event.preventDefault();
 
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback({ tone: "danger", message: "Acesso indisponivel. Configure o ambiente oficial do Supabase para entrar." });
+      setFeedback({
+        tone: "danger",
+        message: import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : CONNECTION_UNAVAILABLE_MESSAGE
+      });
       return;
     }
 
@@ -100,7 +105,7 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
       setFeedback({ tone: "success", message: "Acesso autorizado. Carregando seu ambiente clinico..." });
       window.setTimeout(() => onLoginSuccess?.(), 350);
     } catch {
-      setFeedback({ tone: "danger", message: "Falha de conexao. Verifique sua internet e tente novamente." });
+      setFeedback({ tone: "danger", message: CONNECTION_UNAVAILABLE_MESSAGE });
     } finally {
       setLoading(false);
     }
@@ -113,7 +118,10 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
     }
 
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback({ tone: "info", message: "A recuperacao de senha sera liberada quando o acesso oficial estiver ativo." });
+      setFeedback({
+        tone: "danger",
+        message: import.meta.env.DEV ? "Recuperacao indisponivel: ambiente de autenticacao nao configurado." : CONNECTION_UNAVAILABLE_MESSAGE
+      });
       return;
     }
 
@@ -128,7 +136,7 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
           : { tone: "success", message: "Se o e-mail estiver cadastrado, enviaremos as instrucoes de redefinicao." }
       );
     } catch {
-      setFeedback({ tone: "danger", message: "Falha de conexao ao solicitar a recuperacao de senha." });
+      setFeedback({ tone: "danger", message: CONNECTION_UNAVAILABLE_MESSAGE });
     } finally {
       setRecovering(false);
     }

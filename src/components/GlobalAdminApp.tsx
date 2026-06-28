@@ -40,6 +40,8 @@ type AdminNotice = { title: string; message: string; tone: "success" | "info" | 
 
 const ADMIN_DENIED_MESSAGE = "Seu usuario nao possui permissao para acessar o Admin Global Podo360.";
 const ADMIN_INACTIVE_MESSAGE = "Seu acesso administrativo esta inativo. Entre em contato com o responsavel pela plataforma.";
+const ADMIN_CONNECTION_UNAVAILABLE_MESSAGE = "Nao foi possivel carregar o painel administrativo. Tente atualizar a pagina ou entre em contato com o suporte.";
+const ADMIN_AUTH_UNAVAILABLE_MESSAGE = "Nao foi possivel conectar ao servico no momento. Tente novamente em instantes ou entre em contato com o suporte.";
 const platformAdminRoles: PlatformAdminRole[] = ["owner", "admin", "support", "commercial"];
 
 const adminRoutes: Array<{ key: AdminRoute; label: string; icon: typeof LayoutDashboard }> = [
@@ -128,7 +130,7 @@ function AdminLogin({ message, onSuccess }: { message?: string; onSuccess: () =>
       return;
     }
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback("Ambiente Supabase oficial nao configurado.");
+      setFeedback(import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : ADMIN_AUTH_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -141,7 +143,7 @@ function AdminLogin({ message, onSuccess }: { message?: string; onSuccess: () =>
       }
       onSuccess();
     } catch {
-      setFeedback("Nao foi possivel autenticar agora. Tente novamente.");
+      setFeedback(ADMIN_AUTH_UNAVAILABLE_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -178,7 +180,7 @@ export function GlobalAdminApp() {
   const load = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) {
       setStatus("login");
-      setMessage("Ambiente Supabase oficial nao configurado.");
+      setMessage(import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : ADMIN_CONNECTION_UNAVAILABLE_MESSAGE);
       return;
     }
     setStatus("checking");

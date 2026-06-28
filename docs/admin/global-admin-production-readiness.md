@@ -254,3 +254,23 @@ Motivos:
 Pendencia operacional nao bloqueante antes do go-live final:
 
 - Leaked Password Protection exige Supabase Pro ou superior no projeto atual.
+
+## Correcao de Tela Branca e Mensagens - 28/06/2026
+
+Causa identificada:
+
+- O Admin separado `podo360-admin` estava com `index.html` apontando para assets antigos de build, o que podia gerar tela branca em deploy estatico.
+- O Admin Global integrado no `podo360` tinha mensagens tecnicas de ambiente Supabase quando a autenticacao nao estava configurada.
+
+Correcoes:
+
+- `podo360-admin/index.html` voltou ao entrypoint Vite correto em `/src/main.tsx`.
+- O painel mockado/read-only do `podo360-admin` foi removido; o repo separado agora exibe login/setup seguro sem dados falsos.
+- O Admin Global integrado passou a exibir mensagem amigavel de indisponibilidade em producao, sem citar Supabase.
+
+Validado:
+
+- Build do `podo360-admin`: aprovado.
+- Admin Global `/admin` sem sessao mostra login.
+- Platform admin real acessa Dashboard Global.
+- Usuario clinico comum e bloqueado.
