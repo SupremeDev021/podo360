@@ -115,3 +115,10 @@ Bloqueio:
 Relatorio detalhado:
 
 - `docs/production/final-interface-clinical-flow-validation.md`
+
+Atualizacao de execucao autenticada segura:
+
+- `playwright.config.ts` agora carrega `.env.local` e `.env.test.local` locais quando existirem.
+- Criado `.env.test.local.example` sem valores reais.
+- Criado `scripts/test/run-authenticated-e2e.ps1` para solicitar credenciais interativamente, sem salvar senha em arquivo.
+- Nenhuma credencial real foi versionada.

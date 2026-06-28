@@ -64,6 +64,31 @@ Variaveis exigidas para execucao segura:
 
 Essas variaveis devem ser configuradas localmente fora do Git antes de rodar o fluxo clinico completo.
 
+## Execucao segura preparada
+
+Arquivos adicionados para a proxima validacao autenticada:
+
+- `.env.test.local.example`: modelo sem valores reais para criar `.env.test.local` local e ignorado pelo Git.
+- `scripts/test/run-authenticated-e2e.ps1`: runner interativo que solicita e-mails e senhas no terminal e carrega as credenciais somente no processo atual.
+
+Tambem foi atualizado `playwright.config.ts` para carregar `.env.local` e `.env.test.local` quando existirem, sem imprimir valores.
+
+Comandos seguros disponiveis:
+
+```powershell
+Copy-Item .env.test.local.example .env.test.local
+# preencher .env.test.local localmente, sem commitar
+.\node_modules\.bin\playwright.cmd test tests\e2e\podo360-critical-flows.spec.ts
+```
+
+Ou, sem salvar senha em arquivo:
+
+```powershell
+.\scripts\test\run-authenticated-e2e.ps1
+```
+
+As senhas reais nao devem ser copiadas para comandos versionados, logs, documentacao ou commits.
+
 ## Dados ficticios
 
 Nenhum dado ficticio persistente foi criado nesta rodada.
