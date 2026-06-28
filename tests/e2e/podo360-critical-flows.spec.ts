@@ -2,34 +2,82 @@ import { expect, test, type Page } from "@playwright/test";
 
 const userAEmail = process.env.PLAYWRIGHT_USER_A_EMAIL;
 const userAPassword = process.env.PLAYWRIGHT_USER_A_PASSWORD;
+const userBEmail = process.env.PLAYWRIGHT_USER_B_EMAIL;
+const userBPassword = process.env.PLAYWRIGHT_USER_B_PASSWORD;
+const testRunId = Date.now().toString().slice(-8);
+let testPatientCounter = 0;
 
-async function loginAsConfiguredUser(page: Page) {
-  test.skip(!userAEmail || !userAPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para executar fluxos clinicos autenticados.");
+function nextTestPatientName(label = "PACIENTE") {
+  testPatientCounter += 1;
+  return `TESTE_PRODUCAO_PODO360_${label}_${testRunId}_${testPatientCounter}`;
+}
 
+function nextTestCpf() {
+  return `${testRunId}${String(testPatientCounter).padStart(3, "0")}`;
+}
+
+test.beforeEach(async ({ page }) => {
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      console.log(`[browser:error] ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => {
+    console.log(`[pageerror] ${error.message}`);
+  });
+});
+
+async function loginWithCredentials(page: Page, email: string, password: string) {
   await page.goto("/");
   await expect(page.getByText(/Desenvolvido por: SupremeTech/i)).toBeVisible();
   await expect(page.getByRole("link", { name: /Site: https:\/\/www\.supremetechdev\.com\//i })).toHaveAttribute("href", "https://www.supremetechdev.com/");
   await expect(page.getByRole("link", { name: /Falar com suporte/i })).toHaveAttribute("href", "https://wa.me/5511999999999");
   await expect(page.getByText(/@supremetech\.digital/i)).toHaveCount(0);
-  await page.getByLabel(/^E-mail$/i).fill(userAEmail!);
-  await page.getByLabel(/^Senha$/i).fill(userAPassword!);
+  await page.getByLabel(/^E-mail$/i).fill(email);
+  await page.getByLabel(/^Senha$/i).fill(password);
   await page.getByRole("button", { name: /^Entrar$/i }).click();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Podo360/i })).toBeVisible();
 }
 
+async function loginAsConfiguredUser(page: Page) {
+  test.skip(!userAEmail || !userAPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para executar fluxos clinicos autenticados.");
+  await loginWithCredentials(page, userAEmail!, userAPassword!);
+}
+
+async function loginAsConfiguredUserB(page: Page) {
+  test.skip(!userBEmail || !userBPassword, "Configure PLAYWRIGHT_USER_B_EMAIL e PLAYWRIGHT_USER_B_PASSWORD para executar fluxos multiempresa autenticados.");
+  await loginWithCredentials(page, userBEmail!, userBPassword!);
+}
+
 async function openActiveAttendance(page: Page) {
   await page.getByRole("button", { name: /^Atendimento$/i }).click();
-  const continueButton = page.getByRole("button", { name: /Continuar atendimento/i }).first();
-  const startButton = page.getByRole("button", { name: /Iniciar atendimento/i }).first();
-  if (await continueButton.count()) {
-    await continueButton.click();
-  } else {
-    await startButton.click();
+  const attendanceAction = page.getByRole("button", { name: /Continuar atendimento|Iniciar atendimento/i }).first();
+
+  if (!(await attendanceAction.count())) {
+    await createTestBa(page);
+    await page.getByRole("button", { name: /^Atendimento$/i }).click();
   }
+
+  await expect(attendanceAction).toBeVisible({ timeout: 15_000 });
+  await attendanceAction.click();
   await page.getByRole("button", { name: /^Anamnese$/i }).click();
   await expect(page.locator(".wizard-form")).toBeVisible();
   await expect(page.getByText(/Consulte fichas anteriores por BA/i)).toHaveCount(0);
+}
+
+async function createTestBa(page: Page, patientName = nextTestPatientName("PACIENTE_A")) {
+  await page.getByRole("button", { name: /Abertura de atendimento/i }).click();
+  await expect(page.getByRole("heading", { name: /Abertura de atendimento/i })).toBeVisible();
+
+  await page.locator('input[name="fullName"]').fill(patientName);
+  await page.locator('input[name="cpf"]').fill(nextTestCpf());
+  await page.locator('input[name="birthDate"]').fill("1980-06-09");
+  await page.locator('input[name="phone"]').fill("11988887777");
+  await page.getByRole("button", { name: /Abrir BA/i }).click();
+
+  await expect(page.locator(".toast")).toContainText(/BA aberto com sucesso/i, { timeout: 20_000 });
+  return patientName;
 }
 
 async function openMonofilament(page: Page) {
@@ -61,6 +109,41 @@ test("bloqueia acesso interno sem sessao real", async ({ page }) => {
   await expect(page.getByText(/Informe seu e-mail profissional|Acesso indisponivel/i)).toBeVisible();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
 
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.goto("/pacientes");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.goto("/atendimento");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.getByLabel(/^E-mail$/i).fill("usuario-invalido@example.invalid");
+  await page.getByLabel(/^Senha$/i).fill("senha-invalida");
+  await page.getByRole("button", { name: /^Entrar$/i }).click();
+  await expect(page.getByText(/E-mail ou senha incorretos|Nao foi possivel entrar/i)).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+});
+
+test("Usuario B autentica e nao carrega dados visuais da Empresa A", async ({ page }) => {
+  await loginAsConfiguredUserB(page);
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible();
+  await expect(page.getByText(/Clinica Pe Saudavel|Cl.nica Pe Saudavel/i)).toHaveCount(0);
+  await page.getByRole("button", { name: /Pacientes/i }).click();
+  await expect(page.getByRole("heading", { name: /Pesquisar paciente|Pacientes/i })).toBeVisible();
+  await expect(page.getByText(/TESTE_PRODUCAO_PODO360_PACIENTE_A/i)).toHaveCount(0);
+});
+
+test("Logout encerra sessao e bloqueia rota protegida", async ({ page }) => {
+  await loginAsConfiguredUser(page);
+  await page.getByRole("button", { name: /Sair da conta/i }).click();
+  const logoutDialog = page.getByRole("dialog", { name: /Deseja realmente sair da conta/i });
+  await expect(logoutDialog).toBeVisible();
+  await logoutDialog.getByRole("button", { name: /^Sair da conta$/i }).click();
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
@@ -103,8 +186,9 @@ test("Administração da Clínica abre criação de usuário em tela ampla e res
   await expect(page.getByLabel(/^Nome$/i)).toBeVisible();
   await expect(page.getByRole("textbox", { name: /^E-mail$/i })).toBeVisible();
   await expect(page.getByLabel(/Perfil/i)).toBeVisible();
-  await expect(page.getByLabel(/Senha de primeiro acesso/i)).toBeVisible();
-  await expect(page.getByLabel(/Confirmar senha/i)).toBeVisible();
+  await expect(page.getByText(/convite seguro/i)).toBeVisible();
+  await expect(page.locator('select[name="role"]')).not.toContainText(/Super Admin|plataforma/i);
+  await expect(page.locator('input[name="temporaryPassword"], input[name="confirmPassword"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Salvar usu/i })).toBeVisible();
 
   const formBox = await page.locator(".user-management-page").boundingBox();
@@ -228,14 +312,16 @@ test("Atendimento finalizado bloqueia edicao e Gerenciamento reabre com motivo o
 test("Abertura de atendimento permanece na tela e prontuário fica somente leitura", async ({ page }) => {
   await loginAsConfiguredUser(page);
   await page.getByRole("button", { name: /Abertura de atendimento/i }).click();
+  const patientName = nextTestPatientName("PACIENTE_BA_DUPLICADO");
+  const patientCpf = nextTestCpf();
 
   const puField = page.locator('input[name="uniqueRecordNumber"]');
   await expect(puField).toBeVisible();
   await expect(puField).toHaveAttribute("readonly", "");
   await expect(page.getByText(/Será gerado automaticamente ao abrir o BA/i)).toBeVisible();
 
-  await page.locator('input[name="fullName"]').fill("Paciente Novo BA");
-  await page.locator('input[name="cpf"]').fill("12345678909");
+  await page.locator('input[name="fullName"]').fill(patientName);
+  await page.locator('input[name="cpf"]').fill(patientCpf);
   await page.locator('input[name="birthDate"]').fill("1980-06-09");
   await page.locator('input[name="phone"]').fill("11988887777");
   await page.getByRole("button", { name: /Abrir BA/i }).click();
@@ -246,11 +332,11 @@ test("Abertura de atendimento permanece na tela e prontuário fica somente leitu
   await expect(page.locator('input[name="fullName"]')).toHaveValue("");
   await expect(puField).toHaveValue("");
 
-  await page.locator('input[name="fullName"]').fill("Paciente Novo BA");
-  await page.locator('input[name="cpf"]').fill("12345678909");
+  await page.locator('input[name="fullName"]').fill(patientName);
+  await page.locator('input[name="cpf"]').fill(patientCpf);
   await page.locator('input[name="birthDate"]').fill("1980-06-09");
   await page.locator('input[name="phone"]').fill("11988887777");
   await page.getByRole("button", { name: /Abrir BA/i }).click();
   await expect(page.locator(".toast")).toContainText(/Este paciente ja possui um BA aberto|Este paciente já possui um BA aberto/i);
-  await expect(page.locator('input[name="fullName"]')).toHaveValue("Paciente Novo BA");
+  await expect(page.locator('input[name="fullName"]')).toHaveValue(patientName);
 });

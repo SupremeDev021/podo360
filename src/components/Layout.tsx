@@ -78,7 +78,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
     return window.localStorage.getItem("podo360-sidebar-collapsed") === "true";
   });
   const visibleItems = navItems.filter((item) => {
-    if (item.key === "super-admin") return profile.role === "super_admin";
+    if (item.key === "super-admin") return profile.role === "super_admin" || profile.role === "company_admin" || Boolean(allowedViews?.includes("super-admin"));
     if (item.key === "attendance-management") return profile.role === "super_admin" || profile.role === "company_admin" || Boolean(allowedViews?.includes("attendance-management"));
     return profile.role === "super_admin" || !allowedViews || allowedViews.includes(item.key);
   });
@@ -89,6 +89,7 @@ export function Layout({ company, profile, activeView, onViewChange, onLogout, a
 
   function navigate(view: ViewKey) {
     if (view === "attendance-management" && profile.role !== "super_admin" && profile.role !== "company_admin" && !allowedViews?.includes("attendance-management")) return;
+    if (view === "super-admin" && profile.role !== "super_admin" && profile.role !== "company_admin" && !allowedViews?.includes("super-admin")) return;
     if (profile.role !== "super_admin" && allowedViews && !allowedViews.includes(view)) return;
     onViewChange(view);
     setMobileMenuOpen(false);

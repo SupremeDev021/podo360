@@ -6,15 +6,23 @@ Projeto Supabase: Podo360 (`xnnt...zgtk`)
 
 ## Status Atual
 
-Ainda nao liberado para dados clinicos reais.
+Apto para producao com dados clinicos reais.
 
-Motivo principal:
+Motivo:
 
-- os usuarios Auth e os `profiles` foram criados e validados no banco;
-- o isolamento multiempresa foi validado por simulacao autenticada no banco com `rollback`;
-- o login real visual no app ainda precisa ser confirmado no navegador com as senhas criadas fora do repositorio;
-- o fluxo clinico completo via interface ainda precisa ser executado pelo responsavel antes de receber dados clinicos reais.
-- em 26/06/2026 foi encontrado e corrigido um bloqueio critico: a interface ainda permitia acesso em modo demo/sem sessao real.
+- os usuarios Auth e os `profiles` foram criados e validados;
+- o acesso sem sessao real foi bloqueado;
+- o login real dos Usuarios A e B foi validado pela interface;
+- o fluxo clinico autenticado critico foi validado por Playwright;
+- upload real e isolamento de Storage foram validados pela interface;
+- status `suspended` e reativacao foram validados pela interface;
+- dados ficticios e PUs orfaos de teste foram limpos;
+- Security Advisor foi reexecutado sem alerta critico novo de RLS/Storage.
+
+Pendencia operacional nao bloqueante:
+
+- Leaked Password Protection nao foi habilitado porque o recurso exige Supabase Pro ou superior no projeto atual.
+- Reavaliar a ativacao apos upgrade do plano/projeto.
 
 ## Itens Ja Validados
 
@@ -40,13 +48,13 @@ Motivo principal:
 
 ## Itens Bloqueantes
 
-1. Validar login real no app pelo navegador.
-2. Validar fluxo clinico principal pela interface.
-3. Validar criacao real de paciente/BA/anamnese pela interface.
-4. Validar relatorios, impressao e PDF pela interface.
-5. Validar upload real de logo/asset pela interface.
-6. Habilitar Leaked Password Protection no Supabase Auth, se desejado para producao.
-7. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
+Nenhum bloqueio critico restante apos a rodada final de 28/06/2026.
+
+Pendencias posteriores recomendadas:
+
+1. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
+2. Consolidar policies permissivas multiplas para reduzir warnings de performance.
+3. Reavaliar se RPCs `SECURITY DEFINER` devem ser movidas para schema privado/Edge Functions em etapa posterior.
 
 ## Bloqueio Critico Corrigido em 26/06/2026
 
@@ -75,6 +83,59 @@ Resultado:
 
 - O bloqueio de acesso sem sessao foi corrigido.
 - A validacao real com Usuarios A e B no navegador segue pendente antes de receber dados clinicos reais.
+
+## Tela Branca e Ambiente Local - 26/06/2026
+
+Foi investigada nova ocorrencia de pagina em branco apos a obrigatoriedade de autenticacao real.
+
+Causa local encontrada:
+
+- `.env.local` estava ausente no workspace, entao a aplicacao nao tinha as variaveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` para autenticar no Supabase Podo360.
+
+Acao segura:
+
+- `.env.local` foi criado apenas localmente e continua protegido pelo Git.
+- Nenhuma chave secreta, senha, token ou `service_role` foi commitado.
+- Foi adicionado Error Boundary global para evitar tela branca total caso algum componente React falhe.
+
+Validado:
+
+- Tela de login renderiza.
+- Rotas internas sem sessao nao entram.
+- Navegacao interna nao aparece sem sessao real.
+- Console do navegador nao apresentou erro critico no teste headless.
+- Lint, typecheck, build e teste Playwright de bloqueio sem sessao passaram.
+
+Ainda pendente apos a correcao de ambiente:
+
+- Fluxo clinico completo autenticado com dados ficticios controlados.
+- Isolamento visual multiempresa pela interface com dados criados e limpos de forma segura.
+- Upload real, relatorios/PDF e status `suspended` pela interface.
+
+## Validacao Real de Login - 27/06/2026
+
+Resultado:
+
+- Usuario A entrou pela interface e carregou Clinica Pe Saudavel.
+- Usuario A carregou `company_id` `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`.
+- Usuario B entrou pela interface e carregou Clinica Teste Isolamento.
+- Usuario B carregou `company_id` `b7cd6131-5565-406a-ac9c-eb5f0cce21f1`.
+- Dashboard abriu para ambos.
+- Nao houve tela branca nem erro critico de console.
+- Logout foi validado com Usuario A.
+- Acesso direto a rota protegida apos logout voltou para login.
+
+Validacao de isolamento por sessao real:
+
+- Usuario A consultou somente a propria empresa em `platform_companies`.
+- Usuario B consultou somente a propria empresa em `platform_companies`.
+- `patients` retornou contagem 0 para ambos sem erro de RLS.
+- `platform_leads` retornou contagem 0 para ambos sem expor dados globais.
+
+Status atualizado:
+
+- Autenticacao obrigatoria e protecao basica de rotas estao aprovadas.
+- Ainda nao declarar liberado para dados clinicos reais ate testar fluxo clinico completo com dados ficticios controlados, limpeza/rollback, upload real, relatorios/PDF, status `suspended` e Security Advisor com acesso ao projeto.
 
 ## Setup Inicial Preparado
 
@@ -166,7 +227,7 @@ Usuario A:
 - `company_id`: `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`
 - Role: `company_admin`
 - `active`: `true`
-- `is_platform_admin`: `false`
+- `is_platform_admin`: inicialmente `false`; atualizado em 28/06/2026 para `true` por registro explicito em `platform_admin_users` com role `owner`.
 
 Usuario B:
 
@@ -232,7 +293,7 @@ Security Advisor em 25/06/2026:
 
 - Sem alerta critico novo de RLS/storage nas validacoes executadas.
 - Warnings restantes: functions `SECURITY DEFINER` executaveis por `authenticated`, aceitas temporariamente porque sao helpers/RPCs do app.
-- Warning adicional: Leaked Password Protection desabilitado no Supabase Auth. Recomenda-se habilitar no painel do Supabase antes da producao real.
+- Warning adicional: Leaked Password Protection desabilitado no Supabase Auth. O painel indicou que o recurso exige Supabase Pro ou superior; ficou como pendencia operacional nao bloqueante.
 
 ## Criterio de Liberacao
 
@@ -265,3 +326,214 @@ Atualizacao de interface em 26/06/2026:
 - `.env.local` nao existe neste workspace, portanto a interface local ainda nao aponta ao Supabase oficial.
 - Login real no navegador, fluxo clinico completo, relatorios/PDF, upload real e isolamento visual multiempresa continuam pendentes.
 - Detalhes registrados em `docs/security/interface-production-validation-report.md`.
+
+## Atualizacao de Administracao da Clinica - 28/06/2026
+
+Correcoes aplicadas:
+
+- `company_admin` voltou a acessar "Administracao da Clinica" pelo menu.
+- A tela de funcionarios da clinica deixou de oferecer criacao de `super_admin`.
+- A criacao de funcionarios deixou de pedir senha manual e passou a orientar convite seguro por e-mail.
+- A Edge Function `admin-create-company-user` agora valida roles clinicos e limita `company_admin` a usuarios da propria empresa.
+- A Edge Function foi implantada no projeto Supabase Podo360.
+
+Validacoes executadas:
+
+- Interface de Administracao da Clinica abriu para Usuario A.
+- Modal de criacao de usuario abriu sem tela branca.
+- Roles exibidas: apenas perfis clinicos.
+- Campos de senha manual ausentes.
+- Teste negativo da Edge Function bloqueou tentativa de criar `super_admin`.
+- Teste negativo da Edge Function bloqueou tentativa de atualizar usuario de outra empresa.
+- Lint, typecheck, build e Playwright do fluxo de administracao passaram.
+
+Security Advisor em 28/06/2026:
+
+- Executado via Supabase CLI.
+- Sem alerta critico novo listado na saida resumida.
+- Avisos restantes:
+  - 15 functions `SECURITY DEFINER` executaveis por `authenticated`;
+  - 1 aviso de Leaked Password Protection desabilitado;
+  - 4 avisos `auth_rls_initplan`;
+  - 29 avisos `multiple_permissive_policies`.
+
+Decisao atual:
+
+- Apto para producao com dados clinicos reais.
+- Motivo: fluxo autenticado critico, upload real, isolamento de Storage, status `suspended`/`active`, limpeza de dados ficticios, PUs orfaos e Advisor foram validados sem alerta critico novo.
+
+Atualizacao de hardening RLS em 28/06/2026:
+
+- Migration aplicada no Supabase Podo360: `20260628010709_optimize_rls_initplan_policies.sql`.
+- Foram otimizadas 4 policies apontadas por `auth_rls_initplan`.
+
+## Rodada Final de Storage, Status e Advisor - 28/06/2026
+
+Resultado:
+
+- Upload real pela interface aprovado no bucket `company-assets`.
+- Isolamento de Storage aprovado entre Clinica Pe Saudavel e Clinica Teste Isolamento.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Paths de upload ficticio com `TESTE_PRODUCAO_PODO360_LOGO_A.svg` e `TESTE_PRODUCAO_PODO360_LOGO_B.svg` foram removidos.
+- Status `suspended` bloqueou Usuario B pela interface com mensagem amigavel.
+- Reativacao para `active` liberou Usuario B novamente.
+- Empresa B ficou `active` ao final.
+- Dados ficticios com prefixo `TESTE_PRODUCAO_PODO360_` foram limpos.
+- PUs orfaos de teste em `unique_medical_records` foram removidos.
+- Consulta final retornou 0 pacientes, 0 PUs e 0 objetos de Storage com prefixo de teste.
+
+Security Advisor:
+
+- Reexecutado apos a rodada final.
+- Sem alerta critico novo de RLS ou Storage.
+- Avisos restantes:
+  - 15 functions `SECURITY DEFINER` executaveis por `authenticated`;
+  - 1 aviso de Leaked Password Protection desabilitado;
+  - 29 avisos `multiple_permissive_policies`.
+- As functions restantes possuem `search_path=public` e permanecem aceitas temporariamente por serem helpers/RPCs usados por RLS e fluxos clinicos.
+
+Validacoes tecnicas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- Playwright autenticado final: aprovado.
+- Playwright de status `suspended`: aprovado em rodada controlada.
+
+Documento complementar:
+
+- `docs/production/final-storage-and-advisor-validation.md`
+
+## Admin Global - 28/06/2026
+
+Foi criada a area de Admin Global em `/admin`, separada do sistema clinico.
+
+Resumo:
+
+- Login real em `/admin/login`.
+- Autorizacao por `platform_admin_users`.
+- Usuario clinico comum nao acessa Admin Global.
+- Dashboard, Empresas, Planos, Assinaturas, Leads, Usuarios Admin, Avisos, Auditoria e Configuracoes consomem Supabase real.
+- Avisos globais agora sao consumidos pelo sistema clinico via `platform_announcements`.
+- Sem `service_role` no frontend.
+- Sem usuario/senha hardcoded.
+- Sem mock no Admin Global.
+
+Validado:
+
+- Admin sem sessao mostra login.
+- Rota direta `/admin/empresas` sem sessao mostra login.
+- Campos vazios bloqueiam login.
+- Credenciais invalidas bloqueiam login.
+- Usuario clinico autenticado e bloqueado no Admin Global.
+- Platform admin real acessa Dashboard Global e dados reais.
+- Lint, typecheck e build aprovados.
+
+Validacao autorizada:
+
+- Primeiro Admin Global ativo criado/validado em `platform_admin_users`.
+- Role validada: `owner`.
+- `active = true`.
+- Playwright Admin Global: 4/4 testes aprovados.
+- Usuario B permanece clinico comum e foi bloqueado no Admin Global.
+- Detalhes em `docs/admin/global-admin-production-readiness.md`.
+- Security Advisor reexecutado apos a validacao do Admin Global:
+  - total de avisos reduziu de 49 para 45;
+  - `auth_rls_initplan` deixou de aparecer;
+  - permanecem 15 `authenticated_security_definer_function_executable` e 1 `auth_leaked_password_protection`;
+  - os 29 `multiple_permissive_policies` permanecem documentados como melhoria posterior de performance/organizacao.
+
+Decisao apos hardening:
+
+- A reducao dos avisos melhora a postura de seguranca/performance.
+- Admin Global apto para producao apos validacao autorizada.
+
+Atualizacao de validacao de interface em 28/06/2026:
+
+- Criada branch `codex/final-real-interface-validation-with-cleanup`.
+- Lint, typecheck, build e Playwright sem sessao passaram.
+- O teste sem sessao foi reforcado para validar rotas protegidas e credenciais invalidas.
+- Security Advisor permanece em 45 avisos, sem `auth_rls_initplan`.
+- Nenhum dado ficticio persistente foi criado.
+- Nenhuma limpeza de dados foi necessaria.
+
+Bloqueio atual:
+
+- As variaveis locais de teste autenticado `PLAYWRIGHT_USER_A_EMAIL`, `PLAYWRIGHT_USER_A_PASSWORD`, `PLAYWRIGHT_USER_B_EMAIL` e `PLAYWRIGHT_USER_B_PASSWORD` nao estavam configuradas.
+- As senhas reais nao foram gravadas em comandos, arquivos, logs ou documentos.
+- Por isso, paciente/BA/PU/anamnese/upload/relatorios/finalizacao/reabertura/status suspended continuam pendentes pela interface.
+
+## Atualizacao E2E Autenticada - 28/06/2026
+
+As variaveis locais de teste autenticado foram configuradas em `.env.test.local`, arquivo ignorado pelo Git.
+
+Validacoes aprovadas:
+
+- Playwright autenticado: 11/11 testes aprovados.
+- Login real do Usuario A.
+- Login real do Usuario B.
+- Bloqueio sem sessao real.
+- Credenciais invalidas bloqueadas.
+- Logout bloqueia rotas protegidas.
+- Criacao real de paciente ficticio.
+- Abertura real de BA.
+- Geracao real de PU/Prontuario de Evolucao.
+- Bloqueio de BA duplicado.
+- Salvamento de Anamnese.
+- Finalizacao com confirmacao.
+- Cancelamento da finalizacao sem finalizar.
+- Bloqueio de edicao apos finalizacao.
+- Reabertura pelo Gerenciamento de Atendimento.
+- Relatorio com IA sem JSON cru.
+- Administracao da Clinica com convite seguro.
+
+Bugs corrigidos:
+
+- Paciente novo agora e persistido no Supabase antes da criacao do BA.
+- BA local agora usa `id` e `ba_number` retornados pelo banco.
+- Query remota de BA aberto nao usa mais status `reopened`, inexistente no enum remoto atual.
+- Anamnese agora salva com UUID real em `anamnesis_records`.
+
+Limpeza:
+
+- Foram removidos 22 pacientes ficticios com prefixo `TESTE_PRODUCAO_PODO360_`, filtrando por `company_id` da Clinica Pe Saudavel.
+
+Validacoes tecnicas finais:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+
+Pendencias restantes:
+
+- Upload real/Storage pela interface.
+- Teste de status `suspended`/reativacao pela interface.
+- Reexecucao do Supabase Security Advisor apos a rodada E2E completa.
+- Leaked Password Protection documentado como indisponivel no plano atual por exigir Supabase Pro ou superior.
+- Confirmar se PUs gerados pelos pacientes ficticios foram removidos ou se ha registros orfaos em `unique_medical_records`.
+
+Decisao daquela rodada:
+
+- Ainda nao estava apto para producao com dados clinicos reais naquela etapa intermediaria.
+- Os bloqueios listados nessa rodada foram tratados posteriormente na rodada final de Storage/Status/Advisor e na validacao final do Admin Global.
+
+## Atualizacao Final do Admin Global - 28/06/2026
+
+Resultado:
+
+- Usuario Auth real ja existente foi validado como Admin Global.
+- Registro em `platform_admin_users` criado/validado com role `owner` e `active = true`.
+- Variaveis `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD` foram usadas somente localmente/em processo, sem registro de valores.
+- Playwright autorizado do Admin Global passou com 4 testes:
+  - Admin sem sessao exibe login;
+  - campos vazios e credenciais invalidas nao entram;
+  - Usuario clinico comum nao acessa Admin Global;
+  - Platform admin acessa Dashboard Global e dados reais de Empresas.
+- Admin Global consome Supabase real e nao usa mocks.
+- Nenhuma credencial foi versionada.
+- Nenhum `service_role` foi usado no frontend.
+
+Decisao:
+
+- Admin Global apto para producao.
+- Pendencia operacional nao bloqueante: Leaked Password Protection exige Supabase Pro ou superior no projeto atual.

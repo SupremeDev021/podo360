@@ -146,3 +146,34 @@ Decisao:
 
 - O isolamento multiempresa de banco continua aprovado por simulacao autenticada com rollback.
 - O isolamento visual multiempresa ainda precisa ser repetido pela interface antes de liberar dados clinicos reais.
+
+Atualizacao de Administracao da Clinica - 28/06/2026:
+
+- A tela "Administracao da Clinica" foi liberada para `company_admin`.
+- A criacao de funcionarios foi limitada a perfis clinicos.
+- `company_admin` nao consegue criar usuario com role `super_admin`.
+- `company_admin` nao consegue atualizar usuario de outra empresa pela Edge Function `admin-create-company-user`.
+- A validacao foi feita com Usuario A e sessao real, sem persistir funcionario de teste.
+
+Decisao adicional:
+
+- O isolamento de gerenciamento de funcionarios por empresa foi reforcado.
+- Ainda falta repetir o isolamento visual completo pela interface com criacao controlada de paciente/BA/anamnese para Empresa A e Empresa B antes de liberar dados clinicos reais.
+
+Atualizacao final - 28/06/2026:
+
+- Playwright autenticado final executado com Usuario A e Usuario B.
+- Login real, bloqueio sem sessao, logout, BA, anamnese critica, finalizacao/reabertura, relatorio com IA e administracao da clinica foram aprovados.
+- Upload real de logo/asset pela interface foi aprovado para as duas empresas no bucket `company-assets`.
+- Usuario A nao conseguiu listar assets da Empresa B.
+- Usuario B nao conseguiu listar assets da Empresa A.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Status `suspended` da Empresa B bloqueou login pela interface.
+- Reativacao para `active` liberou login novamente.
+- Dados ficticios criados por Playwright foram removidos por prefixo.
+- PUs orfaos de teste em `unique_medical_records` foram removidos.
+
+Decisao final:
+
+- Isolamento multiempresa autenticado e isolamento de Storage aprovados para a rodada final.
+- Apto para producao com dados clinicos reais, mantendo como pendencia operacional a habilitacao do Leaked Password Protection no painel Supabase Auth.

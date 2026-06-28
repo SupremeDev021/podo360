@@ -9,10 +9,15 @@ dist
 .env.*.local
 .DS_Store
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 *.pid
 coverage
 playwright-report
 test-results
+blob-report
 .vite
 .tools
 supabase/.temp
@@ -27,3 +32,9 @@ public/models/*debug*.png
 public/models/*report.json
 scripts/setup/create-initial-user.local.ts
 scripts/setup/*.local.ts
+scripts/**/*.local.js
+scripts/**/*.local.ts
+scripts/cleanup/*.local.cjs
+*.backup
+*.bak
+*.tmp

@@ -336,7 +336,7 @@ Avisos restantes:
 Classificacao:
 
 - Functions `SECURITY DEFINER`: aceitas temporariamente, pois sao helpers/RPCs usados por RLS e fluxos clinicos. Devem ser reavaliadas depois do teste completo pela interface.
-- Leaked Password Protection: recomendacao de hardening de Auth. Habilitar no painel Supabase antes da entrada real em producao.
+- Leaked Password Protection: recomendacao de hardening de Auth. O painel Supabase indicou exigencia de plano Pro ou superior; manter como pendencia operacional nao bloqueante ate upgrade.
 
 Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
 
@@ -346,7 +346,7 @@ Nao foi encontrado novo alerta critico de RLS/storage nos testes executados.
 2. Testar abertura de atendimento pela interface.
 3. Testar anamnese, imagens, relatorios, PDF e finalizacao pela interface.
 4. Testar upload real de asset/logo pela interface.
-5. Habilitar/revisar Leaked Password Protection no Supabase Auth.
+5. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
 6. Avaliar se RPCs restantes devem ser mantidos no schema `public`, movidos para schema privado ou migrados para Edge Functions.
 7. Rodar Security Advisor novamente apos fluxo clinico completo pela interface.
 
@@ -375,3 +375,133 @@ Conclusao desta atualizacao:
 
 - O bypass/demo da interface foi removido.
 - Ainda nao liberar dados clinicos reais ate executar login real com Usuarios A e B e validar o fluxo clinico completo pela interface.
+
+Atualizacao de tela branca em 26/06/2026:
+
+- `.env.local` estava ausente no workspace local e foi criado somente localmente, fora do Git.
+- Foi adicionado Error Boundary global em `src/main.tsx` para impedir tela branca total.
+- Rotas `/`, `/dashboard`, `/pacientes`, `/atendimento` e `/admin/setup` renderizaram tela de login/estado seguro sem navegacao interna quando nao havia sessao.
+- Console headless nao registrou erro critico.
+- Lint, typecheck, build e teste Playwright de acesso sem sessao passaram.
+- Login real ficou pendente nesta etapa ate o fornecimento de credenciais reais fora de arquivos versionados.
+
+Atualizacao de login real em 27/06/2026:
+
+- Usuario A autenticou pela interface e carregou Clinica Pe Saudavel.
+- Usuario B autenticou pela interface e carregou Clinica Teste Isolamento.
+- `company_id` e role foram carregados corretamente para ambos.
+- Rotas internas sem sessao permanecem bloqueadas.
+- Logout e acesso direto a rota protegida apos logout foram validados.
+- Validacao RLS com sessao real confirmou que cada usuario enxerga somente a propria empresa em `platform_companies`.
+- O conector Supabase MCP desta sessao nao tinha permissao para executar SQL/Security Advisor no projeto; a revisao do Advisor deve ser repetida no painel ou em sessao com permissao adequada.
+
+Atualizacao de Security Advisor e Admin Clinica em 28/06/2026:
+
+- Security Advisor executado pela Supabase CLI linkada ao projeto Podo360.
+- Total retornado: 49 avisos.
+- Nao foi listado alerta critico novo de RLS ou Storage na saida resumida.
+- Grupos de avisos:
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`;
+  - 4 `auth_rls_initplan`;
+  - 29 `multiple_permissive_policies`.
+- Funcoes `SECURITY DEFINER` sinalizadas:
+  - `can_access_company`;
+  - `cancel_attendance_finalization`;
+  - `current_company_id`;
+  - `current_profile`;
+  - `current_role`;
+  - `has_attendance_management_access`;
+  - `has_clinical_write_access`;
+  - `has_financial_access`;
+  - `has_hci_enabled`;
+  - `has_hci_view_access`;
+  - `has_valid_hci_consent`;
+  - `is_platform_admin`;
+  - `is_super_admin`;
+  - `mark_attendance_finished`;
+  - `mark_attendance_started`.
+- Decisao: manter temporariamente porque sao helpers/RPCs de RLS e fluxo clinico, mas revisar grants, schema privado ou Edge Functions antes da liberacao final.
+- Administracao da Clinica foi restaurada para `company_admin`, com criacao de funcionarios por convite seguro e sem senha manual no frontend.
+- Edge Function `admin-create-company-user` foi implantada com validacao de role clinico e bloqueio de gerenciamento cross-company para `company_admin`.
+
+Pendencias de hardening antes de producao real:
+
+1. Leaked Password Protection documentado como indisponivel no plano atual; reavaliar apos upgrade.
+2. Otimizar policies apontadas por `auth_rls_initplan`.
+3. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
+4. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
+5. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.
+
+Atualizacao de hardening RLS em 28/06/2026:
+
+- Criada e aplicada migration `20260628010709_optimize_rls_initplan_policies.sql`.
+- Policies ajustadas:
+  - `platform admins read admin users`;
+  - `profiles are isolated`;
+  - `users read own module permissions`;
+  - `admins create attendance audit logs`.
+- A logica de autorizacao foi preservada; as chamadas `auth.uid()`, `current_company_id()`, `current_role()` e `is_platform_admin()` foram encapsuladas com `select` para evitar reavaliacao por linha.
+- Security Advisor reexecutado:
+  - total de avisos: 45;
+  - `auth_rls_initplan`: 0;
+  - `multiple_permissive_policies`: 29;
+  - `authenticated_security_definer_function_executable`: 15;
+  - `auth_leaked_password_protection`: 1.
+
+Pendencias atualizadas:
+
+1. Leaked Password Protection documentado como indisponivel no plano atual; reavaliar apos upgrade.
+2. Consolidar/revisar policies apontadas por `multiple_permissive_policies`.
+3. Reavaliar functions `SECURITY DEFINER` apos fluxo clinico completo pela interface.
+4. Executar teste real controlado de paciente/BA/anamnese/upload/relatorio/PDF com limpeza dos dados ficticios.
+
+Atualizacao final de Storage/Status/Advisor em 28/06/2026:
+
+- Upload real pela interface aprovado no bucket `company-assets`.
+- Isolamento de Storage aprovado entre Usuario A e Usuario B.
+- Usuario anonimo nao conseguiu listar os prefixos das empresas.
+- Status `suspended` da Empresa B bloqueou login pela interface com mensagem amigavel.
+- Empresa B foi reativada para `active` e voltou a acessar.
+- Dados ficticios e PUs orfaos com prefixo `TESTE_PRODUCAO_PODO360_` foram limpos.
+- Consulta final retornou 0 pacientes, 0 PUs e 0 objetos de Storage com prefixo de teste.
+- Security Advisor reexecutado:
+  - `auth_rls_initplan`: 0;
+  - `multiple_permissive_policies`: 29;
+  - `authenticated_security_definer_function_executable`: 15;
+  - `auth_leaked_password_protection`: 1.
+- As 15 functions sinalizadas possuem `search_path=public` e permanecem aceitas temporariamente por uso em RLS/RPCs clinicas.
+
+Pendencias restantes:
+
+1. Reavaliar Leaked Password Protection apos upgrade para Supabase Pro ou superior.
+2. Consolidar/revisar policies apontadas por `multiple_permissive_policies` como melhoria de performance.
+3. Avaliar mover RPCs sensiveis para schema privado ou Edge Functions em etapa futura.
+
+Decisao:
+
+- Sem alerta critico novo de RLS ou Storage.
+- A base fica apta para producao com dados clinicos reais, com a pendencia operacional de Leaked Password Protection documentada como indisponivel no plano atual.
+
+Atualizacao Admin Global em 28/06/2026:
+
+- Admin Global implementado com login real Supabase Auth.
+- Permissao baseada em `platform_admin_users`.
+- Usuario clinico comum foi bloqueado no teste E2E.
+- Consultas administrativas usam RLS existente e chave publica do frontend, nao `service_role`.
+- Tabelas integradas: `platform_companies`, `platform_plans`, `platform_company_subscriptions`, `platform_features`, `platform_leads`, `platform_announcements`, `platform_admin_audit_logs`, `platform_company_status_logs`, `platform_admin_users`.
+- Primeiro Admin Global ativo criado/validado em `platform_admin_users`.
+- Role validada: `owner`.
+- `active = true`.
+- Teste E2E autorizado do Admin Global passou com 4/4 testes.
+- Usuario B, clinico comum, permaneceu bloqueado no Admin Global.
+- Variaveis `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD` foram usadas somente localmente/em processo, sem versionar valores.
+
+Security Advisor reexecutado apos a validacao:
+
+- Sem alerta critico novo.
+- Avisos restantes:
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`.
+- As functions `SECURITY DEFINER` permanecem aceitas temporariamente por uso em helpers/RPCs de RLS e fluxos clinicos/admin.
+- Leaked Password Protection continua pendencia operacional porque exige Supabase Pro ou superior no projeto atual.

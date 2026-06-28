@@ -36,6 +36,7 @@ import type { FormEvent, ReactNode } from "react";
 import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
 import { FootSensitivityMap3D } from "./components/FootSensitivityMap3D";
+import { GlobalAdminApp } from "./components/GlobalAdminApp";
 import { ImageEvolutionComparison } from "./components/ImageEvolutionComparison";
 import { Layout, type ViewKey } from "./components/Layout";
 import { LoginScreen } from "./components/LoginScreen";
@@ -48,7 +49,7 @@ import { generateReferralReport } from "./services/aiReferralReportService";
 import { COMPANY_ACCESS_UNAVAILABLE_MESSAGE } from "./services/companyStatusService";
 import { getPlatformAccessSnapshot } from "./services/platformAccessService";
 import { roleLabel } from "./services/rbac";
-import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -273,15 +274,17 @@ const patientTabs: Array<{ key: PatientTabKey; label: string }> = [
 const modulePermissionOptions: Array<[ViewKey, string]> = [
   ["dashboard", "Dashboard"], ["ba-opening", "Abertura de atendimento"], ["attendances", "Atendimento"], ["attendance-management", "Gerenciamento de Atendimento"], ["patients", "Pacientes"],
   ["schedule", "Agenda Clínica"], ["patient-profile", "Prontuário de Evolução / Anamnese / Evolução por Imagem"], ["reports", "Relatórios"],
-  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["autoclave", "Registro de Autoclave / Esterilizacao"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Administracao da Clinica"]
+  ["financial", "Financeiro / Produtos"], ["stock", "Estoque"], ["autoclave", "Registro de Autoclave / Esterilizacao"], ["hci", "HCI"], ["settings", "Configuracoes"], ["super-admin", "Administracao da Clinica / Funcionarios"]
 ];
+
+const clinicUserRoleOptions: Profile["role"][] = ["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"];
 
 function allowedViewsForProfile(profile: Profile): ViewKey[] {
   if (profile.role === "super_admin") return modulePermissionOptions.map(([key]) => key);
   if (profile.modulePermissions?.length) return profile.modulePermissions.filter((key): key is ViewKey => modulePermissionOptions.some(([view]) => view === key));
   const defaults: Record<Profile["role"], ViewKey[]> = {
     super_admin: modulePermissionOptions.map(([key]) => key),
-    company_admin: modulePermissionOptions.map(([key]) => key).filter((key) => key !== "super-admin"),
+    company_admin: modulePermissionOptions.map(([key]) => key),
     professional: ["dashboard", "patients", "patient-profile", "attendances", "schedule", "reports", "autoclave", "hci"],
     reception: ["dashboard", "ba-opening", "patients", "patient-profile", "attendances", "schedule"],
     financial: ["dashboard", "financial", "reports"],
@@ -294,6 +297,11 @@ function allowedViewsForProfile(profile: Profile): ViewKey[] {
 }
 
 export function App() {
+  if (window.location.pathname.startsWith("/admin")) return <GlobalAdminApp />;
+  return <ClinicApp />;
+}
+
+function ClinicApp() {
   const [company, setCompany] = useState<Company>(loginCompanyPlaceholder);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -610,8 +618,19 @@ export function App() {
       await handleCreateProduct({ id: `stock-${Date.now()}-${item.name}`, companyId: record.companyId, name: item.name.trim(), category: item.category || "Outros", internalCode: `OUT-${Date.now()}`, currentQuantity: 0, minimumQuantity: 0, unit: item.unit || "un", costValue: 0, saleValue: item.unitPrice || 0, supplier: "", active: true });
     }
     try {
-      await Promise.all([saveAnamnesisRecord(record), saveAttendanceUsedProducts(record, usedProducts)]);
+      const savedRecord = await saveAnamnesisRecord(record);
+      const persistedRecord = savedRecord
+        ? {
+            ...record,
+            id: savedRecord.id,
+            createdAt: savedRecord.created_at ?? record.createdAt,
+            updatedAt: savedRecord.updated_at ?? record.updatedAt
+          }
+        : record;
+      await saveAttendanceUsedProducts(persistedRecord, usedProducts);
+      setAnamneses((current) => current.map((item) => (item.id === record.id ? persistedRecord : item)));
     } catch (error) {
+      console.error("Erro ao salvar anamnese", error);
       if (handleFinalizedWriteError(error)) return;
       throw error;
     }
@@ -681,7 +700,7 @@ export function App() {
 
     const nextBaNumber = generateBaNumber(company.id, attendances);
     const openedAt = new Date().toISOString();
-    const attendance: Attendance = {
+    let attendance: Attendance = {
       id: `attendance-${attendances.length + 1}`,
       companyId: company.id,
       patientId: patient.id,
@@ -713,13 +732,26 @@ export function App() {
 
     setBaSubmitting(true);
     try {
-      await createAttendanceBa(attendance);
+      const createdAttendance = await createAttendanceBa(attendance);
+      if (createdAttendance) {
+        attendance = {
+          ...attendance,
+          id: createdAttendance.id,
+          uniqueMedicalRecordId: createdAttendance.unique_medical_record_id ?? attendance.uniqueMedicalRecordId,
+          uniqueRecordNumber: createdAttendance.unique_record_number ?? attendance.uniqueRecordNumber,
+          baNumber: createdAttendance.ba_number ?? attendance.baNumber,
+          status: createdAttendance.status ?? attendance.status,
+          openedAt: createdAttendance.opened_at ?? attendance.openedAt,
+          attendanceDate: createdAttendance.attendance_date ?? attendance.attendanceDate
+        };
+      }
     } catch (error) {
       if (error instanceof Error && error.message === OPEN_ATTENDANCE_EXISTS_ERROR) {
         notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
         setBaSubmitting(false);
         return false;
       }
+      console.error("Erro ao sincronizar BA", error);
       notify("Erro ao abrir BA", "Nao foi possivel sincronizar o novo BA com o ambiente online. Tente novamente.", "danger");
       setBaSubmitting(false);
       return false;
@@ -772,7 +804,7 @@ export function App() {
       notify("Paciente ja possui Prontuário de Evolução", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
     }
 
-    const patient: Patient = existingPatient ?? {
+    let patient: Patient = existingPatient ?? {
       id: `patient-${patients.length + 1}`,
       companyId: company.id,
       uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
@@ -806,6 +838,25 @@ export function App() {
         setSelectedPatientId(existingPatient.id);
         setActiveAttendanceId(openAttendance.id);
         notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
+        return false;
+      }
+    }
+
+    if (!existingPatient) {
+      try {
+        const createdPatient = await createPatient(patient);
+        if (createdPatient) {
+          patient = {
+            ...patient,
+            id: createdPatient.id,
+            uniqueMedicalRecordId: createdPatient.unique_medical_record_id,
+            uniqueRecordNumber: createdPatient.unique_record_number,
+            createdAt: createdPatient.created_at ?? patient.createdAt
+          };
+        }
+      } catch (error) {
+        console.error("Erro ao sincronizar paciente antes do BA", error);
+        notify("Erro ao abrir BA", "Nao foi possivel sincronizar o paciente com o ambiente online. Tente novamente.", "danger");
         return false;
       }
     }
@@ -3510,7 +3561,6 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
   const [userMessage, setUserMessage] = useState("");
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [actionUser, setActionUser] = useState<{ user: Profile; action: "reset_password" | "deactivate" | "reactivate" } | null>(null);
-  const [showInitialPassword, setShowInitialPassword] = useState(false);
 
   useEffect(() => {
     setUsers(profiles.filter((item) => item.companyId === company.id));
@@ -3519,19 +3569,11 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const temporaryPassword = String(form.get("temporaryPassword") || "");
-    const confirmPassword = String(form.get("confirmPassword") || "");
-    if (!editingUser) {
-      if (temporaryPassword.length < 8) {
-        setUserMessage("A senha de primeiro acesso deve ter pelo menos 8 caracteres.");
-        return;
-      }
-      if (temporaryPassword !== confirmPassword) {
-        setUserMessage("A confirmação da senha de primeiro acesso não confere.");
-        return;
-      }
-    }
     const user = { id: editingUser?.id ?? crypto.randomUUID(), companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as Profile["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
+    if (!clinicUserRoleOptions.includes(user.role)) {
+      setUserMessage("Selecione um perfil clinico valido.");
+      return;
+    }
     setSavingUser(true);
     setUserMessage("");
     try {
@@ -3539,12 +3581,12 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
         await manageCompanyUser({ action: "update", userId: user.id, companyId: company.id, fullName: user.fullName, role: user.role, active: user.active, modules: selectedModules });
         setUsers((current) => current.map((item) => item.id === user.id ? user : item));
       } else {
-        await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules, temporaryPassword, requirePasswordChange: form.get("requirePasswordChange") === "on", sendInviteEmail: form.get("sendInviteEmail") === "on" });
-        setUsers((current) => [...current, user]);
+        const created = await createCompanyUser({ companyId: company.id, fullName: user.fullName, email: user.email, role: user.role, active: user.active, modules: selectedModules, sendInviteEmail: true });
+        setUsers((current) => [...current, { ...user, id: created?.userId ?? user.id }]);
       }
       setOpen(false);
       setEditingUser(null);
-      onNotify(editingUser ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.", `${user.fullName} ficou vinculado somente a ${company.displayName}.`, "success");
+      onNotify(editingUser ? "Usuário atualizado com sucesso." : "Convite enviado com sucesso.", `${user.fullName} ficou vinculado somente a ${company.displayName}.`, "success");
     } catch {
       setUserMessage("Não foi possível criar o usuário. Verifique os dados e tente novamente.");
     } finally {
@@ -3580,19 +3622,11 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
         <label>Nome<input defaultValue={editingUser?.fullName} name="fullName" required /></label>
         <label>E-mail<input defaultValue={editingUser?.email} disabled={Boolean(editingUser)} name="email" required type="email" /></label>
         <label>Empresa<input readOnly value={company.displayName} /></label>
-        <label>Perfil<select defaultValue={editingUser?.role ?? "professional"} name="role">{(["super_admin", "company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"] as const).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+        <label>Perfil<select defaultValue={editingUser?.role && clinicUserRoleOptions.includes(editingUser.role) ? editingUser.role : "professional"} name="role">{clinicUserRoleOptions.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
         <label className="toggle-row"><input defaultChecked={editingUser?.active ?? true} name="active" type="checkbox" /> Usuario ativo</label>
       </div>
       {!editingUser && (
-        <>
-          <div className="form-section-title">Acesso inicial</div>
-          <div className="form-grid form-grid--three">
-            <label>Senha de primeiro acesso<span className="password-field"><input autoComplete="new-password" minLength={8} name="temporaryPassword" required type={showInitialPassword ? "text" : "password"} /><button aria-label={showInitialPassword ? "Ocultar senha" : "Mostrar senha"} className="icon-button" onClick={() => setShowInitialPassword((current) => !current)} type="button">{showInitialPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
-            <label>Confirmar senha<input autoComplete="new-password" minLength={8} name="confirmPassword" required type={showInitialPassword ? "text" : "password"} /></label>
-            <label className="toggle-row"><input defaultChecked name="requirePasswordChange" type="checkbox" /> Exigir troca no primeiro acesso</label>
-            <label className="toggle-row"><input defaultChecked name="sendInviteEmail" type="checkbox" /> Enviar instruções por e-mail</label>
-          </div>
-        </>
+        <div className="inline-info">O funcionario recebera um convite seguro por e-mail para definir a senha. Nenhuma senha e salva ou exibida pelo sistema.</div>
       )}
       <fieldset className="option-fieldset">
         <legend>Permissoes por abas/modulos</legend>
