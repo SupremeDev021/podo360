@@ -103,10 +103,12 @@ async function selectWizardRadio(page: Page, fieldsetLabel: RegExp, option: RegE
 test("bloqueia acesso interno sem sessao real", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByText(/Configure o ambiente oficial do Supabase|Supabase/i)).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
 
   await page.getByRole("button", { name: /^Entrar$/i }).click();
-  await expect(page.getByText(/Informe seu e-mail profissional|Acesso indisponivel/i)).toBeVisible();
+  await expect(page.getByText(/Informe seu e-mail profissional|Nao foi possivel conectar/i)).toBeVisible();
+  await expect(page.getByText(/Configure o ambiente oficial do Supabase|Supabase/i)).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
 
   await page.goto("/dashboard");
