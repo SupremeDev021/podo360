@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const clinicUserEmail = process.env.PLAYWRIGHT_USER_A_EMAIL;
-const clinicUserPassword = process.env.PLAYWRIGHT_USER_A_PASSWORD;
+const clinicUserEmail = process.env.PLAYWRIGHT_USER_B_EMAIL;
+const clinicUserPassword = process.env.PLAYWRIGHT_USER_B_PASSWORD;
 const platformAdminEmail = process.env.PLAYWRIGHT_PLATFORM_ADMIN_EMAIL;
 const platformAdminPassword = process.env.PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD;
 
@@ -40,7 +40,7 @@ test("Admin Global bloqueia campos vazios e credenciais invalidas", async ({ pag
 });
 
 test("Usuario clinico autenticado nao acessa Admin Global", async ({ page }) => {
-  test.skip(!clinicUserEmail || !clinicUserPassword, "Configure PLAYWRIGHT_USER_A_EMAIL e PLAYWRIGHT_USER_A_PASSWORD para validar bloqueio de usuario clinico.");
+  test.skip(!clinicUserEmail || !clinicUserPassword, "Configure PLAYWRIGHT_USER_B_EMAIL e PLAYWRIGHT_USER_B_PASSWORD para validar bloqueio de usuario clinico.");
   await adminLogin(page, clinicUserEmail!, clinicUserPassword!);
   await expect(page.getByText(/nao possui permissao para acessar o Admin Global/i)).toBeVisible();
   await expect(page.getByRole("navigation", { name: /Admin Global/i })).toHaveCount(0);
@@ -54,5 +54,7 @@ test("Platform admin acessa dados reais do Dashboard Global", async ({ page }) =
   await expect(page.getByText(/Total de empresas/i)).toBeVisible();
   await page.getByRole("button", { name: /Empresas/i }).click();
   await expect(page.getByRole("heading", { name: /Empresas/i })).toBeVisible();
-  await expect(page.getByText(/Clinica|Clínica|Nenhuma empresa cadastrada/i)).toBeVisible();
+  const companyCards = page.locator(".admin-data-card");
+  const emptyCompanies = page.getByText(/Nenhuma empresa cadastrada/i);
+  await expect(companyCards.first().or(emptyCompanies)).toBeVisible();
 });

@@ -188,40 +188,47 @@ Executado:
   - rota direta `/admin/empresas` sem sessao exibe login;
   - campos vazios bloqueiam;
   - credenciais invalidas bloqueiam;
-  - usuario clinico comum autenticado e bloqueado.
+  - usuario clinico comum autenticado e bloqueado;
+  - platform admin real acessa o Dashboard Global;
+  - Dashboard Global carrega dados reais;
+  - Empresas carrega dados reais do Supabase.
 
 Resultado Playwright:
 
-- 3 testes aprovados.
-- 1 teste skipado: `Platform admin acessa dados reais do Dashboard Global`.
+- 4 testes aprovados.
+- 0 testes skipados.
 
-Motivo do skip:
+## Admin Global Ativo
 
-- Consulta segura confirmou `total_platform_admins = 0` e `active_platform_admins = 0`.
-- Ainda nao existe usuario cadastrado em `platform_admin_users`.
-- Por seguranca, nenhum usuario de clinica foi promovido para Admin Global sem autorizacao explicita.
+Registro validado em `platform_admin_users`:
 
-## Pendencia Critica Operacional
+- usuario Auth real ja existente;
+- role: `owner`;
+- `active = true`;
+- sem criacao ou versionamento de senha;
+- sem migration com senha;
+- sem uso de `service_role` no frontend.
 
-Para concluir a validacao real de acesso Admin Global:
+Observacao de seguranca:
 
-1. Criar ou escolher um usuario Auth real da equipe Podo360/Supreme Tech.
-2. Inserir registro em `platform_admin_users` com `active = true`.
-3. Usar role permitida pelo schema: `owner`, `admin`, `support` ou `commercial`.
-4. Configurar localmente:
+- O primeiro Admin Global foi concedido explicitamente ao Usuario A.
+- O Usuario B permanece clinico comum e foi usado para validar bloqueio de acesso ao Admin Global.
+- `company_admin` nao vira `platform_admin` automaticamente; o acesso global depende do registro ativo em `platform_admin_users`.
+
+Variaveis locais usadas para teste autorizado:
 
 ```env
 PLAYWRIGHT_PLATFORM_ADMIN_EMAIL=
 PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD=
 ```
 
-5. Rodar:
+Valores reais ficaram apenas em variaveis locais/processo e nao foram versionados.
+
+Comando validado:
 
 ```bash
 npx playwright test podo360-global-admin
 ```
-
-Sem esse usuario, o Admin Global esta protegido e integrado, mas nao ha credencial global ativa para testar o dashboard autorizado.
 
 ## Leaked Password Protection
 
@@ -231,10 +238,18 @@ Permanece como pendencia operacional nao bloqueante ja documentada:
 
 ## Decisao
 
-Admin Global preparado para producao em termos de codigo, seguranca de rotas e integracao Supabase.
+Admin Global apto para producao.
 
-Ainda pendente para liberacao operacional completa:
+Motivos:
 
-- cadastrar pelo menos um `platform_admin_user` ativo;
-- executar teste E2E com `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL/PASSWORD`;
-- habilitar ou documentar indisponibilidade do Leaked Password Protection no painel Supabase Auth.
+- existe `platform_admin_user` ativo;
+- role `owner` validada;
+- login real Supabase Auth validado;
+- usuario clinico comum bloqueado;
+- teste E2E autorizado passou;
+- telas do Admin usam Supabase real;
+- sem mock, senha hardcoded ou `service_role` no frontend.
+
+Pendencia operacional nao bloqueante antes do go-live final:
+
+- habilitar Leaked Password Protection no painel Supabase Auth, se o recurso estiver disponivel no projeto/plano.

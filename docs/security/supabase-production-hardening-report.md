@@ -490,5 +490,18 @@ Atualizacao Admin Global em 28/06/2026:
 - Usuario clinico comum foi bloqueado no teste E2E.
 - Consultas administrativas usam RLS existente e chave publica do frontend, nao `service_role`.
 - Tabelas integradas: `platform_companies`, `platform_plans`, `platform_company_subscriptions`, `platform_features`, `platform_leads`, `platform_announcements`, `platform_admin_audit_logs`, `platform_company_status_logs`, `platform_admin_users`.
-- Consulta segura indicou `total_platform_admins = 0` e `active_platform_admins = 0`.
-- Pendencia: cadastrar o primeiro Admin Global ativo e reexecutar teste E2E autorizado.
+- Primeiro Admin Global ativo criado/validado em `platform_admin_users`.
+- Role validada: `owner`.
+- `active = true`.
+- Teste E2E autorizado do Admin Global passou com 4/4 testes.
+- Usuario B, clinico comum, permaneceu bloqueado no Admin Global.
+- Variaveis `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD` foram usadas somente localmente/em processo, sem versionar valores.
+
+Security Advisor reexecutado apos a validacao:
+
+- Sem alerta critico novo.
+- Avisos restantes:
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`.
+- As functions `SECURITY DEFINER` permanecem aceitas temporariamente por uso em helpers/RPCs de RLS e fluxos clinicos/admin.
+- Leaked Password Protection continua pendencia operacional para habilitar no painel Supabase Auth, se disponivel.

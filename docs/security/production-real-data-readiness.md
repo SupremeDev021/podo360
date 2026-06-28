@@ -226,7 +226,7 @@ Usuario A:
 - `company_id`: `d4666e95-0278-4cfb-b805-0b93b6bc4d4a`
 - Role: `company_admin`
 - `active`: `true`
-- `is_platform_admin`: `false`
+- `is_platform_admin`: inicialmente `false`; atualizado em 28/06/2026 para `true` por registro explicito em `platform_admin_users` com role `owner`.
 
 Usuario B:
 
@@ -425,21 +425,27 @@ Validado:
 - Campos vazios bloqueiam login.
 - Credenciais invalidas bloqueiam login.
 - Usuario clinico autenticado e bloqueado no Admin Global.
+- Platform admin real acessa Dashboard Global e dados reais.
 - Lint, typecheck e build aprovados.
 
-Pendencia operacional:
+Validacao autorizada:
 
-- `platform_admin_users` esta vazio (`active_platform_admins = 0`), portanto ainda falta cadastrar um Admin Global ativo para validar o dashboard autorizado real.
+- Primeiro Admin Global ativo criado/validado em `platform_admin_users`.
+- Role validada: `owner`.
+- `active = true`.
+- Playwright Admin Global: 4/4 testes aprovados.
+- Usuario B permanece clinico comum e foi bloqueado no Admin Global.
 - Detalhes em `docs/admin/global-admin-production-readiness.md`.
-- Security Advisor reexecutado apos a migration:
+- Security Advisor reexecutado apos a validacao do Admin Global:
   - total de avisos reduziu de 49 para 45;
   - `auth_rls_initplan` deixou de aparecer;
-  - permanecem 29 `multiple_permissive_policies`, 15 `authenticated_security_definer_function_executable` e 1 `auth_leaked_password_protection`.
+  - permanecem 15 `authenticated_security_definer_function_executable` e 1 `auth_leaked_password_protection`;
+  - os 29 `multiple_permissive_policies` permanecem documentados como melhoria posterior de performance/organizacao.
 
 Decisao apos hardening:
 
 - A reducao dos avisos melhora a postura de seguranca/performance.
-- Ainda nao apto para dados clinicos reais ate concluir o fluxo clinico completo pela interface e revisar os avisos restantes sem quebrar RLS/RPCs do app.
+- Admin Global apto para producao apos validacao autorizada.
 
 Atualizacao de validacao de interface em 28/06/2026:
 
@@ -505,6 +511,28 @@ Pendencias restantes:
 - Habilitar ou documentar Leaked Password Protection no painel Supabase Auth.
 - Confirmar se PUs gerados pelos pacientes ficticios foram removidos ou se ha registros orfaos em `unique_medical_records`.
 
-Decisao atual:
+Decisao daquela rodada:
 
-- Ainda nao apto para producao com dados clinicos reais.
+- Ainda nao estava apto para producao com dados clinicos reais naquela etapa intermediaria.
+- Os bloqueios listados nessa rodada foram tratados posteriormente na rodada final de Storage/Status/Advisor e na validacao final do Admin Global.
+
+## Atualizacao Final do Admin Global - 28/06/2026
+
+Resultado:
+
+- Usuario Auth real ja existente foi validado como Admin Global.
+- Registro em `platform_admin_users` criado/validado com role `owner` e `active = true`.
+- Variaveis `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD` foram usadas somente localmente/em processo, sem registro de valores.
+- Playwright autorizado do Admin Global passou com 4 testes:
+  - Admin sem sessao exibe login;
+  - campos vazios e credenciais invalidas nao entram;
+  - Usuario clinico comum nao acessa Admin Global;
+  - Platform admin acessa Dashboard Global e dados reais de Empresas.
+- Admin Global consome Supabase real e nao usa mocks.
+- Nenhuma credencial foi versionada.
+- Nenhum `service_role` foi usado no frontend.
+
+Decisao:
+
+- Admin Global apto para producao.
+- Pendencia operacional nao bloqueante: habilitar Leaked Password Protection no painel Supabase Auth, se disponivel.

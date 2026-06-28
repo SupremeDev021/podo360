@@ -16,22 +16,21 @@ Pendencia operacional nao bloqueante:
 
 Status:
 
-- Codigo preparado para producao e integrado ao Supabase real.
+- Apto para producao.
+- Codigo integrado ao Supabase real.
 - Rotas protegidas por Supabase Auth e `platform_admin_users`.
 - Sem dados mockados no Admin Global.
 - Usuario clinico comum bloqueado.
-
-Pendencia operacional:
-
-- nao existe registro em `platform_admin_users` no banco (`active_platform_admins = 0`);
-- criar ao menos um Admin Global ativo e rodar o teste E2E autorizado.
+- Primeiro `platform_admin_user` ativo validado.
+- Role validada: `owner`.
+- Login autorizado real validado por Playwright.
 
 ## Validacoes Tecnicas
 
 - Lint: aprovado.
 - Typecheck: aprovado.
 - Build: aprovado.
-- Playwright Admin Global: 3 aprovados, 1 skipado por ausencia de platform admin ativo.
+- Playwright Admin Global: 4 aprovados, 0 skipado.
 
 ## Credenciais
 
@@ -43,4 +42,8 @@ Pendencia operacional:
 
 O sistema clinico esta apto para dados clinicos reais.
 
-O Admin Global esta implementado e seguro, mas a liberacao operacional completa do painel depende da criacao de um usuario em `platform_admin_users` para validar o acesso autorizado real.
+O Admin Global esta apto para producao.
+
+Pendencia operacional nao bloqueante antes do go-live final:
+
+- habilitar Leaked Password Protection no painel Supabase Auth, se disponivel no projeto/plano.
