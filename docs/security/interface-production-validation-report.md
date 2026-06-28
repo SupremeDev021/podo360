@@ -383,3 +383,29 @@ Resultado:
   - 29 `multiple_permissive_policies`;
   - 15 `authenticated_security_definer_function_executable`;
   - 1 `auth_leaked_password_protection`.
+
+## Rodada de Interface Segura - 28/06/2026
+
+Validacoes executadas:
+
+- Lint aprovado.
+- Typecheck aprovado.
+- Build aprovado.
+- Playwright sem sessao aprovado.
+- Teste sem sessao reforcado para `/`, `/dashboard`, `/pacientes` e `/atendimento`.
+- Credenciais invalidas bloqueadas.
+- Security Advisor reexecutado: 45 avisos.
+
+Nao executado:
+
+- Fluxo clinico completo autenticado, pois as variaveis locais `PLAYWRIGHT_USER_A_*` e `PLAYWRIGHT_USER_B_*` nao estavam configuradas no ambiente.
+- As senhas reais nao foram registradas em comando, arquivo, log ou documento.
+
+Dados de teste:
+
+- Nenhum paciente, BA, anamnese, upload, relatorio ou audit log ficticio foi criado nesta rodada.
+- Nenhuma limpeza foi necessaria.
+
+Documento complementar:
+
+- `docs/production/final-interface-clinical-flow-validation.md`

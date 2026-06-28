@@ -64,6 +64,20 @@ test("bloqueia acesso interno sem sessao real", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
   await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.goto("/pacientes");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.goto("/atendimento");
+  await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
+
+  await page.getByLabel(/^E-mail$/i).fill("usuario-invalido@example.invalid");
+  await page.getByLabel(/^Senha$/i).fill("senha-invalida");
+  await page.getByRole("button", { name: /^Entrar$/i }).click();
+  await expect(page.getByText(/E-mail ou senha incorretos|Nao foi possivel entrar/i)).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /Principal/i })).toHaveCount(0);
 });
 
 test("Avaliação de Sensibilidade separa pés e mantém fluxo sem 3D", async ({ page }) => {

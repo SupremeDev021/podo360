@@ -81,3 +81,35 @@ Resumo apos hardening:
 ## Decisao
 
 O sistema esta mais proximo da producao, mas ainda nao deve receber dados clinicos reais ate que as pendencias obrigatorias acima sejam concluidas e documentadas sem falha critica.
+
+## Atualizacao de Validacao pela Interface - 28/06/2026
+
+Foi criada a branch `codex/final-real-interface-validation-with-cleanup` para a validacao final pela interface.
+
+Executado:
+
+- lint;
+- typecheck;
+- build;
+- Playwright sem sessao reforcado;
+- Security Advisor.
+
+Resultado:
+
+- Sem sessao, rotas internas continuam bloqueadas.
+- Credenciais invalidas nao entram.
+- Nao foi criado dado ficticio persistente.
+- Nenhuma limpeza foi necessaria.
+- Security Advisor permanece com 45 avisos:
+  - 29 `multiple_permissive_policies`;
+  - 15 `authenticated_security_definer_function_executable`;
+  - 1 `auth_leaked_password_protection`.
+
+Bloqueio:
+
+- As variaveis `PLAYWRIGHT_USER_A_EMAIL`, `PLAYWRIGHT_USER_A_PASSWORD`, `PLAYWRIGHT_USER_B_EMAIL` e `PLAYWRIGHT_USER_B_PASSWORD` nao estavam configuradas no ambiente.
+- Por seguranca, as senhas reais nao foram escritas em comandos, arquivos, logs ou documentos.
+
+Relatorio detalhado:
+
+- `docs/production/final-interface-clinical-flow-validation.md`

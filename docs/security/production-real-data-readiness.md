@@ -367,3 +367,18 @@ Decisao apos hardening:
 
 - A reducao dos avisos melhora a postura de seguranca/performance.
 - Ainda nao apto para dados clinicos reais ate concluir o fluxo clinico completo pela interface e revisar os avisos restantes sem quebrar RLS/RPCs do app.
+
+Atualizacao de validacao de interface em 28/06/2026:
+
+- Criada branch `codex/final-real-interface-validation-with-cleanup`.
+- Lint, typecheck, build e Playwright sem sessao passaram.
+- O teste sem sessao foi reforcado para validar rotas protegidas e credenciais invalidas.
+- Security Advisor permanece em 45 avisos, sem `auth_rls_initplan`.
+- Nenhum dado ficticio persistente foi criado.
+- Nenhuma limpeza de dados foi necessaria.
+
+Bloqueio atual:
+
+- As variaveis locais de teste autenticado `PLAYWRIGHT_USER_A_EMAIL`, `PLAYWRIGHT_USER_A_PASSWORD`, `PLAYWRIGHT_USER_B_EMAIL` e `PLAYWRIGHT_USER_B_PASSWORD` nao estavam configuradas.
+- As senhas reais nao foram gravadas em comandos, arquivos, logs ou documentos.
+- Por isso, paciente/BA/PU/anamnese/upload/relatorios/finalizacao/reabertura/status suspended continuam pendentes pela interface.
