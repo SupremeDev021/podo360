@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const clinicRoles = new Set(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"]);
+const platformRoles = new Set(["owner", "admin", "support", "commercial"]);
 
 function assertClinicRole(role: unknown) {
   if (typeof role !== "string" || !clinicRoles.has(role)) {
@@ -74,17 +75,28 @@ Deno.serve(async (request) => {
     const { data: authData, error: authError } = await admin.auth.getUser(token);
     if (authError || !authData.user) throw new Error("Sessao invalida.");
 
-    const { data: caller, error: callerError } = await admin.from("profiles").select("role, company_id").eq("id", authData.user.id).single();
-    if (callerError || !caller || !["super_admin", "company_admin"].includes(caller.role)) throw new Error("Sem permissao para criar usuarios.");
+    const { data: caller } = await admin.from("profiles").select("role, company_id").eq("id", authData.user.id).maybeSingle();
+    const { data: platformAdmin } = await admin
+      .from("platform_admin_users")
+      .select("role, active")
+      .eq("user_id", authData.user.id)
+      .eq("active", true)
+      .maybeSingle();
+
+    const isPlatformAdmin = Boolean(platformAdmin?.active && platformRoles.has(platformAdmin.role));
+    const isClinicAdmin = Boolean(caller && ["super_admin", "company_admin"].includes(caller.role));
+    if (!isPlatformAdmin && !isClinicAdmin) throw new Error("Sem permissao para criar usuarios.");
 
     const body = await request.json();
-    if (caller.role !== "super_admin" && caller.company_id !== body.companyId) throw new Error("Admin da empresa so pode criar usuarios na propria empresa.");
+    if (!isPlatformAdmin && caller?.role !== "super_admin" && caller?.company_id !== body.companyId) {
+      throw new Error("Admin da empresa so pode criar usuarios na propria empresa.");
+    }
 
     if (body.action) {
-      const { data: target, error: targetError } = await admin.from("profiles").select("id, email, company_id, full_name, role").eq("id", body.userId).single();
+      const { data: target, error: targetError } = await admin.from("profiles").select("id, email, company_id, full_name, role, active").eq("id", body.userId).single();
       if (targetError || !target) throw new Error("Usuario nao encontrado.");
-      if (caller.role !== "super_admin" && target.company_id !== caller.company_id) throw new Error("Admin da empresa so pode gerenciar usuarios da propria empresa.");
-      if (caller.role !== "super_admin" && target.role === "super_admin") throw new Error("Admin da empresa nao pode gerenciar Super Admin.");
+      if (!isPlatformAdmin && caller?.role !== "super_admin" && target.company_id !== caller?.company_id) throw new Error("Admin da empresa so pode gerenciar usuarios da propria empresa.");
+      if (!isPlatformAdmin && caller?.role !== "super_admin" && target.role === "super_admin") throw new Error("Admin da empresa nao pode gerenciar Super Admin.");
 
       if (body.action === "reset_password") {
         const { error } = await admin.auth.resetPasswordForEmail(target.email);
@@ -94,14 +106,29 @@ Deno.serve(async (request) => {
 
       if (body.action === "update") assertClinicRole(body.role);
       const active = body.action === "deactivate" ? false : body.action === "reactivate" ? true : body.active;
-      const nextCompanyId = caller.role === "super_admin" ? body.companyId : target.company_id;
+      const nextCompanyId = isPlatformAdmin || caller?.role === "super_admin" ? body.companyId : target.company_id;
       if (active === true && target.active === false) {
         await assertCompanyUserLimit(admin, nextCompanyId, body.userId);
+      }
+
+      const authUpdates: { email?: string; password?: string; user_metadata?: Record<string, unknown> } = {};
+      if (typeof body.email === "string" && body.email.trim() && body.email.trim().toLowerCase() !== target.email.toLowerCase()) {
+        authUpdates.email = body.email.trim();
+      }
+      if (typeof body.temporaryPassword === "string" && body.temporaryPassword.trim()) {
+        if (body.temporaryPassword.trim().length < 6) throw new Error("A senha temporaria deve ter pelo menos 6 caracteres.");
+        authUpdates.password = body.temporaryPassword.trim();
+      }
+      if (Object.keys(authUpdates).length) {
+        authUpdates.user_metadata = { full_name: body.fullName ?? target.full_name, company_id: nextCompanyId, role: body.action === "update" ? body.role : target.role };
+        const { error } = await admin.auth.admin.updateUserById(body.userId, authUpdates);
+        if (error) throw error;
       }
 
       const { error: updateError } = await admin.from("profiles").update({
         company_id: nextCompanyId,
         full_name: body.fullName ?? target.full_name,
+        email: body.email ?? target.email,
         role: body.action === "update" ? body.role : target.role,
         active,
         disabled_at: active === false ? new Date().toISOString() : null,
@@ -125,9 +152,19 @@ Deno.serve(async (request) => {
       await assertCompanyUserLimit(admin, body.companyId);
     }
 
-    const { data: invite, error: inviteError } = await admin.auth.admin.inviteUserByEmail(body.email, {
-      data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
-    });
+    const temporaryPassword = typeof body.temporaryPassword === "string" ? body.temporaryPassword.trim() : "";
+    if (temporaryPassword && temporaryPassword.length < 6) throw new Error("A senha temporaria deve ter pelo menos 6 caracteres.");
+
+    const { data: invite, error: inviteError } = temporaryPassword
+      ? await admin.auth.admin.createUser({
+        email: body.email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: { full_name: body.fullName, company_id: body.companyId, role: body.role }
+      })
+      : await admin.auth.admin.inviteUserByEmail(body.email, {
+        data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
+      });
     if (inviteError || !invite.user) throw inviteError ?? new Error("Nao foi possivel convidar o usuario.");
 
     const { error: profileError } = await admin.from("profiles").upsert({
