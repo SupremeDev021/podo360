@@ -1,6 +1,5 @@
 import { Camera, ImagePlus, Save } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { AttendanceImage, FootSide } from "../types";
 
 type WoundImageModuleProps = {
@@ -42,21 +41,31 @@ export function WoundImageModule({
   readOnlyMessage = "Não é possível editar atendimento finalizado."
 }: WoundImageModuleProps) {
   const [previewUrl, setPreviewUrl] = useState("");
+  const [selectedFileName, setSelectedFileName] = useState("");
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState({
+    imageType: "current_state" as AttendanceImage["imageType"],
+    footRegion: "PÃ© Direito",
+    fileUrl: "",
+    clinicalNotes: ""
+  });
   const currentImages = useMemo(() => images.filter((image) => image.attendanceId === attendanceId), [attendanceId, images]);
 
   function handleFileChange(file?: File) {
     if (readOnly) return;
     if (!file) return;
     setPreviewUrl(URL.createObjectURL(file));
+    setSelectedFileName(file.name);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSave() {
     if (readOnly) return;
-    const form = new FormData(event.currentTarget);
-    const file = form.get("woundImage") as File | null;
-    const fileUrl = previewUrl || (file?.name ? `attendance-image://${patientId}/${attendanceId}/${file.name}` : String(form.get("fileUrl") || ""));
-    const region = String(form.get("footRegion") || "Outra");
+    const readField = (name: string) => String((panelRef.current?.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value || "");
+    const imageType = (readField("imageType") || "current_state") as AttendanceImage["imageType"];
+    const clinicalNotes = readField("clinicalNotes");
+    const fileUrl = previewUrl || (selectedFileName ? `attendance-image://${patientId}/${attendanceId}/${selectedFileName}` : readField("fileUrl"));
+    const region = readField("footRegion") || "Outra";
 
     await onSave({
       companyId,
@@ -65,25 +74,27 @@ export function WoundImageModule({
       attendanceId,
       uniqueRecordNumber,
       baNumber,
-      imageType: String(form.get("imageType") || "current_state") as AttendanceImage["imageType"],
+      imageType,
       footSide: footSideFromRegion(region),
       footRegion: region,
       fileUrl,
       description: "",
-      clinicalNotes: String(form.get("clinicalNotes") || ""),
+      clinicalNotes,
       comparativeNotes: "",
-      notes: String(form.get("clinicalNotes") || ""),
+      notes: clinicalNotes,
       createdBy,
       updatedAt: new Date().toISOString()
     });
 
-    event.currentTarget.reset();
+    setDraft({ imageType: "current_state", footRegion: "PÃ© Direito", fileUrl: "", clinicalNotes: "" });
+    setSelectedFileName("");
     setPreviewUrl("");
+    setFileInputKey((current) => current + 1);
   }
 
   return (
     <div className="wound-module-grid">
-      <form className="panel-form" onSubmit={handleSubmit}>
+      <div className="panel-form" ref={panelRef}>
         <div className="section-heading section-heading--compact">
           <div>
             <h2>Evolução por Imagem</h2>
@@ -104,17 +115,17 @@ export function WoundImageModule({
             <ImagePlus size={24} />
             <span>Clique para enviar ou arraste uma imagem</span>
             <small>PNG, JPG, JPEG ou WEBP. Use uma imagem nítida da região acompanhada.</small>
-            <input accept="image/png,image/jpeg,image/jpg,image/webp" disabled={readOnly} name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+            <input key={`wound-${fileInputKey}`} accept="image/png,image/jpeg,image/jpg,image/webp" disabled={readOnly} name="woundImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
           <label className="app-upload-field">
             <Camera size={24} />
             <span>Capturar com a câmera</span>
             <small>Ideal para celular durante o atendimento.</small>
-            <input accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" disabled={readOnly} name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
+            <input key={`camera-${fileInputKey}`} accept="image/png,image/jpeg,image/jpg,image/webp" capture="environment" disabled={readOnly} name="cameraImage" onChange={(event) => handleFileChange(event.target.files?.[0])} type="file" />
           </label>
           <label>
             Tipo da imagem
-            <select name="imageType" defaultValue="current_state" disabled={readOnly}>
+            <select name="imageType" value={draft.imageType} disabled={readOnly} onChange={(event) => setDraft((current) => ({ ...current, imageType: event.target.value as AttendanceImage["imageType"] }))}>
               {imageTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
           </label>
@@ -131,8 +142,8 @@ export function WoundImageModule({
 
         {previewUrl && <img className="wound-preview" alt="Previa da imagem selecionada" src={previewUrl} />}
 
-        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit"><Save size={18} /> Salvar evolução por imagem</button>
-      </form>
+        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button" onClick={handleSave}><Save size={18} /> Salvar evolução por imagem</button>
+      </div>
 
       <section className="data-panel data-panel--flat">
         <h3>Imagens deste BA</h3>

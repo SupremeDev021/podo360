@@ -1,5 +1,16 @@
 # Teste Autenticado Multiempresa - Podo360
 
+## Atualizacao - 13/07/2026
+
+Rodada complementar apos validacao do fluxo clinico completo:
+
+- Suite Playwright critica + Storage executada apos as correcoes finais.
+- Resultado: 12 testes aprovados, 1 teste skipado.
+- O teste skipado foi o cenario automatizado de status `suspended`, pois depende de operacao administrativa controlada/credencial adequada para alterar status de empresa com seguranca.
+- O teste de Storage com upload real no bucket `company-assets` passou e removeu os arquivos ficticios.
+- O teste de Usuario B autenticado validou isolamento visual basico e ausencia de dados visuais da Empresa A.
+- Dados ficticios criados pela suite foram removidos ao final; confirmacao final retornou zero residuos com prefixo `TESTE_PRODUCAO_PODO360%` nas tabelas clinicas revisadas.
+
 Data: 25/06/2026
 
 Projeto Supabase: Podo360 (`xnnt...zgtk`)

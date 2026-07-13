@@ -1,5 +1,45 @@
 # Prontidao para Dados Clinicos Reais - Podo360
 
+## Atualizacao - 13/07/2026 - Fluxo Clinico Completo
+
+Resultado desta rodada:
+
+- O fluxo clinico completo do Podo360 Clinica foi validado para producao pela interface real.
+
+Validado:
+
+- Login clinico real do Usuario A.
+- Criacao de paciente ficticio controlado.
+- Abertura de BA: `BA-2026-000052`.
+- Geracao/vinculo de PU: `PU-2026-000056`.
+- Bloqueio de BA duplicado.
+- Anamnese completa com 19 modulos salva e recarregada.
+- Campos condicionais principais validados.
+- Upload ficticio em Evolucao por Imagem.
+- Finalizacao e bloqueio de edicao.
+- Cancelamento do modal de finalizacao sem gravar finalizacao indevida.
+- Reabertura/cancelamento de finalizacao com justificativa obrigatoria.
+- Relatorio/exportacao do BA atual.
+- Responsividade em desktop, tablet e mobile.
+- Limpeza final dos dados ficticios e PUs de teste.
+
+Correcoes desta rodada:
+
+- `WoundImageModule` nao usa mais `<form>` interno dentro da anamnese.
+- Menu mobile foi corrigido para abrir/clicar corretamente mesmo com sidebar recolhida.
+
+Validacoes tecnicas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- Playwright fluxo clinico completo: aprovado.
+- Playwright critico + Storage: 12 aprovados e 1 skipado (`suspended` depende de operacao administrativa controlada).
+
+Observacao:
+
+- Esta rodada fecha a pendencia de fluxo clinico completo. A validacao automatizada de status `suspended/active` segue documentada como pendencia operacional quando houver janela segura para alterar status de empresa via Admin/operacao controlada.
+
 ## Atualizacao Consolidada - 13/07/2026
 
 Status atual:

@@ -1,5 +1,47 @@
 # Relatorio de Validacao da Interface para Producao - Podo360
 
+## Atualizacao - Fluxo Clinico Completo - 13/07/2026
+
+Status desta rodada:
+
+- Fluxo clinico completo validado pela interface real com Playwright.
+
+Itens aprovados:
+
+- Login real do Usuario A.
+- Dashboard e navegacao autenticada.
+- Criacao de paciente ficticio.
+- Abertura de BA: `BA-2026-000052`.
+- Geracao/vinculo de Prontuario de Evolucao: `PU-2026-000056`.
+- Bloqueio de BA duplicado.
+- Todos os modulos da anamnese foram abertos, preenchidos, salvos e reabertos.
+- Campos condicionais de Medicamentos, Historico de cirurgia e Edema foram validados.
+- Upload ficticio em Evolucao por Imagem aprovado.
+- Finalizacao aprovada.
+- Cancelamento do modal de finalizacao nao finalizou indevidamente.
+- Atendimento finalizado bloqueou edicao.
+- Reabertura pelo Gerenciamento de Atendimento exigiu justificativa e voltou a permitir edicao.
+- Relatorio/exportacao do BA atual aprovado.
+- Responsividade validada em 1366px, 820px e 390px.
+
+Correcoes aplicadas:
+
+- Removido formulario aninhado em `WoundImageModule`, corrigindo aviso React de `validateDOMNesting`.
+- Corrigida exibicao/clicabilidade do menu mobile quando a sidebar estava recolhida.
+
+Resultado tecnico:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado.
+- E2E fluxo clinico completo: aprovado.
+- E2E critico + Storage: 12 aprovados, 1 skipado por depender de operacao administrativa de status `suspended`.
+
+Limpeza:
+
+- Todos os dados ficticios criados nesta rodada foram removidos.
+- Confirmado zero residuo com prefixo `TESTE_PRODUCAO_PODO360%` nas tabelas clinicas revisadas.
+
 Data: 26/06/2026
 
 Projeto Supabase: Podo360 (`xnnt...zgtk`)

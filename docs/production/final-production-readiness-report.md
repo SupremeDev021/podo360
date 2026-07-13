@@ -1,5 +1,50 @@
 # Relatorio Final de Prontidao de Producao - Podo360
 
+## Atualizacao - Fluxo Clinico Completo - 13/07/2026
+
+Decisao desta rodada:
+
+- Fluxo clinico completo validado para producao no Podo360 Clinica.
+
+Validacoes executadas pela interface real com Playwright:
+
+- Login clinico real do Usuario A por variaveis locais seguras.
+- Criacao de paciente ficticio com prefixo `TESTE_PRODUCAO_PODO360_FLUXO_CLINICO_`.
+- Abertura de BA pela interface: `BA-2026-000052`.
+- Geracao/vinculo de Prontuario de Evolucao: `PU-2026-000056`.
+- Bloqueio de BA duplicado para o mesmo paciente.
+- Preenchimento e salvamento dos 19 modulos da anamnese: Identificacao, Queixa principal, Medicamentos, Historico de Saude, Avaliacao Podal, Edema, Avaliacao de Sensibilidade, ITB, IHB, Glicemia, Escala EVA, Diagnostico Ungueal, Procedimento, Curativo, Indicacao de tratamento, Orientacoes Home Care, Evolucao por Imagem, Comparativo de evolucao e Retorno.
+- Campos condicionais validados: medicamentos, cirurgia e edema.
+- Upload ficticio de imagem de evolucao.
+- Finalizacao de atendimento.
+- Cancelamento do modal de finalizacao sem finalizar indevidamente.
+- Bloqueio de edicao apos finalizacao.
+- Reabertura/cancelamento de finalizacao com justificativa obrigatoria.
+- Relatorio/exportacao do BA atual.
+- Responsividade validada em desktop, tablet e mobile.
+
+Bugs corrigidos nesta rodada:
+
+- `WoundImageModule` renderizava um `<form>` dentro do `<form>` da anamnese, gerando aviso React de HTML invalido. O modulo foi convertido para painel com botao `type="button"`, preservando o salvamento da evolucao por imagem.
+- Menu mobile podia ficar semanticamente aberto, mas fora da area clicavel quando a sidebar estava recolhida. O CSS mobile foi reforcado para `.sidebar.is-open` e `.sidebar.is-open.is-collapsed`.
+
+Validacoes tecnicas:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado, com aviso nao bloqueante de chunk grande do Vite.
+- Playwright fluxo clinico completo: 1 aprovado.
+- Playwright fluxos criticos + Storage: 12 aprovados, 1 skipado (`suspended` depende de credencial/operacao administrativa controlada).
+
+Limpeza:
+
+- Dados ficticios da rodada aprovada removidos com filtros por prefixo e IDs derivados.
+- Confirmado zero residuos em `patients`, `attendances`, `anamnesis_records`, `attendance_images`, `attendance_audit_logs` e `unique_medical_records` para `TESTE_PRODUCAO_PODO360%`.
+
+Pendencia nao coberta por esta rodada:
+
+- O teste automatizado de status `suspended/active` ficou skipado nesta execucao por depender de credencial/operacao administrativa segura. Nao foi tratado como bloqueio do fluxo clinico, mas deve permanecer no checklist operacional antes do go-live amplo.
+
 ## Status Consolidado - 13/07/2026
 
 Decisao atual:
