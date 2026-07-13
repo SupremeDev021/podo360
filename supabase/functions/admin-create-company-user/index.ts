@@ -35,6 +35,26 @@ function throwStep(step: string, error: unknown) {
   throw new Error(`${step}: ${getSafeErrorMessage(error)}`);
 }
 
+function isDuplicateAuthEmailError(error: unknown) {
+  return getSafeErrorMessage(error).toLowerCase().includes("already been registered");
+}
+
+async function findAuthUserByEmail(admin: ReturnType<typeof createClient>, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const perPage = 1000;
+
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throwStep("Falha ao localizar usuario no Auth", error);
+
+    const match = data.users.find((user) => user.email?.toLowerCase() === normalizedEmail);
+    if (match) return match;
+    if (data.users.length < perPage) break;
+  }
+
+  return null;
+}
+
 async function getCompanyUserLimit(admin: ReturnType<typeof createClient>, companyId: string) {
   const { data: platformCompany, error: companyError } = await admin
     .from("platform_companies")
@@ -189,6 +209,7 @@ Deno.serve(async (request) => {
     const temporaryPassword = typeof body.temporaryPassword === "string" ? body.temporaryPassword.trim() : "";
     if (temporaryPassword && temporaryPassword.length < 6) throw new Error("A senha temporaria deve ter pelo menos 6 caracteres.");
 
+    let authUser;
     const { data: invite, error: inviteError } = temporaryPassword
       ? await admin.auth.admin.createUser({
         email: body.email,
@@ -199,20 +220,35 @@ Deno.serve(async (request) => {
       : await admin.auth.admin.inviteUserByEmail(body.email, {
         data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
       });
-    if (inviteError || !invite.user) throwStep("Falha ao criar usuario no Auth", inviteError ?? "Usuario Auth nao retornado");
+    authUser = invite?.user;
+
+    if (inviteError && isDuplicateAuthEmailError(inviteError)) {
+      const existingUser = await findAuthUserByEmail(admin, body.email);
+      if (!existingUser) throwStep("Falha ao localizar usuario existente no Auth", inviteError);
+
+      const { data: updatedUser, error: updateAuthError } = await admin.auth.admin.updateUserById(existingUser.id, {
+        ...(temporaryPassword ? { password: temporaryPassword } : {}),
+        email_confirm: true,
+        user_metadata: { full_name: body.fullName, company_id: body.companyId, role: body.role }
+      });
+      if (updateAuthError || !updatedUser.user) throwStep("Falha ao atualizar usuario existente no Auth", updateAuthError ?? "Usuario Auth nao retornado");
+      authUser = updatedUser.user;
+    } else if (inviteError || !authUser) {
+      throwStep("Falha ao criar usuario no Auth", inviteError ?? "Usuario Auth nao retornado");
+    }
 
     const { error: profileError } = await admin.from("profiles").upsert({
-      id: invite.user.id,
+      id: authUser.id,
       company_id: body.companyId,
       full_name: body.fullName,
       email: body.email,
       role: body.role,
-      active: body.active
+      active: body.active !== false
     });
     if (profileError) throwStep("Falha ao criar profile", profileError);
 
     const permissions = (body.modules as string[]).map((moduleKey) => ({
-      user_id: invite.user.id,
+      user_id: authUser.id,
       company_id: body.companyId,
       module_key: moduleKey,
       can_view: true,
@@ -225,7 +261,7 @@ Deno.serve(async (request) => {
       if (permissionError) throw permissionError;
     }
 
-    return new Response(JSON.stringify({ userId: invite.user.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ userId: authUser.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     return new Response(JSON.stringify({ error: getSafeErrorMessage(error) }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
