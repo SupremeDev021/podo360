@@ -36,15 +36,38 @@ function throwStep(step: string, error: unknown) {
 }
 
 async function getCompanyUserLimit(admin: ReturnType<typeof createClient>, companyId: string) {
-  const { data, error } = await admin
-    .from("company_platform_access")
-    .select("max_users")
-    .eq("company_id", companyId)
+  const { data: platformCompany, error: companyError } = await admin
+    .from("platform_companies")
+    .select("id, plan_id")
+    .eq("clinic_company_id", companyId)
     .maybeSingle();
 
-  if (error) throwStep("Falha ao salvar operacao", error);
-  if (!data || data.max_users == null) return null;
-  return Number(data.max_users);
+  if (companyError) throwStep("Falha ao buscar empresa comercial", companyError);
+  if (!platformCompany) return null;
+
+  const { data: subscription, error: subscriptionError } = await admin
+    .from("platform_company_subscriptions")
+    .select("max_users")
+    .eq("company_id", platformCompany.id)
+    .in("status", ["active", "trial"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (subscriptionError) throwStep("Falha ao buscar assinatura da empresa", subscriptionError);
+  if (subscription?.max_users != null) return Number(subscription.max_users);
+
+  if (!platformCompany.plan_id) return null;
+
+  const { data: plan, error: planError } = await admin
+    .from("platform_plans")
+    .select("max_users")
+    .eq("id", platformCompany.plan_id)
+    .maybeSingle();
+
+  if (planError) throwStep("Falha ao buscar limite do plano", planError);
+  if (plan?.max_users == null) return null;
+  return Number(plan.max_users);
 }
 
 async function getActiveCompanyUserCount(admin: ReturnType<typeof createClient>, companyId: string) {
