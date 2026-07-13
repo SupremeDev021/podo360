@@ -40,12 +40,12 @@ const featureItems = [
   { icon: Sparkles, label: "Relatórios com IA", detail: "Inteligência para decisões" }
 ];
 
-const CONNECTION_UNAVAILABLE_MESSAGE = "Nao foi possivel conectar ao servico no momento. Tente novamente em instantes ou entre em contato com o suporte.";
+const CONNECTION_UNAVAILABLE_MESSAGE = "Não foi possível conectar ao serviço no momento. Tente novamente em instantes.";
 
 function getLoginErrorMessage(message: string) {
   const normalized = message.toLowerCase();
 
-  if (normalized.includes("invalid login credentials")) return "E-mail ou senha incorretos. Revise os dados e tente novamente.";
+  if (normalized.includes("invalid login credentials")) return "E-mail ou senha inválidos.";
   if (normalized.includes("email not confirmed")) return "Confirme seu e-mail antes de acessar o sistema.";
   if (normalized.includes("failed to fetch") || normalized.includes("network")) return CONNECTION_UNAVAILABLE_MESSAGE;
   if (normalized.includes("too many requests")) return "Muitas tentativas em pouco tempo. Aguarde alguns instantes e tente novamente.";
