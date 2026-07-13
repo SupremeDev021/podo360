@@ -55,7 +55,7 @@ export function WoundImageModule({
     if (readOnly) return;
     const form = new FormData(event.currentTarget);
     const file = form.get("woundImage") as File | null;
-    const fileUrl = previewUrl || (file?.name ? `supabase://attendance-images/${patientId}/${attendanceId}/${file.name}` : String(form.get("fileUrl") || ""));
+    const fileUrl = previewUrl || (file?.name ? `attendance-image://${patientId}/${attendanceId}/${file.name}` : String(form.get("fileUrl") || ""));
     const region = String(form.get("footRegion") || "Outra");
 
     await onSave({

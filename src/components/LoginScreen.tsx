@@ -79,7 +79,7 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
     if (!isSupabaseConfigured || !supabase) {
       setFeedback({
         tone: "danger",
-        message: import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : CONNECTION_UNAVAILABLE_MESSAGE
+        message: CONNECTION_UNAVAILABLE_MESSAGE
       });
       return;
     }
@@ -120,7 +120,7 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
     if (!isSupabaseConfigured || !supabase) {
       setFeedback({
         tone: "danger",
-        message: import.meta.env.DEV ? "Recuperacao indisponivel: ambiente de autenticacao nao configurado." : CONNECTION_UNAVAILABLE_MESSAGE
+        message: CONNECTION_UNAVAILABLE_MESSAGE
       });
       return;
     }

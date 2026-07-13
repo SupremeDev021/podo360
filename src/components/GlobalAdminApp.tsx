@@ -130,7 +130,7 @@ function AdminLogin({ message, onSuccess }: { message?: string; onSuccess: () =>
       return;
     }
     if (!isSupabaseConfigured || !supabase) {
-      setFeedback(import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : ADMIN_AUTH_UNAVAILABLE_MESSAGE);
+      setFeedback(ADMIN_AUTH_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -159,7 +159,7 @@ function AdminLogin({ message, onSuccess }: { message?: string; onSuccess: () =>
       <form className="global-admin-login__card" onSubmit={submit} noValidate>
         <span className="login-card__eyebrow"><ShieldCheck size={15} /> Acesso administrativo</span>
         <h2>Entrar no Admin Global</h2>
-        <p>Somente usuarios cadastrados em `platform_admin_users` podem acessar.</p>
+        <p>Somente usuarios administrativos autorizados podem acessar.</p>
         <div className="login-feedback login-feedback--info" role="status">{feedback}</div>
         <label>E-mail<input autoComplete="email" onChange={(event) => setEmail(event.target.value)} type="email" value={email} /></label>
         <label>Senha<input autoComplete="current-password" onChange={(event) => setPassword(event.target.value)} type="password" value={password} /></label>
@@ -180,7 +180,7 @@ export function GlobalAdminApp() {
   const load = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) {
       setStatus("login");
-      setMessage(import.meta.env.DEV ? "Ambiente de autenticacao nao configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." : ADMIN_CONNECTION_UNAVAILABLE_MESSAGE);
+      setMessage(ADMIN_CONNECTION_UNAVAILABLE_MESSAGE);
       return;
     }
     setStatus("checking");
@@ -311,7 +311,7 @@ function AdminDashboard({ snapshot }: { snapshot: GlobalAdminSnapshot }) {
   return (
     <div className="admin-page-stack">
       <div className="admin-metrics-grid">
-        <AdminMetric icon={Building2} label="Total de empresas" value={snapshot.companies.length} detail="Base real Supabase" />
+        <AdminMetric icon={Building2} label="Total de empresas" value={snapshot.companies.length} detail="Base real da plataforma" />
         <AdminMetric icon={CheckCircle2} label="Empresas ativas" value={snapshot.companies.filter((item) => item.status === "active").length} detail="Com acesso liberado" />
         <AdminMetric icon={AlertTriangle} label="Suspensas" value={snapshot.companies.filter((item) => item.status === "suspended").length} detail="Bloqueadas na clinica" />
         <AdminMetric icon={Users} label="Leads" value={snapshot.leads.length} detail="Pipeline comercial" />
@@ -459,7 +459,7 @@ function AdminUsers({ snapshot, onReload, onNotify }: { snapshot: GlobalAdminSna
   }
   return (
     <div className="admin-page-stack">
-      <div className="inline-info"><ShieldCheck size={18} /> Novos admins globais devem ser criados por convite/painel seguro do Supabase Auth ou Edge Function administrativa. Nenhuma senha e criada no frontend.</div>
+      <div className="inline-info"><ShieldCheck size={18} /> Novos admins globais devem ser criados por fluxo administrativo seguro. Nenhuma senha e criada no frontend.</div>
       {!snapshot.adminUsers.length ? <EmptyState title="Nenhum admin global encontrado." /> : (
         <div className="admin-table-wrap"><table><thead><tr><th>Usuario</th><th>Role</th><th>Status</th><th>Acoes</th></tr></thead><tbody>{snapshot.adminUsers.map((user) => <tr key={user.id}><td><strong>{user.fullName || user.email || user.userId}</strong><small>{user.email || user.userId}</small></td><td><select defaultValue={user.role} onChange={(event) => void update(user, event.target.value as PlatformAdminRole, user.active)}>{platformAdminRoles.map((role) => <option key={role} value={role}>{role}</option>)}</select></td><td>{user.active ? "Ativo" : "Inativo"}</td><td><button className={user.active ? "danger-button" : "primary-button"} onClick={() => void update(user, user.role, !user.active)} type="button">{user.active ? "Inativar" : "Ativar"}</button></td></tr>)}</tbody></table></div>
       )}

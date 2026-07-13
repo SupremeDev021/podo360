@@ -1,5 +1,25 @@
 # Prontidao para Dados Clinicos Reais - Podo360
 
+## Atualizacao Consolidada - 13/07/2026
+
+Status atual:
+
+- Ainda nao declarar 100% pronto para producao final/cutover.
+
+Resumo da rodada:
+
+- O nucleo autenticado continua aprovado nos testes seguros executados.
+- Acesso sem sessao, credencial invalida, login do Usuario B, isolamento visual basico, logout, Storage com upload real e limpeza passaram por Playwright.
+- Mensagens tecnicas visiveis relacionadas a configuracao/autenticacao foram removidas da interface.
+- Lint, typecheck e build passaram.
+
+Pendencias restantes:
+
+- Validacao automatizada ou manual completa de todos os campos da anamnese, relatorios/PDF, finalizacao/reabertura e responsividade.
+- Login owner/Admin Global automatizado precisa de variaveis locais `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD`.
+- Security Advisor deve ser reexecutado apos a rodada final completa.
+- Leaked Password Protection permanece pendencia operacional porque exige plano Supabase Pro ou superior.
+
 Data: 25/06/2026
 
 Projeto Supabase: Podo360 (`xnnt...zgtk`)

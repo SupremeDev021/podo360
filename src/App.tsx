@@ -372,7 +372,7 @@ function ClinicApp() {
   const loadAuthenticatedAccess = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) {
       resetClinicState();
-      setAuthMessage("Acesso indisponivel. Configure o ambiente oficial do Supabase para entrar.");
+      setAuthMessage("Nao foi possivel conectar ao servico no momento. Tente novamente em instantes.");
       setAuthStatus("unauthenticated");
       return;
     }
@@ -1052,7 +1052,7 @@ function ClinicApp() {
     try {
       await reopenAttendanceBa(attendanceId, cleanReason);
     } catch {
-      notify("Reabertura mantida localmente", "Não foi possível sincronizar a reabertura agora. A migration precisa estar aplicada no Supabase.", "warning");
+      notify("Reabertura mantida localmente", "Nao foi possivel sincronizar a reabertura agora. Tente novamente em instantes.", "warning");
     }
 
     const now = new Date().toISOString();

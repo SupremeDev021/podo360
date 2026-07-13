@@ -1,5 +1,28 @@
 # Relatorio Final de Prontidao de Producao - Podo360
 
+## Status Consolidado - 13/07/2026
+
+Decisao atual:
+
+- Ainda nao esta 100% pronto para producao final/cutover de dominio.
+
+O que foi aprovado nesta rodada:
+
+- Mensagens tecnicas de interface sobre ambiente/autenticacao foram substituidas por mensagens profissionais.
+- Lint do Podo360 Clinica: aprovado.
+- Typecheck do Podo360 Clinica: aprovado.
+- Build do Podo360 Clinica: aprovado, com aviso nao bloqueante de bundle grande.
+- E2E seguro do Podo360 Clinica: 3 testes aprovados, cobrindo bloqueio sem sessao, login/isolamento visual basico do Usuario B e logout com bloqueio de rota protegida.
+- E2E de Storage: upload real de logo no bucket `company-assets`, isolamento Empresa A x Empresa B e limpeza dos arquivos de teste aprovados.
+- E2E do Admin Global integrado: 3 testes aprovados, cobrindo bloqueio sem sessao, credenciais invalidas e bloqueio de usuario clinico comum.
+
+Pendencias para declarar 100% pronto:
+
+- Repetir login automatizado do owner/Admin Global com variaveis locais `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD`, sem registrar valores.
+- Executar validacao exaustiva de todos os campos da anamnese, relatorios/PDF, finalizacao/reabertura e responsividade em dispositivos reais ou suite E2E ampliada com limpeza controlada.
+- Revisar Supabase Security Advisor apos a rodada completa final.
+- Preparar cutover de dominio sem quebrar os deploys atuais do GitHub Pages.
+
 Data: 28/06/2026
 
 ## Sistema Clinico
