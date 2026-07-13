@@ -45,6 +45,7 @@ export type PlatformAccessSnapshot = {
   companyId: string;
   access: CompanyAccessState;
   plan?: PlatformPlanSummary;
+  maxUsers?: number | null;
   features: PlatformFeatureAccess[];
   loadedFromPlatform: boolean;
 };
@@ -56,6 +57,7 @@ type CompanyPlatformAccessRow = {
   plan_name: string | null;
   plan_slug: string | null;
   is_custom_price: boolean | null;
+  max_users: number | null;
   features: Array<{
     key?: string;
     enabled?: boolean;
@@ -81,7 +83,7 @@ export async function getPlatformAccessSnapshot(companyId: string): Promise<Plat
   try {
     const { data, error } = await supabase
       .from("company_platform_access")
-      .select("company_id,status,plan_id,plan_name,plan_slug,is_custom_price,features")
+      .select("company_id,status,plan_id,plan_name,plan_slug,is_custom_price,max_users,features")
       .eq("company_id", companyId)
       .maybeSingle();
 
@@ -101,6 +103,7 @@ export async function getPlatformAccessSnapshot(companyId: string): Promise<Plat
         slug: row.plan_slug ?? undefined,
         isCustomPrice: Boolean(row.is_custom_price)
       },
+      maxUsers: row.max_users == null ? null : Number(row.max_users),
       features: (row.features ?? [])
         .filter((feature) => feature.key)
         .map((feature) => ({

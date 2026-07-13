@@ -305,6 +305,7 @@ function ClinicApp() {
   const [company, setCompany] = useState<Company>(loginCompanyPlaceholder);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [companyUserLimit, setCompanyUserLimit] = useState<number | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
   const [authMessage, setAuthMessage] = useState("Validando acesso...");
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
@@ -349,6 +350,7 @@ function ClinicApp() {
     setCompany(loginCompanyPlaceholder);
     setProfile(null);
     setProfiles([]);
+    setCompanyUserLimit(null);
     setPatients([]);
     setUniqueMedicalRecords([]);
     setAppointments([]);
@@ -447,6 +449,7 @@ function ClinicApp() {
     setCompany(nextCompany);
     setProfile(nextProfile);
     setProfiles(((profileRows ?? []) as ProfileRow[]).map(mapProfile));
+    setCompanyUserLimit(platformAccess.maxUsers ?? null);
     setStock(catalogStock(nextCompany.id, []));
     setAuthMessage("");
     setAuthStatus("authenticated");
@@ -1313,7 +1316,7 @@ function ClinicApp() {
         />
       )}
       {activeView === "settings" && <SettingsView company={company} profile={profile} onCompanyChange={setCompany} onNotify={notify} />}
-      {activeView === "super-admin" && <SuperAdmin company={company} profiles={profiles} onNotify={notify} />}
+      {activeView === "super-admin" && <SuperAdmin company={company} maxUsers={companyUserLimit} profiles={profiles} onNotify={notify} />}
       </div>
     </Layout>
   );
@@ -3553,7 +3556,7 @@ function SettingsView({ company, profile, onCompanyChange, onNotify }: { company
   );
 }
 
-function SuperAdmin({ company, profiles, onNotify }: { company: Company; profiles: Profile[]; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
+function SuperAdmin({ company, maxUsers, profiles, onNotify }: { company: Company; maxUsers: number | null; profiles: Profile[]; onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void }) {
   const [users, setUsers] = useState(profiles.filter((item) => item.companyId === company.id));
   const [open, setOpen] = useState(false);
   const [selectedModules, setSelectedModules] = useState<string[]>(["dashboard", "patients", "schedule"]);
@@ -3566,12 +3569,25 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
     setUsers(profiles.filter((item) => item.companyId === company.id));
   }, [company.id, profiles]);
 
+  const activeUsersCount = users.filter((item) => item.active).length;
+  const userLimitLabel = maxUsers == null ? "Ilimitado" : String(maxUsers);
+  const userLimitReached = maxUsers != null && activeUsersCount >= maxUsers;
+  const userLimitMessage = "Limite de usuarios atingido para sua clinica. Entre em contato com o suporte Podo360 para aumentar o limite.";
+
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const user = { id: editingUser?.id ?? crypto.randomUUID(), companyId: company.id, fullName: String(form.get("fullName")), email: editingUser?.email ?? String(form.get("email")), role: String(form.get("role")) as Profile["role"], active: form.get("active") === "on", modulePermissions: selectedModules };
     if (!clinicUserRoleOptions.includes(user.role)) {
       setUserMessage("Selecione um perfil clinico valido.");
+      return;
+    }
+    if (!editingUser && user.active && userLimitReached) {
+      setUserMessage(userLimitMessage);
+      return;
+    }
+    if (editingUser && editingUser.active === false && user.active && userLimitReached) {
+      setUserMessage(userLimitMessage);
       return;
     }
     setSavingUser(true);
@@ -3587,8 +3603,9 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
       setOpen(false);
       setEditingUser(null);
       onNotify(editingUser ? "Usuário atualizado com sucesso." : "Convite enviado com sucesso.", `${user.fullName} ficou vinculado somente a ${company.displayName}.`, "success");
-    } catch {
-      setUserMessage("Não foi possível criar o usuário. Verifique os dados e tente novamente.");
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Não foi possível criar o usuário. Verifique os dados e tente novamente.";
+      setUserMessage(message.includes("Limite de usuarios") ? userLimitMessage : message);
     } finally {
       setSavingUser(false);
     }
@@ -3596,6 +3613,11 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
 
   async function confirmUserAction() {
     if (!actionUser) return;
+    if (actionUser.action === "reactivate" && userLimitReached) {
+      setUserMessage(userLimitMessage);
+      setActionUser(null);
+      return;
+    }
     await manageCompanyUser({ action: actionUser.action, userId: actionUser.user.id, companyId: company.id });
     if (actionUser.action !== "reset_password") setUsers((current) => current.map((item) => item.id === actionUser.user.id ? { ...item, active: actionUser.action === "reactivate" } : item));
     const message = actionUser.action === "reset_password" ? "Instrução de redefinição de senha enviada." : actionUser.action === "deactivate" ? "Usuario desativado com seguranca." : "Usuario reativado.";
@@ -3651,13 +3673,14 @@ function SuperAdmin({ company, profiles, onNotify }: { company: Company; profile
 
   return (
     <ModulePage eyebrow="Administracao interna" title="Administração da Clínica" description="Controle usuarios, permissoes e configuracoes internas da clinica.">
-      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setUserMessage(""); setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
+      <div className="section-heading section-heading--compact"><div><h2>Usuarios da empresa</h2><p>Crie usuarios vinculados a {company.displayName} e defina as abas permitidas.</p></div><button className="primary-button" disabled={userLimitReached} onClick={() => { setEditingUser(null); setSelectedModules(["dashboard", "patients", "schedule"]); setUserMessage(userLimitReached ? userLimitMessage : ""); if (!userLimitReached) setOpen(true); }} type="button"><Plus size={17} /> Criar usuario</button></div>
       <section className="metrics-grid">
         <MetricCard icon={<BuildingIcon />} label="Clínica atual" value="1" detail="Escopo administrativo limitado à empresa logada" tone="primary" />
-        <MetricCard icon={<Users />} label="Usuarios" value={String(users.length)} detail="Vinculados a empresa selecionada" />
-        <MetricCard icon={<ShieldCheck />} label="Ativos" value={String(users.filter((item) => item.active).length)} detail="Com acesso liberado" tone="success" />
+        <MetricCard icon={<Users />} label="Usuarios" value={`${activeUsersCount} / ${userLimitLabel}`} detail="Ativos dentro do limite contratado" />
+        <MetricCard icon={<ShieldCheck />} label="Ativos" value={String(activeUsersCount)} detail="Com acesso liberado" tone="success" />
         <MetricCard icon={<AlertTriangle />} label="Desativados" value={String(users.filter((item) => !item.active).length)} detail="Sem acesso ao sistema" />
       </section>
+      {userLimitReached && <div className="inline-error">{userLimitMessage}</div>}
       {userMessage && <div className="inline-info">{userMessage}</div>}
       <Table headers={["Nome", "E-mail", "Perfil", "Status", "Acoes"]} rows={users.map((user) => [user.fullName, user.email, roleLabel(user.role), user.active ? "Ativo" : "Inativo", <div className="table-actions"><button className="ghost-action" onClick={() => { setEditingUser(user); setSelectedModules(user.modulePermissions ?? []); setUserMessage(""); setOpen(true); }} type="button">Editar / Permissoes</button><button className="ghost-action" onClick={() => setActionUser({ user, action: "reset_password" })} type="button">Resetar senha</button><button className="ghost-action" onClick={() => setActionUser({ user, action: user.active ? "deactivate" : "reactivate" })} type="button">{user.active ? "Desativar" : "Reativar"}</button></div>])} />
       {actionUser && <div className="dialog-backdrop"><section className="dialog-card"><div><h2>{actionUser.action === "reset_password" ? "Resetar senha" : actionUser.action === "deactivate" ? "Desativar usuario" : "Reativar usuario"}</h2><p>{actionUser.action === "reset_password" ? "Um link seguro de redefinicao sera enviado ao e-mail do usuario." : actionUser.action === "deactivate" ? "O acesso sera bloqueado, mas historicos, BAs e auditoria permanecerao preservados." : "O usuario voltara a acessar os modulos permitidos."}</p></div><div className="dialog-card__actions"><button className="ghost-action" onClick={() => setActionUser(null)} type="button">Cancelar</button><button className={actionUser.action === "deactivate" ? "danger-button" : "primary-button"} onClick={confirmUserAction} type="button">Confirmar</button></div></section></div>}

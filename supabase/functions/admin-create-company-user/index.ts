@@ -14,6 +14,52 @@ function assertClinicRole(role: unknown) {
   }
 }
 
+async function getCompanyUserLimit(admin: ReturnType<typeof createClient>, companyId: string) {
+  const { data, error } = await admin
+    .from("company_platform_access")
+    .select("max_users")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data || data.max_users == null) return null;
+  return Number(data.max_users);
+}
+
+async function getActiveCompanyUserCount(admin: ReturnType<typeof createClient>, companyId: string) {
+  const { count, error } = await admin
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .eq("active", true);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function assertCompanyUserLimit(admin: ReturnType<typeof createClient>, companyId: string, userIdBeingReactivated?: string) {
+  const maxUsers = await getCompanyUserLimit(admin, companyId);
+  if (maxUsers == null) return;
+
+  let activeUsers = await getActiveCompanyUserCount(admin, companyId);
+  if (userIdBeingReactivated) {
+    const { data: target, error } = await admin
+      .from("profiles")
+      .select("active")
+      .eq("id", userIdBeingReactivated)
+      .single();
+
+    if (error) throw error;
+    if (target?.active === false) activeUsers += 1;
+  } else {
+    activeUsers += 1;
+  }
+
+  if (activeUsers > maxUsers) {
+    throw new Error("Limite de usuarios atingido para sua clinica. Entre em contato com o suporte Podo360 para aumentar o limite.");
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -48,8 +94,13 @@ Deno.serve(async (request) => {
 
       if (body.action === "update") assertClinicRole(body.role);
       const active = body.action === "deactivate" ? false : body.action === "reactivate" ? true : body.active;
+      const nextCompanyId = caller.role === "super_admin" ? body.companyId : target.company_id;
+      if (active === true && target.active === false) {
+        await assertCompanyUserLimit(admin, nextCompanyId, body.userId);
+      }
+
       const { error: updateError } = await admin.from("profiles").update({
-        company_id: caller.role === "super_admin" ? body.companyId : target.company_id,
+        company_id: nextCompanyId,
         full_name: body.fullName ?? target.full_name,
         role: body.action === "update" ? body.role : target.role,
         active,
@@ -70,6 +121,10 @@ Deno.serve(async (request) => {
     }
 
     assertClinicRole(body.role);
+    if (body.active !== false) {
+      await assertCompanyUserLimit(admin, body.companyId);
+    }
+
     const { data: invite, error: inviteError } = await admin.auth.admin.inviteUserByEmail(body.email, {
       data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
     });
