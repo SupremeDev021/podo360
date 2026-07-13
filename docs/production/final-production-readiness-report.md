@@ -15,12 +15,13 @@ O que foi aprovado nesta rodada:
 - E2E seguro do Podo360 Clinica: 3 testes aprovados, cobrindo bloqueio sem sessao, login/isolamento visual basico do Usuario B e logout com bloqueio de rota protegida.
 - E2E de Storage: upload real de logo no bucket `company-assets`, isolamento Empresa A x Empresa B e limpeza dos arquivos de teste aprovados.
 - E2E do Admin Global integrado: 3 testes aprovados, cobrindo bloqueio sem sessao, credenciais invalidas e bloqueio de usuario clinico comum.
+- Supabase Security Advisor reexecutado: sem alerta critico novo identificado nesta rodada; permanecem warnings conhecidos de functions `SECURITY DEFINER` executaveis por `authenticated`, Leaked Password Protection desabilitado e policies permissivas multiplas com impacto principalmente de performance.
 
 Pendencias para declarar 100% pronto:
 
 - Repetir login automatizado do owner/Admin Global com variaveis locais `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD`, sem registrar valores.
 - Executar validacao exaustiva de todos os campos da anamnese, relatorios/PDF, finalizacao/reabertura e responsividade em dispositivos reais ou suite E2E ampliada com limpeza controlada.
-- Revisar Supabase Security Advisor apos a rodada completa final.
+- Consolidar warnings remanescentes do Supabase Security Advisor em etapa posterior sem quebrar os fluxos reais.
 - Preparar cutover de dominio sem quebrar os deploys atuais do GitHub Pages.
 
 Data: 28/06/2026

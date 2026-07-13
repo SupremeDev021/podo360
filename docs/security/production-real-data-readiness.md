@@ -12,12 +12,13 @@ Resumo da rodada:
 - Acesso sem sessao, credencial invalida, login do Usuario B, isolamento visual basico, logout, Storage com upload real e limpeza passaram por Playwright.
 - Mensagens tecnicas visiveis relacionadas a configuracao/autenticacao foram removidas da interface.
 - Lint, typecheck e build passaram.
+- Supabase Security Advisor foi reexecutado nesta rodada e manteve apenas warnings conhecidos: functions `SECURITY DEFINER` expostas a `authenticated`, Leaked Password Protection desabilitado por indisponibilidade no plano atual e policies permissivas multiplas com recomendacao de consolidacao futura.
 
 Pendencias restantes:
 
 - Validacao automatizada ou manual completa de todos os campos da anamnese, relatorios/PDF, finalizacao/reabertura e responsividade.
 - Login owner/Admin Global automatizado precisa de variaveis locais `PLAYWRIGHT_PLATFORM_ADMIN_EMAIL` e `PLAYWRIGHT_PLATFORM_ADMIN_PASSWORD`.
-- Security Advisor deve ser reexecutado apos a rodada final completa.
+- Consolidar warnings remanescentes do Security Advisor sem quebrar fluxos clinicos e administrativos.
 - Leaked Password Protection permanece pendencia operacional porque exige plano Supabase Pro ou superior.
 
 Data: 25/06/2026
