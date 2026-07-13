@@ -75,11 +75,18 @@ Status atualizado:
 
 - Ainda nao esta pronto para producao.
 
-Motivo bloqueante:
+Motivo bloqueante anterior:
 
 - O nucleo sem sessao continua bloqueado, mas a suite E2E autenticada nao conseguiu concluir os fluxos multiempresa porque o Usuario B local configurado retornou `Invalid login credentials` no Supabase Auth.
 - Usuario A autenticou com sucesso no teste direto de Auth.
 - Usuario B precisa ter a senha redefinida/conferida no Supabase Auth e a suite E2E precisa ser executada novamente antes de liberar producao real.
+
+Atualizacao operacional:
+
+- O responsavel removeu os usuarios de teste do Supabase para zerar a base de usuarios.
+- Permanecem somente o Usuario A da clinica inicial e o owner do Admin Global.
+- A autenticacao direta do Usuario A foi revalidada com sucesso.
+- A validacao multiempresa autenticada permanece pendente por decisao operacional, pois nao existe mais Usuario B ativo para a Clinica Teste Isolamento.
 
 Limpeza de codigo realizada:
 
@@ -95,6 +102,6 @@ Validacoes tecnicas desta rodada:
 
 Pendencia obrigatoria:
 
-- Redefinir/conferir credenciais do Usuario B da Clinica Teste Isolamento.
+- Criar um novo Usuario B temporario ou usuario de teste equivalente quando for necessario repetir a validacao multiempresa autenticada.
 - Rerodar Playwright autenticado completo.
 - Validar Storage real, isolamento multiempresa, status suspended/active, relatorios/PDF e limpeza final de dados ficticios.
