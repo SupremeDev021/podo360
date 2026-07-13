@@ -57,7 +57,7 @@ type CompanyPlatformAccessRow = {
   plan_name: string | null;
   plan_slug: string | null;
   is_custom_price: boolean | null;
-  max_users: number | null;
+  max_users?: number | null;
   features: Array<{
     key?: string;
     enabled?: boolean;
@@ -83,7 +83,7 @@ export async function getPlatformAccessSnapshot(companyId: string): Promise<Plat
   try {
     const { data, error } = await supabase
       .from("company_platform_access")
-      .select("company_id,status,plan_id,plan_name,plan_slug,is_custom_price,max_users,features")
+      .select("company_id,status,plan_id,plan_name,plan_slug,is_custom_price,features")
       .eq("company_id", companyId)
       .maybeSingle();
 
