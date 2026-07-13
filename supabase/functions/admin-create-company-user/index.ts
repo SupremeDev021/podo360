@@ -45,18 +45,8 @@ async function getCompanyUserLimit(admin: ReturnType<typeof createClient>, compa
   if (companyError) throwStep("Falha ao buscar empresa comercial", companyError);
   if (!platformCompany) return null;
 
-  const { data: subscription, error: subscriptionError } = await admin
-    .from("platform_company_subscriptions")
-    .select("max_users")
-    .eq("company_id", platformCompany.id)
-    .in("status", ["active", "trial"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (subscriptionError) throwStep("Falha ao buscar assinatura da empresa", subscriptionError);
-  if (subscription?.max_users != null) return Number(subscription.max_users);
-
+  // Some production databases may not have the subscription override column yet.
+  // Until the non-destructive max_users migration is applied, fall back to the plan limit.
   if (!platformCompany.plan_id) return null;
 
   const { data: plan, error: planError } = await admin
