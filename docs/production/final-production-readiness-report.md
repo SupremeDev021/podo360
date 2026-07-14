@@ -198,3 +198,33 @@ Pendencia operacional:
 
 - Reenviar convites antigos que foram gerados antes da correcao, pois links antigos continuam invalidos/expirados.
 - Confirmar no painel Auth que `https://podo360.supremetechdev.com/*` esta em Redirect URLs.
+
+## Auditoria de Conta Bloqueada - 14/07/2026
+
+Conta analisada:
+
+- `monteirotec.ofc@gmail.com`.
+
+Causa:
+
+- O usuario autenticava corretamente e tinha profile ativo, mas a Clinica Pe Saudavel estava com `platform_companies.status = suspended`.
+- Por isso, a view `company_platform_access` retornava `status = suspended` e o app bloqueava o acesso pela regra de status da clinica.
+
+Correcao:
+
+- A Clinica Pe Saudavel foi reativada em `platform_companies` para `active` com filtro por ID da empresa comercial e `clinic_company_id`.
+- Foi registrado log em `platform_company_status_logs`.
+
+Validacao:
+
+- Login real validado via Auth.
+- Profile carregado com `company_id = d4666e95-0278-4cfb-b805-0b93b6bc4d4a`.
+- Role carregada: `company_admin`.
+- `company_platform_access.status = active`.
+
+Auditoria:
+
+- Nao foram encontrados usuarios Auth sem profile.
+- Nao foram encontrados profiles sem Auth correspondente.
+- Nao foram encontrados profiles clinicos ativos bloqueados apos a correcao.
+- O unico profile sem `company_id` e o owner do Admin Global, que tambem possui registro ativo em `platform_admin_users`.
