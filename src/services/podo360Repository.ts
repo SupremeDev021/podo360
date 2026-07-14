@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { getAuthRedirectUrl } from "../utils/authRedirect";
 import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
 
 export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
@@ -515,8 +516,7 @@ export async function createCompanyUser(input: { companyId: string; fullName: st
 
 export async function resetOwnPassword(email: string) {
   if (!isSupabaseConfigured || !supabase) return null;
-  const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: getAuthRedirectUrl() });
   if (error) throw error;
   return data;
 }

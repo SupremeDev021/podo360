@@ -17,11 +17,12 @@ import {
   ShieldCheck,
   Sparkles
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { SUPPORT_WHATSAPP_URL, SUPREME_TECH_SITE_URL } from "../config/support";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type { Company } from "../types";
+import { getAuthRedirectUrl } from "../utils/authRedirect";
 
 type LoginScreenProps = {
   company: Company;
@@ -65,6 +66,26 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
       ? "Use suas credenciais para acessar o ambiente da clinica."
       : "Acesse sua clinica para continuar."
   });
+
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    const search = window.location.search || "";
+    const params = new URLSearchParams(`${search.replace(/^\?/, "")}&${hash.replace(/^#/, "")}`);
+    const errorCode = params.get("error_code");
+    const errorDescription = params.get("error_description") || "";
+
+    if (errorCode || params.get("error")) {
+      const expired = errorCode === "otp_expired" || errorDescription.toLowerCase().includes("expired");
+      setFeedback({
+        tone: "danger",
+        message: expired
+          ? "Este link expirou ou nao e mais valido. Peca um novo convite ao administrador da clinica."
+          : "Nao foi possivel validar o convite. Solicite um novo link ao administrador da clinica."
+      });
+
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search.replace(/([?&])(error|error_code|error_description)=[^&]*/g, ""));
+    }
+  }, []);
 
   function validateCredentials() {
     if (!email.trim()) return "Informe seu e-mail profissional.";
@@ -127,8 +148,7 @@ export function LoginScreen({ company, onLoginSuccess }: LoginScreenProps) {
 
     setRecovering(true);
     try {
-      const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: getAuthRedirectUrl() });
 
       setFeedback(
         error

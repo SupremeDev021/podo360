@@ -174,3 +174,27 @@ Pendencia obrigatoria:
 - Criar um novo Usuario B temporario ou usuario de teste equivalente quando for necessario repetir a validacao multiempresa autenticada.
 - Rerodar Playwright autenticado completo.
 - Validar Storage real, isolamento multiempresa, status suspended/active, relatorios/PDF e limpeza final de dados ficticios.
+
+## Correcao de Convites e Redirect Auth - 14/07/2026
+
+Problema corrigido:
+
+- Convites/redefinicoes de senha enviados a usuarios da clinica podiam cair em URL antiga de `localhost`, causando erro tecnico de link invalido/expirado.
+
+Correcao:
+
+- A Edge Function `admin-create-company-user` passou a enviar `redirectTo` explicito para `https://podo360.supremetechdev.com/`.
+- O app clinico passou a usar helper central para URL de recuperacao de senha, evitando `localhost` em build de producao.
+- Links expirados ou invalidos agora exibem mensagem amigavel ao usuario, sem expor codigos tecnicos.
+- Edge Function `admin-create-company-user` publicada no projeto oficial em 14/07/2026.
+
+Validacoes:
+
+- Lint: aprovado.
+- Typecheck: aprovado.
+- Build: aprovado com aviso nao bloqueante de chunk grande do Vite.
+
+Pendencia operacional:
+
+- Reenviar convites antigos que foram gerados antes da correcao, pois links antigos continuam invalidos/expirados.
+- Confirmar no painel Auth que `https://podo360.supremetechdev.com/*` esta em Redirect URLs.

@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const clinicRoles = new Set(["company_admin", "professional", "reception", "financial", "stock", "schedule", "reports", "custom"]);
 const platformRoles = new Set(["owner", "admin", "support", "commercial"]);
+const defaultClinicAppUrl = "https://podo360.supremetechdev.com";
 
 function assertClinicRole(role: unknown) {
   if (typeof role !== "string" || !clinicRoles.has(role)) {
@@ -37,6 +38,32 @@ function throwStep(step: string, error: unknown) {
 
 function isDuplicateAuthEmailError(error: unknown) {
   return getSafeErrorMessage(error).toLowerCase().includes("already been registered");
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function isLocalUrl(value: string) {
+  return /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(value);
+}
+
+function getClinicAuthRedirectTo() {
+  const allowLocalRedirects = Deno.env.get("ALLOW_LOCAL_AUTH_REDIRECTS") === "true";
+  const candidates = [
+    Deno.env.get("PODO360_CLINIC_APP_URL"),
+    Deno.env.get("CLINIC_APP_URL"),
+    Deno.env.get("PUBLIC_APP_URL"),
+    Deno.env.get("SITE_URL")
+  ];
+
+  const appUrl = candidates.find((candidate) => {
+    if (!candidate || !candidate.trim()) return false;
+    if (!/^https?:\/\//i.test(candidate)) return false;
+    return allowLocalRedirects || !isLocalUrl(candidate);
+  })?.trim() ?? defaultClinicAppUrl;
+
+  return `${trimTrailingSlash(appUrl)}/`;
 }
 
 async function findAuthUserByEmail(admin: ReturnType<typeof createClient>, email: string) {
@@ -153,7 +180,9 @@ Deno.serve(async (request) => {
       if (!isPlatformAdmin && caller?.role !== "super_admin" && target.role === "super_admin") throw new Error("Admin da empresa nao pode gerenciar Super Admin.");
 
       if (body.action === "reset_password") {
-        const { error } = await admin.auth.resetPasswordForEmail(target.email);
+        const { error } = await admin.auth.resetPasswordForEmail(target.email, {
+          redirectTo: getClinicAuthRedirectTo()
+        });
         if (error) throwStep("Falha ao salvar operacao", error);
         return new Response(JSON.stringify({ resetSent: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -218,6 +247,7 @@ Deno.serve(async (request) => {
         user_metadata: { full_name: body.fullName, company_id: body.companyId, role: body.role }
       })
       : await admin.auth.admin.inviteUserByEmail(body.email, {
+        redirectTo: getClinicAuthRedirectTo(),
         data: { full_name: body.fullName, company_id: body.companyId, role: body.role }
       });
     authUser = invite?.user;
