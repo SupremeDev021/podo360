@@ -4,12 +4,163 @@ import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, Au
 
 export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
 export const OPEN_ATTENDANCE_EXISTS_ERROR = "open_attendance_exists";
+export const ATTENDANCE_SESSION_EXPIRED_ERROR = "attendance_session_expired";
+export const ATTENDANCE_PERMISSION_DENIED_ERROR = "attendance_permission_denied";
+export const ATTENDANCE_CONNECTION_ERROR = "attendance_connection_error";
+export const ATTENDANCE_UNEXPECTED_ERROR = "attendance_unexpected_error";
 
 const openAttendanceStatuses = ["ba_open", "waiting", "in_progress", "paused"];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const attendanceRequestTimeoutMs = 15_000;
+const transientRetryDelayMs = 450;
+
+type PatientClinicalDatabaseRow = {
+  chief_complaint?: string | null;
+  disease_history?: string | null;
+  diabetes?: boolean | null;
+  hypertension?: boolean | null;
+  medications?: string | null;
+  allergies?: string | null;
+  previous_surgeries?: string | null;
+  vascular_problems?: string | null;
+  dermatological_problems?: string | null;
+  clinical_notes?: string | null;
+};
+
+type PatientDatabaseRow = {
+  id: string;
+  company_id: string;
+  unique_medical_record_id: string;
+  unique_record_number: string;
+  full_name: string;
+  cpf?: string | null;
+  rg?: string | null;
+  birth_date?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  address?: string | null;
+  profession?: string | null;
+  notes?: string | null;
+  created_at: string;
+  patient_clinical_data?: PatientClinicalDatabaseRow | PatientClinicalDatabaseRow[] | null;
+};
 
 function isUuid(value: string | undefined) {
   return Boolean(value && uuidPattern.test(value));
+}
+
+function mapPatientRow(row: PatientDatabaseRow): Patient {
+  const clinicalRelation = row.patient_clinical_data;
+  const clinical = Array.isArray(clinicalRelation) ? clinicalRelation[0] : clinicalRelation;
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    uniqueMedicalRecordId: row.unique_medical_record_id,
+    uniqueRecordNumber: row.unique_record_number,
+    fullName: row.full_name,
+    cpf: row.cpf ?? "",
+    rg: row.rg ?? undefined,
+    birthDate: row.birth_date ?? "",
+    phone: row.phone ?? "",
+    whatsapp: row.whatsapp ?? row.phone ?? "",
+    email: row.email ?? undefined,
+    address: row.address ?? "",
+    profession: row.profession ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.created_at,
+    clinical: {
+      chiefComplaint: clinical?.chief_complaint ?? "",
+      diseaseHistory: clinical?.disease_history ?? "",
+      diabetes: Boolean(clinical?.diabetes),
+      hypertension: Boolean(clinical?.hypertension),
+      medications: clinical?.medications ?? "",
+      allergies: clinical?.allergies ?? "",
+      previousSurgeries: clinical?.previous_surgeries ?? "",
+      vascularProblems: clinical?.vascular_problems ?? "",
+      dermatologicalProblems: clinical?.dermatological_problems ?? "",
+      clinicalNotes: clinical?.clinical_notes ?? ""
+    }
+  };
+}
+
+type ServiceError = {
+  code?: string;
+  message?: string;
+  status?: number;
+};
+
+function serviceErrorDetails(error: unknown): ServiceError {
+  if (!error || typeof error !== "object") return {};
+  return error as ServiceError;
+}
+
+function isSessionError(error: unknown) {
+  const details = serviceErrorDetails(error);
+  const message = details.message?.toLowerCase() ?? "";
+  return details.status === 401 ||
+    details.code === "PGRST301" ||
+    message.includes("jwt expired") ||
+    message.includes("invalid jwt") ||
+    message.includes("session missing");
+}
+
+function isPermissionError(error: unknown) {
+  const details = serviceErrorDetails(error);
+  return details.status === 403 || details.code === "42501";
+}
+
+function isUniqueViolation(error: unknown) {
+  return serviceErrorDetails(error).code === "23505";
+}
+
+function isTransientConnectionError(error: unknown) {
+  const details = serviceErrorDetails(error);
+  const message = details.message?.toLowerCase() ?? "";
+  return error instanceof TypeError ||
+    details.status === 0 ||
+    Boolean(details.status && details.status >= 500) ||
+    ["PGRST000", "PGRST001", "PGRST002", "PGRST003"].includes(details.code ?? "") ||
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("aborted");
+}
+
+async function withAttendanceTimeout<T>(operation: PromiseLike<T>) {
+  let timeout: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = window.setTimeout(() => reject(new Error("attendance_request_timeout")), attendanceRequestTimeoutMs);
+  });
+  try {
+    return await Promise.race([Promise.resolve(operation), timeoutPromise]);
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function findOpenAttendance(companyId: string, patientId: string) {
+  const client = supabase;
+  if (!client) return null;
+  const { data, error } = await withAttendanceTimeout(
+    client
+      .from("attendances")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("patient_id", patientId)
+      .in("status", openAttendanceStatuses)
+      .is("finished_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  );
+
+  if (error) throw error;
+  return data;
 }
 
 async function assertAttendanceEditable(attendanceId: string | undefined, companyId: string | undefined) {
@@ -37,7 +188,42 @@ export async function listPatients(companyId: string) {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data;
+  return ((data ?? []) as PatientDatabaseRow[]).map((row) => mapPatientRow(row));
+}
+
+export async function findPatientForBa(companyId: string, criteria: {
+  uniqueRecordNumber?: string;
+  cpf?: string;
+  fullName: string;
+  birthDate: string;
+}) {
+  const client = supabase;
+  if (!isSupabaseConfigured || !client) return null;
+
+  const baseQuery = () => client
+    .from("patients")
+    .select("*, patient_clinical_data(*)")
+    .eq("company_id", companyId);
+
+  const lookups = [
+    criteria.uniqueRecordNumber
+      ? baseQuery().eq("unique_record_number", criteria.uniqueRecordNumber).limit(1).maybeSingle()
+      : null,
+    criteria.cpf
+      ? baseQuery().eq("cpf", criteria.cpf).limit(1).maybeSingle()
+      : null,
+    criteria.fullName && criteria.birthDate
+      ? baseQuery().eq("full_name", criteria.fullName).eq("birth_date", criteria.birthDate).limit(1).maybeSingle()
+      : null
+  ].filter(Boolean);
+
+  for (const lookup of lookups) {
+    const { data, error } = await withAttendanceTimeout(lookup!);
+    if (error) throw error;
+    if (data) return mapPatientRow(data as PatientDatabaseRow);
+  }
+
+  return null;
 }
 
 export async function createPatient(patient: Patient) {
@@ -350,54 +536,87 @@ export async function updateAttendanceImageComparativeNotes(companyId: string, i
 }
 
 export async function createAttendanceBa(attendance: Attendance) {
-  if (!isSupabaseConfigured || !supabase) return null;
+  const client = supabase;
+  if (!isSupabaseConfigured || !client) return null;
 
-  const { data: openAttendance, error: openAttendanceError } = await supabase
-    .from("attendances")
-    .select("id, ba_number, status, finished_at")
-    .eq("company_id", attendance.companyId)
-    .eq("patient_id", attendance.patientId)
-    .in("status", openAttendanceStatuses)
-    .is("finished_at", null)
-    .limit(1)
-    .maybeSingle();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.user) {
+    throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
+  }
 
-  if (openAttendanceError) throw openAttendanceError;
+  const openAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
   if (openAttendance) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
 
-  const { data, error } = await supabase
-    .from("attendances")
-    .insert({
-      company_id: attendance.companyId,
-      appointment_id: attendance.appointmentId,
-      converted_from_appointment: attendance.convertedFromAppointment,
-      patient_id: attendance.patientId,
-      unique_medical_record_id: attendance.uniqueMedicalRecordId,
-      unique_record_number: attendance.uniqueRecordNumber,
-      status: attendance.status,
-      opened_at: attendance.openedAt,
-      opened_by: attendance.openedBy,
-      professional_id: attendance.professionalId,
-      attendance_date: attendance.attendanceDate,
-      type: attendance.type,
-      visit_kind: attendance.visitKind,
-      initial_notes: attendance.initialNotes,
-      priority: attendance.priority,
-      payer_type: attendance.payerType || "private",
-      insurance_name: attendance.insuranceName || null,
-      patient_complaint: attendance.complaint,
-      procedure_performed: attendance.procedure,
-      clinical_evaluation: attendance.clinicalEvaluation,
-      conduct_performed: attendance.conduct,
-      products_used: attendance.productsUsed,
-      notes: attendance.notes,
-      amount: attendance.value
-    })
-    .select()
-    .single();
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let data;
+    let error: unknown;
+    try {
+      const response = await withAttendanceTimeout(
+        client
+          .from("attendances")
+          .insert({
+            company_id: attendance.companyId,
+            appointment_id: attendance.appointmentId,
+            converted_from_appointment: attendance.convertedFromAppointment,
+            patient_id: attendance.patientId,
+            unique_medical_record_id: attendance.uniqueMedicalRecordId,
+            unique_record_number: attendance.uniqueRecordNumber,
+            status: attendance.status,
+            opened_at: attendance.openedAt,
+            opened_by: attendance.openedBy,
+            professional_id: attendance.professionalId,
+            attendance_date: attendance.attendanceDate,
+            type: attendance.type,
+            visit_kind: attendance.visitKind,
+            initial_notes: attendance.initialNotes,
+            priority: attendance.priority,
+            payer_type: attendance.payerType || "private",
+            insurance_name: attendance.insuranceName || null,
+            patient_complaint: attendance.complaint,
+            procedure_performed: attendance.procedure,
+            clinical_evaluation: attendance.clinicalEvaluation,
+            conduct_performed: attendance.conduct,
+            products_used: attendance.productsUsed,
+            notes: attendance.notes,
+            amount: attendance.value
+          })
+          .select()
+          .single()
+      );
+      data = response.data;
+      error = response.error;
+    } catch (requestError) {
+      error = requestError;
+    }
 
-  if (error) throw error;
-  return data;
+    if (!error && data) return data;
+    lastError = error;
+
+    if (isSessionError(error)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
+    if (isPermissionError(error)) throw new Error(ATTENDANCE_PERMISSION_DENIED_ERROR);
+    if (isUniqueViolation(error)) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
+    if (!isTransientConnectionError(error)) throw new Error(ATTENDANCE_UNEXPECTED_ERROR);
+
+    // A resposta pode cair depois do commit. Confirme no banco antes de repetir.
+    await delay(transientRetryDelayMs);
+    try {
+      const recoveredAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
+      if (recoveredAttendance) return recoveredAttendance;
+    } catch {
+      // A segunda tentativa abaixo continua protegida pelo indice de BA aberto.
+    }
+  }
+
+  try {
+    const recoveredAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
+    if (recoveredAttendance) return recoveredAttendance;
+  } catch {
+    // A mensagem final deve refletir a indisponibilidade, sem assumir falha no commit.
+  }
+
+  if (isSessionError(lastError)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
+  throw new Error(ATTENDANCE_CONNECTION_ERROR);
 }
 
 export async function startAttendanceBa(attendanceId: string) {
