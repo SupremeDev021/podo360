@@ -1,5 +1,15 @@
 # Prontidao para Dados Clinicos Reais - Podo360
 
+## Atualizacao - 27/07/2026 - Estabilidade de BA
+
+- Nenhuma policy RLS foi ampliada ou desativada.
+- Nenhuma chave privilegiada foi adicionada ao frontend.
+- O banco recebeu indice unico parcial para impedir BAs abertos concorrentes por empresa/paciente.
+- Antes da aplicacao, a migration recusaria prosseguir se encontrasse duplicidade; nenhuma foi encontrada.
+- O frontend confirma paciente e BA no banco e nao exibe sucesso local falso.
+- O teste autenticado criou, recarregou e bloqueou duplicidade de BA.
+- Todos os dados do prefixo `TESTE_PRODUCAO_BA_INSTABILIDADE_` foram removidos.
+
 ## Atualizacao - 13/07/2026 - Fluxo Clinico Completo
 
 Resultado desta rodada:

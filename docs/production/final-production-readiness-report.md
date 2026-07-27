@@ -1,5 +1,18 @@
 # Relatorio Final de Prontidao de Producao - Podo360
 
+## Atualizacao - Estabilidade de Producao e BA - 27/07/2026
+
+- Indisponibilidade comprovada: reboot abrupto do servidor local entre 19:35 e 20:01 UTC em 24/07/2026.
+- Nginx, SPA fallback, containers, DNS e SSL da Clinica validados.
+- Vinte requisicoes consecutivas ao dominio responderam HTTP 200.
+- Fluxo de BA corrigido para consultar paciente no banco depois de refresh.
+- Retry controlado e reconciliacao impedem falso erro quando o commit conclui e a resposta se perde.
+- Indice unico parcial impede mais de um BA aberto por paciente e empresa.
+- Playwright autenticado aprovou persistencia, refresh e bloqueio de duplicidade.
+- O mesmo teste passou no dominio publico depois do deploy (`BA-2026-000065`).
+- Dados de teste e PUs correspondentes removidos com filtros por ID.
+- Cadastro Cliente continua com DNS pendente e nao faz parte da disponibilidade da Clinica.
+
 ## Atualizacao - Fluxo Clinico Completo - 13/07/2026
 
 Decisao desta rodada:

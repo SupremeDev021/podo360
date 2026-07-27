@@ -1,5 +1,16 @@
 # Relatorio de Validacao da Interface para Producao - Podo360
 
+## Atualizacao - 27/07/2026 - Abertura de BA
+
+- Login real utilizado por variaveis locais nao versionadas.
+- Abertura de BA pela interface: aprovada.
+- Refresh depois da criacao: aprovado.
+- Reconsulta do paciente diretamente no banco: aprovada.
+- Duplo envio sincronico: apenas um BA confirmado.
+- Segunda abertura para o mesmo paciente: bloqueada.
+- Erros de sessao, permissao, conexao e falha inesperada possuem mensagens distintas.
+- Nenhum erro de pagina ou tela branca no teste direcionado.
+
 ## Atualizacao - Fluxo Clinico Completo - 13/07/2026
 
 Status desta rodada:
