@@ -1001,6 +1001,48 @@ button {
   border-left-color: #ef4444;
 }
 
+.connection-banner {
+  align-items: center;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: #92400e;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr auto;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+}
+
+.connection-banner div {
+  display: grid;
+  gap: 2px;
+}
+
+.connection-banner span {
+  font-size: 0.9rem;
+}
+
+.connection-banner button {
+  background: #fff;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  color: #92400e;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+@media (max-width: 640px) {
+  .connection-banner {
+    grid-template-columns: auto 1fr;
+  }
+
+  .connection-banner button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 50;

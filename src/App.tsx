@@ -330,6 +330,7 @@ function ClinicApp() {
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const [baSubmitting, setBaSubmitting] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const attendanceSubmissionRef = useRef(false);
   const allowedViews = profile ? allowedViewsForProfile(profile) : [];
   const hasAttendanceManagementAccess = profile ? canManageAttendanceReopen(profile, allowedViews) : false;
@@ -469,6 +470,20 @@ function ClinicApp() {
     });
     return () => data.subscription.unsubscribe();
   }, [loadAuthenticatedAccess, resetClinicState]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      notify("Conexão restabelecida", "O Podo360 voltou a se comunicar com o serviço online.", "success");
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
@@ -707,7 +722,9 @@ function ClinicApp() {
     const nextBaNumber = generateBaNumber(company.id, attendances);
     const openedAt = new Date().toISOString();
     let attendance: Attendance = {
-      id: `attendance-${attendances.length + 1}`,
+      // O mesmo UUID acompanha todas as tentativas e permite reconciliar uma
+      // resposta perdida sem criar outro BA.
+      id: crypto.randomUUID(),
       companyId: company.id,
       patientId: patient.id,
       uniqueMedicalRecordId: patient.uniqueMedicalRecordId,
@@ -804,6 +821,11 @@ function ClinicApp() {
 
   async function handleOpenBa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!navigator.onLine) {
+      setIsOnline(false);
+      notify("Sem conexão", "Verifique sua internet antes de abrir o BA. Os dados preenchidos foram preservados.", "warning");
+      return false;
+    }
     const form = new FormData(event.currentTarget);
     const fullName = String(form.get("fullName"));
     const cpf = String(form.get("cpf"));
@@ -839,7 +861,7 @@ function ClinicApp() {
     }
 
     let patient: Patient = existingPatient ?? {
-      id: `patient-${patients.length + 1}`,
+      id: crypto.randomUUID(),
       companyId: company.id,
       uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
       uniqueRecordNumber: existingUniqueRecord?.uniqueRecordNumber ?? generateUniqueRecordNumber(patients),
@@ -889,8 +911,17 @@ function ClinicApp() {
           };
         }
       } catch (error) {
-        console.error("Erro ao sincronizar paciente antes do BA", error);
-        notify("Erro ao abrir BA", "Nao foi possivel sincronizar o paciente com o ambiente online. Tente novamente.", "danger");
+        const errorCode = error instanceof Error ? error.message : "";
+        if (errorCode === ATTENDANCE_SESSION_EXPIRED_ERROR) {
+          notify("Sessão expirada", "Sua sessão expirou. Faça login novamente para continuar.", "warning");
+        } else if (errorCode === ATTENDANCE_PERMISSION_DENIED_ERROR) {
+          notify("Acesso não permitido", "Você não possui permissão para cadastrar pacientes nesta clínica.", "danger");
+        } else if (errorCode === ATTENDANCE_CONNECTION_ERROR || !navigator.onLine) {
+          notify("Conexão instável", "Não foi possível concluir a ação por instabilidade de conexão. Verifique sua internet e tente novamente.", "warning");
+        } else {
+          if (import.meta.env.DEV) console.error("Falha ao preparar paciente para o BA", { code: errorCode || "unknown" });
+          notify("Erro ao abrir BA", "Não foi possível preparar o paciente para o atendimento agora. Tente novamente em instantes.", "danger");
+        }
         return false;
       }
     }
@@ -1208,6 +1239,16 @@ function ClinicApp() {
   return (
     <Layout allowedViews={allowedViews} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       <div className="app-input-mask-scope" onInputCapture={handleMaskedInput}>
+      {!isOnline && (
+        <aside className="connection-banner" role="status">
+          <AlertTriangle size={20} />
+          <div>
+            <strong>Sem conexão com a internet</strong>
+            <span>Os campos permanecem na tela. Reconecte antes de salvar ou abrir um BA.</span>
+          </div>
+          <button onClick={() => window.location.reload()} type="button">Tentar novamente</button>
+        </aside>
+      )}
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
       {activeView === "dashboard" && <Dashboard appointments={appointments} company={company} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
@@ -1220,6 +1261,7 @@ function ClinicApp() {
           prefill={baOpeningPrefill}
           onOpenBa={handleOpenBa}
           opening={baSubmitting}
+          online={isOnline}
           onNotify={notify}
         />
       )}
@@ -1492,6 +1534,7 @@ function BaOpening({
   prefill,
   onOpenBa,
   opening,
+  online,
   onNotify
 }: {
   company: Company;
@@ -1501,6 +1544,7 @@ function BaOpening({
   prefill: BaOpeningPrefill | null;
   onOpenBa: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   opening: boolean;
+  online: boolean;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
   const [patientData, setPatientData] = useState({
@@ -1735,7 +1779,7 @@ function BaOpening({
           <label>Observacoes iniciais<textarea name="initialNotes" defaultValue={baPrefill.initialNotes} /></label>
         </section>
 
-        <button className="primary-button" disabled={opening} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : "Abrir BA"}</button>
+        <button className="primary-button" disabled={opening || !online} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : online ? "Abrir BA" : "Sem conexão"}</button>
       </form>
     </div>
   );
