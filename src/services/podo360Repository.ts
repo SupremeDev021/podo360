@@ -162,6 +162,31 @@ async function findOpenAttendance(companyId: string, patientId: string) {
   return data;
 }
 
+async function findAttendanceById(companyId: string, attendanceId: string) {
+  const client = supabase;
+  if (!client || !isUuid(attendanceId)) return null;
+  const { data, error } = await withAttendanceTimeout(
+    client
+      .from("attendances")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("id", attendanceId)
+      .maybeSingle()
+  );
+
+  if (error) throw error;
+  return data;
+}
+
+async function recoverCreatedAttendance(companyId: string, patientId: string, attendanceId: string) {
+  const attendanceById = await findAttendanceById(companyId, attendanceId);
+  if (attendanceById) return { attendance: attendanceById, conflict: false };
+
+  const openAttendance = await findOpenAttendance(companyId, patientId);
+  if (openAttendance) return { attendance: openAttendance, conflict: openAttendance.id !== attendanceId };
+  return { attendance: null, conflict: false };
+}
+
 async function assertAttendanceEditable(attendanceId: string | undefined, companyId: string | undefined) {
   if (!attendanceId || !companyId || !isSupabaseConfigured || !supabase) return;
   const { data, error } = await supabase
@@ -226,33 +251,69 @@ export async function findPatientForBa(companyId: string, criteria: {
 }
 
 export async function createPatient(patient: Patient) {
-  if (!isSupabaseConfigured || !supabase) return null;
+  const client = supabase;
+  if (!isSupabaseConfigured || !client) return null;
 
-  const { data: createdPatient, error } = await supabase
-    .from("patients")
-    .insert({
-      company_id: patient.companyId,
-      unique_medical_record_id: isUuid(patient.uniqueMedicalRecordId) ? patient.uniqueMedicalRecordId : undefined,
-      unique_record_number: patient.uniqueRecordNumber?.startsWith("PU-") ? patient.uniqueRecordNumber : undefined,
-      full_name: patient.fullName,
-      cpf: patient.cpf,
-      rg: patient.rg,
-      birth_date: patient.birthDate,
-      phone: patient.phone,
-      whatsapp: patient.whatsapp,
-      email: patient.email,
-      address: patient.address,
-      profession: patient.profession,
-      notes: patient.notes
-    })
-    .select()
-    .single();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.user) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
 
-  if (error) throw error;
-
-  const { error: clinicalError } = await supabase.from("patient_clinical_data").insert({
+  const patientId = isUuid(patient.id) ? patient.id : crypto.randomUUID();
+  const patientPayload = {
+    id: patientId,
     company_id: patient.companyId,
-    patient_id: createdPatient.id,
+    unique_medical_record_id: isUuid(patient.uniqueMedicalRecordId) ? patient.uniqueMedicalRecordId : undefined,
+    unique_record_number: patient.uniqueRecordNumber?.startsWith("PU-") ? patient.uniqueRecordNumber : undefined,
+    full_name: patient.fullName,
+    cpf: patient.cpf,
+    rg: patient.rg,
+    birth_date: patient.birthDate,
+    phone: patient.phone,
+    whatsapp: patient.whatsapp,
+    email: patient.email,
+    address: patient.address,
+    profession: patient.profession,
+    notes: patient.notes
+  };
+
+  let createdPatient: PatientDatabaseRow | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2 && !createdPatient; attempt += 1) {
+    try {
+      const response = await withAttendanceTimeout(
+        client.from("patients").insert(patientPayload).select().single()
+      );
+      if (!response.error && response.data) {
+        createdPatient = response.data as PatientDatabaseRow;
+        break;
+      }
+      lastError = response.error;
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (isSessionError(lastError)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
+    if (isPermissionError(lastError)) throw new Error(ATTENDANCE_PERMISSION_DENIED_ERROR);
+    if (!isUniqueViolation(lastError) && !isTransientConnectionError(lastError)) {
+      throw new Error(ATTENDANCE_UNEXPECTED_ERROR);
+    }
+
+    await delay(transientRetryDelayMs);
+    try {
+      const { data, error } = await withAttendanceTimeout(
+        client.from("patients").select("*").eq("company_id", patient.companyId).eq("id", patientId).maybeSingle()
+      );
+      if (error) throw error;
+      if (data) createdPatient = data as PatientDatabaseRow;
+    } catch {
+      // A proxima tentativa usa o mesmo UUID e nao cria outro paciente.
+    }
+  }
+
+  if (!createdPatient) throw new Error(ATTENDANCE_CONNECTION_ERROR);
+
+  const clinicalPayload = {
+    company_id: patient.companyId,
+    patient_id: patientId,
     chief_complaint: patient.clinical.chiefComplaint,
     disease_history: patient.clinical.diseaseHistory,
     diabetes: patient.clinical.diabetes,
@@ -263,9 +324,26 @@ export async function createPatient(patient: Patient) {
     vascular_problems: patient.clinical.vascularProblems,
     dermatological_problems: patient.clinical.dermatologicalProblems,
     clinical_notes: patient.clinical.clinicalNotes
-  });
+  };
 
-  if (clinicalError) throw clinicalError;
+  let clinicalError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await withAttendanceTimeout(
+        client.from("patient_clinical_data").upsert(clinicalPayload, { onConflict: "patient_id" })
+      );
+      clinicalError = response.error;
+    } catch (error) {
+      clinicalError = error;
+    }
+    if (!clinicalError) break;
+    if (isSessionError(clinicalError)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
+    if (isPermissionError(clinicalError)) throw new Error(ATTENDANCE_PERMISSION_DENIED_ERROR);
+    if (!isTransientConnectionError(clinicalError)) throw new Error(ATTENDANCE_UNEXPECTED_ERROR);
+    await delay(transientRetryDelayMs);
+  }
+
+  if (clinicalError) throw new Error(ATTENDANCE_CONNECTION_ERROR);
   return createdPatient;
 }
 
@@ -546,6 +624,8 @@ export async function createAttendanceBa(attendance: Attendance) {
   const openAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
   if (openAttendance) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
 
+  const attendanceId = isUuid(attendance.id) ? attendance.id : crypto.randomUUID();
+
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let data;
@@ -555,6 +635,7 @@ export async function createAttendanceBa(attendance: Attendance) {
         client
           .from("attendances")
           .insert({
+            id: attendanceId,
             company_id: attendance.companyId,
             appointment_id: attendance.appointmentId,
             converted_from_appointment: attendance.convertedFromAppointment,
@@ -594,25 +675,39 @@ export async function createAttendanceBa(attendance: Attendance) {
 
     if (isSessionError(error)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
     if (isPermissionError(error)) throw new Error(ATTENDANCE_PERMISSION_DENIED_ERROR);
-    if (isUniqueViolation(error)) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
+    if (isUniqueViolation(error)) {
+      try {
+        const recovered = await recoverCreatedAttendance(attendance.companyId, attendance.patientId, attendanceId);
+        if (recovered.attendance && !recovered.conflict) return recovered.attendance;
+      } catch {
+        // A verificacao final abaixo ainda usa a mesma chave idempotente.
+      }
+      throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
+    }
     if (!isTransientConnectionError(error)) throw new Error(ATTENDANCE_UNEXPECTED_ERROR);
 
-    // A resposta pode cair depois do commit. Confirme no banco antes de repetir.
+    // A resposta pode cair depois do commit. Confirme pelo UUID antes de repetir.
     await delay(transientRetryDelayMs);
+    let recoveredConflict = false;
     try {
-      const recoveredAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
-      if (recoveredAttendance) return recoveredAttendance;
+      const recovered = await recoverCreatedAttendance(attendance.companyId, attendance.patientId, attendanceId);
+      if (recovered.attendance && !recovered.conflict) return recovered.attendance;
+      recoveredConflict = recovered.conflict;
     } catch {
-      // A segunda tentativa abaixo continua protegida pelo indice de BA aberto.
+      // A segunda tentativa continua usando o mesmo UUID e o indice de BA aberto.
     }
+    if (recoveredConflict) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
   }
 
+  let finalConflict = false;
   try {
-    const recoveredAttendance = await findOpenAttendance(attendance.companyId, attendance.patientId);
-    if (recoveredAttendance) return recoveredAttendance;
+    const recovered = await recoverCreatedAttendance(attendance.companyId, attendance.patientId, attendanceId);
+    if (recovered.attendance && !recovered.conflict) return recovered.attendance;
+    finalConflict = recovered.conflict;
   } catch {
     // A mensagem final deve refletir a indisponibilidade, sem assumir falha no commit.
   }
+  if (finalConflict) throw new Error(OPEN_ATTENDANCE_EXISTS_ERROR);
 
   if (isSessionError(lastError)) throw new Error(ATTENDANCE_SESSION_EXPIRED_ERROR);
   throw new Error(ATTENDANCE_CONNECTION_ERROR);
