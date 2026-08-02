@@ -1,0 +1,25 @@
+name: Production healthcheck
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check production endpoints
+        env:
+          HEALTHCHECK_ATTEMPTS: 3
+          HEALTHCHECK_MAX_RESPONSE_MS: 5000
+          HEALTHCHECK_TIMEOUT_MS: 10000
+        run: node scripts/healthcheck-production.mjs

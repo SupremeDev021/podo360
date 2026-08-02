@@ -39,3 +39,18 @@ A abertura de BA foi corrigida e validada com interface real, sessao autenticada
 Foram criados os BAs `BA-2026-000063`, `BA-2026-000064` e `BA-2026-000065` durante diagnostico, repeticao local e validacao no dominio publico.
 Os pacientes, atendimentos e PUs correspondentes foram removidos por IDs especificos.
 A consulta final encontrou zero pacientes e zero PUs do prefixo `TESTE_PRODUCAO_BA_INSTABILIDADE_`.
+
+## Revalidacao de resiliencia - 02/08/2026
+
+O fluxo recebeu uma segunda camada de protecao para os casos em que a conexao cai durante a criacao do paciente ou do BA:
+
+- paciente e atendimento recebem UUID v4 antes do primeiro envio;
+- uma nova tentativa reutiliza exatamente o mesmo UUID;
+- antes de repetir, o frontend consulta o registro pelo UUID e recupera uma gravacao cujo retorno tenha sido perdido;
+- a constraint parcial continua sendo a defesa definitiva contra dois BAs abertos para o mesmo paciente e empresa;
+- o formulario preserva os dados quando o navegador esta offline e o botao nao permite envio;
+- falhas de sessao, permissao, rede, duplicidade e erro inesperado possuem mensagens distintas.
+
+O Playwright autenticado interrompeu deliberadamente o primeiro `POST` de paciente e o primeiro `POST` de atendimento. As duas operacoes foram recuperadas com o mesmo UUID, sem duplicidade. O teste gerou `BA-2026-000067` e `PU-2026-000078`, confirmou persistencia apos recarregar e bloqueou um segundo BA. Paciente, atendimento, dados clinicos, vinculo e PU foram removidos depois por IDs exatos.
+
+Validacoes desta rodada: lint, typecheck, build e E2E autenticado aprovados; `npm audit` sem vulnerabilidades. A publicacao desta segunda camada no Nginx ainda depende de restabelecer a autenticacao SSH do servidor.

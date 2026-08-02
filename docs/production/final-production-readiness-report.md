@@ -241,3 +241,13 @@ Auditoria:
 - Nao foram encontrados profiles sem Auth correspondente.
 - Nao foram encontrados profiles clinicos ativos bloqueados apos a correcao.
 - O unico profile sem `company_id` e o owner do Admin Global, que tambem possui registro ativo em `platform_admin_users`.
+
+## Incidente de estabilidade - 02/08/2026
+
+- A abertura de BA foi endurecida com UUID idempotente para paciente e atendimento, reconciliacao apos perda de resposta, trava offline e mensagens por classe de falha.
+- A constraint de BA aberto unico esta aplicada, valida e sem grupos duplicados conhecidos.
+- E2E autenticado com falha de rede simulada passou; `BA-2026-000067` e `PU-2026-000078` foram removidos com os demais registros ficticios da rodada.
+- Lint, typecheck, build e auditoria de dependencias passaram.
+- O dominio publico respondeu HTTP 200, mas a nova versao ainda nao foi publicada porque o servidor recusou a autenticacao SSH disponivel.
+
+Decisao operacional desta rodada: ainda existem bloqueios. A correcao esta validada localmente e contra o banco oficial, mas falta publicar no Nginx e repetir o fluxo pelo dominio de producao. A arquitetura local continua sendo ponto unico de falha de energia e conectividade.

@@ -591,3 +591,13 @@ Decisao:
 
 - Apto para producao com dados clinicos reais.
 - Pendencia operacional nao bloqueante: habilitar Leaked Password Protection no painel Supabase Auth antes do go-live final, se o recurso estiver disponivel.
+
+## Revalidacao da abertura de BA - 02/08/2026
+
+- O teste autenticado simulou interrupcao no primeiro envio do paciente e do atendimento.
+- A nova tentativa reutilizou o mesmo UUID em ambas as operacoes.
+- O BA persistiu apos refresh e o segundo BA foi bloqueado.
+- Foram gerados `BA-2026-000067` e `PU-2026-000078`, posteriormente removidos com paciente, atendimento, dados clinicos e vinculo criados pelo teste.
+- Lint, typecheck, build e E2E passaram; `npm audit` retornou zero vulnerabilidades.
+
+Esta correcao ainda precisa ser publicada e revalidada no dominio de producao; portanto, a rodada de incidente permanece operacionalmente aberta.

@@ -50,3 +50,10 @@ Na rodada:
 - Cadastro: DNS ainda nao resolvido.
 - Servico de autenticacao: alcancavel; HTTP 401 sem chave e aceito apenas como prova de disponibilidade.
 
+## Atualizacao - 02/08/2026
+
+Uma nova amostra externa confirmou Clinica e Admin respondendo HTTP 200. Houve picos isolados acima de 3 segundos, enquanto as demais respostas ficaram abaixo de 400 ms. O servico de autenticacao respondeu rapidamente; banco sem consultas bloqueadas, sem consultas longas e com cache hit de tabelas e indices em 100%. Nao foi encontrada evidencia de indisponibilidade do banco nesta rodada.
+
+O SSH em `192.168.1.94:22` responde, mas recusou a chave disponivel. Por isso nao foi possivel ler os logs atuais do Nginx, Docker e sistema, nem publicar o novo bundle. A causa historica comprovada da queda permanece o ponto unico de origem no servidor e na internet locais; a causa de uma eventual ocorrencia nova so pode ser fechada com os logs do periodo.
+
+O healthcheck foi preparado no GitHub Actions para rodar a cada 15 minutos, com tres tentativas e limite de cinco segundos; o agendamento passa a operar quando o workflow entrar na branch padrao. Clinica, Admin e autenticacao sao obrigatorios. O Cadastro e opcional enquanto seu DNS nao estiver publicado e pode ser incluido com `HEALTHCHECK_INCLUDE_CADASTRO=true`.

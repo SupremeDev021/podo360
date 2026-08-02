@@ -608,3 +608,14 @@ Decisao:
 
 - Admin Global apto para producao.
 - Pendencia operacional nao bloqueante: Leaked Password Protection exige Supabase Pro ou superior no projeto atual.
+
+## Estabilidade de BA - 02/08/2026
+
+- Nenhuma policy RLS foi aberta ou desativada.
+- Nenhuma function, trigger ou policy precisou ser alterada nesta rodada.
+- O indice parcial `attendances_one_open_per_company_patient_idx` esta aplicado, valido e pronto no banco oficial.
+- Paciente e BA usam IDs idempotentes gerados antes do envio; uma perda de resposta nao autoriza criar um segundo registro.
+- Teste autenticado com falha de rede simulada passou e os dados ficticios foram removidos por IDs exatos.
+- Nenhuma credencial ou `service_role` foi adicionada ao frontend.
+
+A liberacao da nova versao permanece condicionada ao deploy no servidor e ao reteste no dominio publico.

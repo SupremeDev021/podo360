@@ -5,7 +5,6 @@ import { clearTimeout, setTimeout } from "node:timers";
 const defaultTargets = [
   { name: "clinica", url: "https://podo360.supremetechdev.com/" },
   { name: "admin", url: "https://podoadmin360.supremetechdev.com/" },
-  { name: "cadastro", url: "https://cadastro.podo360.supremetechdev.com/" },
   {
     name: "servico-auth",
     url: "https://xnntitaajweajashzgtk.supabase.co/auth/v1/health",
@@ -13,8 +12,16 @@ const defaultTargets = [
   }
 ];
 
+if (process.env.HEALTHCHECK_INCLUDE_CADASTRO === "true") {
+  defaultTargets.splice(2, 0, {
+    name: "cadastro",
+    url: "https://cadastro.podo360.supremetechdev.com/"
+  });
+}
+
 const timeoutMs = Number(process.env.HEALTHCHECK_TIMEOUT_MS ?? 10_000);
 const attempts = Number(process.env.HEALTHCHECK_ATTEMPTS ?? 3);
+const maxResponseMs = Number(process.env.HEALTHCHECK_MAX_RESPONSE_MS ?? 5_000);
 
 async function probe({ name, url, acceptedStatuses = [200] }) {
   const samples = [];
@@ -29,12 +36,13 @@ async function probe({ name, url, acceptedStatuses = [200] }) {
         cache: "no-store",
         signal: controller.signal
       });
-      const accepted = acceptedStatuses.includes(response.status);
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      const accepted = acceptedStatuses.includes(response.status) && elapsedMs <= maxResponseMs;
       samples.push({
         attempt,
         ok: accepted,
         status: response.status,
-        elapsedMs: Math.round(performance.now() - startedAt)
+        elapsedMs
       });
     } catch (error) {
       samples.push({
