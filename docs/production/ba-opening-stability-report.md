@@ -54,3 +54,14 @@ O fluxo recebeu uma segunda camada de protecao para os casos em que a conexao ca
 O Playwright autenticado interrompeu deliberadamente o primeiro `POST` de paciente e o primeiro `POST` de atendimento. As duas operacoes foram recuperadas com o mesmo UUID, sem duplicidade. O teste gerou `BA-2026-000067` e `PU-2026-000078`, confirmou persistencia apos recarregar e bloqueou um segundo BA. Paciente, atendimento, dados clinicos, vinculo e PU foram removidos depois por IDs exatos.
 
 Validacoes desta rodada: lint, typecheck, build e E2E autenticado aprovados; `npm audit` sem vulnerabilidades. A publicacao desta segunda camada no Nginx ainda depende de restabelecer a autenticacao SSH do servidor.
+
+## Deploy e teste publico - 02/08/2026
+
+- A autenticacao SSH foi restabelecida com chave Ed25519 dedicada.
+- O build foi publicado em `/home/supremetech/podo360-sites/clinic`, volume somente leitura do container `podo360-clinic-web`.
+- Backup anterior: `/home/supremetech/podo360-sites/clinic.backup.20260802-211030`.
+- Asset publicado: `assets/index-DHHSMA6-.js`.
+- O primeiro envio por `scp` preservou diretorios como `700`; a checagem interna detectou HTTP 403 imediatamente. As permissoes foram ajustadas para diretorios `755` e arquivos `644` antes da validacao publica.
+- O E2E autenticado foi repetido em `https://podo360.supremetechdev.com` com falha de rede simulada e passou.
+- Foram gerados `BA-2026-000068` e `PU-2026-000079`; paciente, dados clinicos, vinculo, atendimento e PU foram removidos por IDs exatos.
+- A verificacao final retornou zero dados com o prefixo de teste e zero grupos de BA aberto duplicado.

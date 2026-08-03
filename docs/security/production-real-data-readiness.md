@@ -619,3 +619,5 @@ Decisao:
 - Nenhuma credencial ou `service_role` foi adicionada ao frontend.
 
 A liberacao da nova versao permanece condicionada ao deploy no servidor e ao reteste no dominio publico.
+
+Atualizacao: deploy e reteste autenticado no dominio publico concluidos. A limpeza final retornou zero pacientes, atendimentos e PUs da rodada, sem grupos de BA aberto duplicado. Nenhuma credencial foi incluida no bundle ou no Git.

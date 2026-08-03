@@ -601,3 +601,5 @@ Decisao:
 - Lint, typecheck, build e E2E passaram; `npm audit` retornou zero vulnerabilidades.
 
 Esta correcao ainda precisa ser publicada e revalidada no dominio de producao; portanto, a rodada de incidente permanece operacionalmente aberta.
+
+Atualizacao: a versao foi publicada e o mesmo teste autenticado passou em `https://podo360.supremetechdev.com`. O teste gerou `BA-2026-000068` e `PU-2026-000079`; todos os registros ficticios foram removidos e a consulta final retornou zero residuos e zero BAs abertos duplicados.

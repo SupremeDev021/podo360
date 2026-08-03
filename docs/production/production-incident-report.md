@@ -57,3 +57,9 @@ Uma nova amostra externa confirmou Clinica e Admin respondendo HTTP 200. Houve p
 O SSH em `192.168.1.94:22` responde, mas recusou a chave disponivel. Por isso nao foi possivel ler os logs atuais do Nginx, Docker e sistema, nem publicar o novo bundle. A causa historica comprovada da queda permanece o ponto unico de origem no servidor e na internet locais; a causa de uma eventual ocorrencia nova so pode ser fechada com os logs do periodo.
 
 O healthcheck foi preparado no GitHub Actions para rodar a cada 15 minutos, com tres tentativas e limite de cinco segundos; o agendamento passa a operar quando o workflow entrar na branch padrao. Clinica, Admin e autenticacao sao obrigatorios. O Cadastro e opcional enquanto seu DNS nao estiver publicado e pode ser incluido com `HEALTHCHECK_INCLUDE_CADASTRO=true`.
+
+## Publicacao corretiva - 02/08/2026
+
+O acesso SSH foi restabelecido e o build corrigido foi publicado no volume da Clinica. O Nginx do container passou em `nginx -t`, o fallback SPA respondeu HTTP 200 e o dominio confirmou o novo asset. Vinte requisicoes publicas consecutivas responderam HTTP 200; em uma amostra adicional de dez chamadas, a latencia ficou entre 148 e 1.336 ms, com media de 364,6 ms. Nao houve novo erro no proxy ou no Cloudflare Tunnel apos a correcao de permissoes do deploy.
+
+O `cloudflared` permanece na versao `2026.3.0` e informou disponibilidade da `2026.7.3`. A atualizacao deve ser feita em janela operacional, com validacao do tunnel, e nao foi misturada a este incidente para evitar indisponibilidade adicional. A origem local ainda e ponto unico de falha; monitoramento reduz o tempo de deteccao, mas nao substitui redundancia de energia, internet e hospedagem.
