@@ -1203,8 +1203,18 @@ function ClinicApp() {
       else await createAutoclaveRecord(record);
       setAutoclaveRecords((current) => existing ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]);
       notify(existing ? "Registro de autoclave atualizado" : "Registro de autoclave criado", `Ciclo ${record.cycleNumber} salvo para ${company.displayName}.`, "success");
-    } catch {
-      notify("Nao foi possivel salvar o registro", "Confira os dados e sua permissao de esterilizacao.", "danger");
+    } catch (error) {
+      const errorMessage = typeof error === "object" && error && "message" in error
+        ? String(error.message)
+        : "";
+      const permissionDenied = /permission|row-level security|42501/i.test(errorMessage);
+      notify(
+        "Nao foi possivel salvar o registro",
+        permissionDenied
+          ? "Voce nao possui permissao para registrar ciclos de esterilizacao nesta clinica."
+          : "Revise os campos do ciclo e tente novamente.",
+        "danger"
+      );
     }
   }
 
@@ -3089,7 +3099,7 @@ function AutoclaveRecords({ company, profile, records, stock, onSave }: { compan
     event.preventDefault();
     setSaving(true);
     const form = new FormData(event.currentTarget);
-    const id = editing?.id ?? `auto-${Date.now()}`;
+    const id = editing?.id ?? crypto.randomUUID();
     const now = new Date().toISOString();
     const finalResult = String(form.get("finalResult")) as AutoclaveRecord["finalResult"];
     const selectedEquipment = autoclaveEquipments.find((item) => item.id === String(form.get("autoclaveProductId")));
