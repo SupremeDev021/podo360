@@ -31,7 +31,7 @@ import {
   UploadCloud,
   Users
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { AnamnesisWizard } from "./components/AnamnesisWizard";
 import { ChartCard } from "./components/ChartCard";
@@ -49,7 +49,7 @@ import { generateReferralReport } from "./services/aiReferralReportService";
 import { COMPANY_ACCESS_UNAVAILABLE_MESSAGE } from "./services/companyStatusService";
 import { getPlatformAccessSnapshot } from "./services/platformAccessService";
 import { roleLabel } from "./services/rbac";
-import { ATTENDANCE_FINALIZED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_CONNECTION_ERROR, ATTENDANCE_FINALIZED_ERROR, ATTENDANCE_PERMISSION_DENIED_ERROR, ATTENDANCE_SESSION_EXPIRED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, findPatientForBa, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -330,6 +330,8 @@ function ClinicApp() {
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const [billingAttendance, setBillingAttendance] = useState<Attendance | null>(null);
   const [baSubmitting, setBaSubmitting] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const attendanceSubmissionRef = useRef(false);
   const allowedViews = profile ? allowedViewsForProfile(profile) : [];
   const hasAttendanceManagementAccess = profile ? canManageAttendanceReopen(profile, allowedViews) : false;
 
@@ -468,6 +470,20 @@ function ClinicApp() {
     });
     return () => data.subscription.unsubscribe();
   }, [loadAuthenticatedAccess, resetClinicState]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      notify("Conexão restabelecida", "O Podo360 voltou a se comunicar com o serviço online.", "success");
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--color-primary", company.primaryColor);
@@ -692,9 +708,11 @@ function ClinicApp() {
   }
 
   async function handleCreateAttendance(patient: Patient, options?: Partial<Attendance>) {
-    if (baSubmitting) return false;
+    if (attendanceSubmissionRef.current) return false;
+    attendanceSubmissionRef.current = true;
     const openAttendance = findOpenAttendanceForPatient(attendances, patient.id, company.id);
     if (openAttendance) {
+      attendanceSubmissionRef.current = false;
       setSelectedPatientId(patient.id);
       setActiveAttendanceId(openAttendance.id);
       notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
@@ -704,7 +722,9 @@ function ClinicApp() {
     const nextBaNumber = generateBaNumber(company.id, attendances);
     const openedAt = new Date().toISOString();
     let attendance: Attendance = {
-      id: `attendance-${attendances.length + 1}`,
+      // O mesmo UUID acompanha todas as tentativas e permite reconciliar uma
+      // resposta perdida sem criar outro BA.
+      id: crypto.randomUUID(),
       companyId: company.id,
       patientId: patient.id,
       uniqueMedicalRecordId: patient.uniqueMedicalRecordId,
@@ -749,16 +769,28 @@ function ClinicApp() {
         };
       }
     } catch (error) {
-      if (error instanceof Error && error.message === OPEN_ATTENDANCE_EXISTS_ERROR) {
+      const errorCode = error instanceof Error ? error.message : "";
+      if (errorCode === OPEN_ATTENDANCE_EXISTS_ERROR) {
         notify("BA já aberto", OPEN_BA_EXISTS_MESSAGE, "warning");
-        setBaSubmitting(false);
         return false;
       }
-      console.error("Erro ao sincronizar BA", error);
-      notify("Erro ao abrir BA", "Nao foi possivel sincronizar o novo BA com o ambiente online. Tente novamente.", "danger");
-      setBaSubmitting(false);
+      if (errorCode === ATTENDANCE_SESSION_EXPIRED_ERROR) {
+        notify("Sessão expirada", "Sua sessão expirou. Faça login novamente para continuar.", "warning");
+        return false;
+      }
+      if (errorCode === ATTENDANCE_PERMISSION_DENIED_ERROR) {
+        notify("Acesso não permitido", "Você não possui permissão para abrir atendimento nesta clínica.", "danger");
+        return false;
+      }
+      if (errorCode === ATTENDANCE_CONNECTION_ERROR || !navigator.onLine) {
+        notify("Conexão instável", "Não foi possível concluir a ação por instabilidade de conexão. Verifique sua internet e tente novamente.", "warning");
+        return false;
+      }
+      if (import.meta.env.DEV) console.error("Falha ao abrir BA", { code: errorCode || "unknown" });
+      notify("Erro ao abrir BA", "Não foi possível abrir o atendimento agora. Tente novamente em instantes.", "danger");
       return false;
     } finally {
+      attendanceSubmissionRef.current = false;
       setBaSubmitting(false);
     }
 
@@ -789,6 +821,11 @@ function ClinicApp() {
 
   async function handleOpenBa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!navigator.onLine) {
+      setIsOnline(false);
+      notify("Sem conexão", "Verifique sua internet antes de abrir o BA. Os dados preenchidos foram preservados.", "warning");
+      return false;
+    }
     const form = new FormData(event.currentTarget);
     const fullName = String(form.get("fullName"));
     const cpf = String(form.get("cpf"));
@@ -797,18 +834,34 @@ function ClinicApp() {
     const whatsapp = String(form.get("whatsapp") || phone);
     const uniqueRecordNumber = String(form.get("uniqueRecordNumber") || "");
     const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, []);
-    const existingPatient = patients.find((patient) =>
+    let existingPatient = patients.find((patient) =>
       normalizeText(patient.uniqueRecordNumber) === normalizeText(uniqueRecordNumber) ||
       normalizeDigits(patient.cpf) === normalizeDigits(cpf) ||
       (normalizeText(patient.fullName) === normalizeText(fullName) && patient.birthDate === birthDate)
     );
+
+    if (!existingPatient) {
+      try {
+        existingPatient = await findPatientForBa(company.id, {
+          uniqueRecordNumber,
+          cpf,
+          fullName,
+          birthDate
+        }) ?? undefined;
+      } catch (error) {
+        const errorCode = error instanceof Error ? error.message : "";
+        if (import.meta.env.DEV) console.error("Falha ao consultar paciente antes do BA", { code: errorCode || "unknown" });
+        notify("Conexão instável", "Não foi possível confirmar os dados do paciente agora. Verifique sua internet e tente novamente.", "warning");
+        return false;
+      }
+    }
 
     if (existingUniqueRecord) {
       notify("Paciente ja possui Prontuário de Evolução", `Sera usado o numero ${existingUniqueRecord.uniqueRecordNumber}.`, "info");
     }
 
     let patient: Patient = existingPatient ?? {
-      id: `patient-${patients.length + 1}`,
+      id: crypto.randomUUID(),
       companyId: company.id,
       uniqueMedicalRecordId: existingUniqueRecord?.uniqueMedicalRecordId ?? `unique-record-${patients.length + 1}`,
       uniqueRecordNumber: existingUniqueRecord?.uniqueRecordNumber ?? generateUniqueRecordNumber(patients),
@@ -858,8 +911,17 @@ function ClinicApp() {
           };
         }
       } catch (error) {
-        console.error("Erro ao sincronizar paciente antes do BA", error);
-        notify("Erro ao abrir BA", "Nao foi possivel sincronizar o paciente com o ambiente online. Tente novamente.", "danger");
+        const errorCode = error instanceof Error ? error.message : "";
+        if (errorCode === ATTENDANCE_SESSION_EXPIRED_ERROR) {
+          notify("Sessão expirada", "Sua sessão expirou. Faça login novamente para continuar.", "warning");
+        } else if (errorCode === ATTENDANCE_PERMISSION_DENIED_ERROR) {
+          notify("Acesso não permitido", "Você não possui permissão para cadastrar pacientes nesta clínica.", "danger");
+        } else if (errorCode === ATTENDANCE_CONNECTION_ERROR || !navigator.onLine) {
+          notify("Conexão instável", "Não foi possível concluir a ação por instabilidade de conexão. Verifique sua internet e tente novamente.", "warning");
+        } else {
+          if (import.meta.env.DEV) console.error("Falha ao preparar paciente para o BA", { code: errorCode || "unknown" });
+          notify("Erro ao abrir BA", "Não foi possível preparar o paciente para o atendimento agora. Tente novamente em instantes.", "danger");
+        }
         return false;
       }
     }
@@ -1177,6 +1239,16 @@ function ClinicApp() {
   return (
     <Layout allowedViews={allowedViews} company={company} profile={profile} activeView={activeView} onViewChange={setActiveView} onLogout={handleLogout}>
       <div className="app-input-mask-scope" onInputCapture={handleMaskedInput}>
+      {!isOnline && (
+        <aside className="connection-banner" role="status">
+          <AlertTriangle size={20} />
+          <div>
+            <strong>Sem conexão com a internet</strong>
+            <span>Os campos permanecem na tela. Reconecte antes de salvar ou abrir um BA.</span>
+          </div>
+          <button onClick={() => window.location.reload()} type="button">Tentar novamente</button>
+        </aside>
+      )}
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
       {billingAttendance && <FinancialReviewDialog attendance={billingAttendance} patient={patients.find((item) => item.id === billingAttendance.patientId)} products={stock} onCancel={() => setBillingAttendance(null)} onConfirm={async (transaction) => { await handleCreateFinancial(transaction); setBillingAttendance(null); notify("Lançamento financeiro gerado com sucesso.", `Lancamento vinculado ao BA ${billingAttendance.baNumber}.`, "success"); }} />}
       {activeView === "dashboard" && <Dashboard appointments={appointments} company={company} financial={financial} stock={stock} attendances={attendances} patients={patients} />}
@@ -1189,6 +1261,7 @@ function ClinicApp() {
           prefill={baOpeningPrefill}
           onOpenBa={handleOpenBa}
           opening={baSubmitting}
+          online={isOnline}
           onNotify={notify}
         />
       )}
@@ -1461,6 +1534,7 @@ function BaOpening({
   prefill,
   onOpenBa,
   opening,
+  online,
   onNotify
 }: {
   company: Company;
@@ -1470,6 +1544,7 @@ function BaOpening({
   prefill: BaOpeningPrefill | null;
   onOpenBa: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   opening: boolean;
+  online: boolean;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
   const [patientData, setPatientData] = useState({
@@ -1494,6 +1569,7 @@ function BaOpening({
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [payerType, setPayerType] = useState<"private" | "insurance">("private");
+  const submitInFlightRef = useRef(false);
   const showInsuranceType = Boolean(company.enableInsuranceType);
 
   useEffect(() => {
@@ -1586,7 +1662,15 @@ function BaOpening({
   }
 
   async function handleBaSubmit(event: FormEvent<HTMLFormElement>) {
-    const opened = await onOpenBa(event);
+    event.preventDefault();
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    let opened = false;
+    try {
+      opened = await onOpenBa(event);
+    } finally {
+      submitInFlightRef.current = false;
+    }
     if (!opened) return;
     setPatientData({
       fullName: "",
@@ -1695,7 +1779,7 @@ function BaOpening({
           <label>Observacoes iniciais<textarea name="initialNotes" defaultValue={baPrefill.initialNotes} /></label>
         </section>
 
-        <button className="primary-button" disabled={opening} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : "Abrir BA"}</button>
+        <button className="primary-button" disabled={opening || !online} type="submit"><ClipboardPlus size={18} /> {opening ? "Abrindo BA..." : online ? "Abrir BA" : "Sem conexão"}</button>
       </form>
     </div>
   );
