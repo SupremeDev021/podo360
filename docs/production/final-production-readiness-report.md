@@ -252,4 +252,4 @@ Auditoria:
 
 Decisao operacional desta rodada: ainda existem bloqueios. A correcao esta validada localmente e contra o banco oficial, mas falta publicar no Nginx e repetir o fluxo pelo dominio de producao. A arquitetura local continua sendo ponto unico de falha de energia e conectividade.
 
-Atualizacao: o deploy no Nginx e o E2E autenticado no dominio publico foram concluidos. `BA-2026-000068` e `PU-2026-000079` foram criados, validados e removidos, sem residuos e sem duplicidade. O bloqueio de software da abertura de BA esta encerrado. Permanece como risco operacional a origem local sem redundancia e a atualizacao pendente do container `cloudflared`.
+Atualizacao: o deploy no Nginx e o E2E autenticado no dominio publico foram concluidos. `BA-2026-000068` e `PU-2026-000079` foram criados, validados e removidos, sem residuos e sem duplicidade. O bloqueio de software da abertura de BA esta encerrado. O `cloudflared` foi atualizado para `2026.7.3`, com rede do host e HTTP/2, e o healthcheck externo passou depois da troca. Permanece como risco operacional a origem local sem redundancia.
