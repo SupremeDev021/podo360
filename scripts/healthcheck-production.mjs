@@ -78,6 +78,10 @@ for (const target of defaultTargets) {
 for (const result of results) {
   const timing = result.minMs === null ? "sem resposta" : `${result.minMs}-${result.maxMs} ms`;
   globalThis.console.log(`${result.ok ? "OK" : "FALHA"} ${result.name}: ${result.successes}/${result.attempts} (${timing})`);
+  for (const sample of result.samples.filter((item) => !item.ok)) {
+    const detail = sample.error ? `erro=${sample.error}` : `status=${sample.status}`;
+    globalThis.console.log(`  tentativa ${sample.attempt}: ${detail}, ${sample.elapsedMs} ms`);
+  }
 }
 
 if (results.some((result) => !result.ok)) {
