@@ -84,17 +84,20 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     await page.locator('input[name="birthDate"]').fill("1985-07-13");
     await page.locator('input[name="phone"]').fill("00900000000");
     await page.locator('textarea[name="initialNotes"]').fill(`${runId}_OBS_INICIAL`);
+    expect(await page.locator('input[name="fullName"]').inputValue()).toBe(patientName);
+    expect((await page.locator('input[name="cpf"]').inputValue()).replace(/\D/g, "")).not.toBe("");
     await page.getByRole("button", { name: /Abrir BA/i }).click();
     await expect(page.locator(".toast")).toContainText(/BA aberto com sucesso/i, { timeout: 30_000 });
 
-    const { data: patient, error: patientError } = await api.from("patients")
-      .select("id,company_id,unique_medical_record_id,unique_record_number")
-      .eq("full_name", patientName).single();
-    expect(patientError).toBeNull();
     const { data: attendance, error: attendanceError } = await api.from("attendances")
-      .select("id,ba_number,status,unique_medical_record_id")
-      .eq("patient_id", patient!.id).single();
+      .select("id,patient_id,ba_number,status,unique_medical_record_id")
+      .like("initial_notes", `${runId}%`).single();
     expect(attendanceError).toBeNull();
+    const { data: patient, error: patientError } = await api.from("patients")
+      .select("id,company_id,unique_medical_record_id,unique_record_number,full_name")
+      .eq("id", attendance!.patient_id).single();
+    expect(patientError).toBeNull();
+    expect(patient?.full_name).toBe(patientName);
     expect(attendance?.ba_number).toMatch(/^BA-/);
     expect(attendance?.unique_medical_record_id).toBe(patient?.unique_medical_record_id);
 

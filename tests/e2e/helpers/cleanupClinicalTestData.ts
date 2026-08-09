@@ -21,7 +21,16 @@ export async function cleanupClinicalTestData(client: SupabaseClient, runId: str
   expect(patientLookupError, "cleanup: consulta de pacientes").toBeNull();
   const patientIds = (patients ?? []).map((row) => row.id);
 
-  const attendanceIds: string[] = [];
+  const { data: userData, error: userError } = await client.auth.getUser();
+  expect(userError, "cleanup: usuario autenticado").toBeNull();
+  const { data: markedAttendances, error: markedAttendanceError } = await client
+    .from("attendances")
+    .select("id,patient_id")
+    .eq("opened_by", userData.user!.id)
+    .like("initial_notes", `${runId}%`);
+  expect(markedAttendanceError, "cleanup: consulta de BAs marcados").toBeNull();
+
+  const attendanceIds: string[] = (markedAttendances ?? []).map((row) => row.id);
   const storagePaths: string[] = [];
   if (patientIds.length) {
     const { data: attendances, error: attendanceLookupError } = await client
@@ -29,7 +38,7 @@ export async function cleanupClinicalTestData(client: SupabaseClient, runId: str
       .select("id")
       .in("patient_id", patientIds);
     expect(attendanceLookupError, "cleanup: consulta de atendimentos").toBeNull();
-    attendanceIds.push(...(attendances ?? []).map((row) => row.id));
+    attendanceIds.push(...(attendances ?? []).map((row) => row.id).filter((id) => !attendanceIds.includes(id)));
 
     const { data: images, error: imageLookupError } = await client
       .from("attendance_images")
@@ -47,6 +56,16 @@ export async function cleanupClinicalTestData(client: SupabaseClient, runId: str
     expect(removed?.length, "cleanup: todos os objetos devem ser removidos").toBe(storagePaths.length);
   }
 
+  if (attendanceIds.length) {
+    const { data: deletedAttendances, error: attendanceDeleteError } = await client
+      .from("attendances")
+      .delete()
+      .in("id", attendanceIds)
+      .select("id");
+    expect(attendanceDeleteError, "cleanup: remocao exata dos BAs marcados").toBeNull();
+    expect(deletedAttendances?.length, "cleanup: todos os BAs marcados devem ser removidos").toBe(attendanceIds.length);
+  }
+
   const { data: rpcResult, error: cleanupError } = await client.rpc("cleanup_safe_clinical_test_run", {
     test_run_id: runId
   });
@@ -54,6 +73,7 @@ export async function cleanupClinicalTestData(client: SupabaseClient, runId: str
 
   const tableChecks = [
     client.from("patients").select("id", { count: "exact", head: true }).like("full_name", `${runId}%`),
+    client.from("attendances").select("id", { count: "exact", head: true }).eq("opened_by", userData.user!.id).like("initial_notes", `${runId}%`),
     patientIds.length
       ? client.from("patient_company_links").select("id", { count: "exact", head: true }).in("patient_id", patientIds)
       : Promise.resolve({ count: 0, error: null }),

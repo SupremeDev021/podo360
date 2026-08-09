@@ -76,10 +76,11 @@ test("usuarios A e B permanecem isolados por empresa com cleanup independente", 
 
     await login(page, userAEmail!, userAPassword!);
     const patientNameA = await createPatientAndBa(page, runA);
-    const { data: patientA, error: patientAError } = await apiA.from("patients").select("id").eq("full_name", patientNameA).single();
-    expect(patientAError).toBeNull();
-    const { data: attendanceA, error: attendanceAError } = await apiA.from("attendances").select("id").eq("patient_id", patientA!.id).single();
+    const { data: attendanceA, error: attendanceAError } = await apiA.from("attendances").select("id,patient_id").like("initial_notes", `${runA}%`).single();
     expect(attendanceAError).toBeNull();
+    const { data: patientA, error: patientAError } = await apiA.from("patients").select("id,full_name").eq("id", attendanceA!.patient_id).single();
+    expect(patientAError).toBeNull();
+    expect(patientA?.full_name).toBe(patientNameA);
     await logout(page);
 
     const { data: forbiddenPatient, error: forbiddenPatientError } = await apiB.from("patients").select("id").eq("id", patientA!.id);
@@ -93,8 +94,11 @@ test("usuarios A e B permanecem isolados por empresa com cleanup independente", 
     await page.getByRole("button", { name: /^Pacientes$/i }).click();
     await expect(page.getByText(patientNameA)).toHaveCount(0);
     const patientNameB = await createPatientAndBa(page, runB);
-    const { data: patientB, error: patientBError } = await apiB.from("patients").select("id").eq("full_name", patientNameB).single();
+    const { data: markedB, error: markedBError } = await apiB.from("attendances").select("patient_id").like("initial_notes", `${runB}%`).single();
+    expect(markedBError).toBeNull();
+    const { data: patientB, error: patientBError } = await apiB.from("patients").select("id,full_name").eq("id", markedB!.patient_id).single();
     expect(patientBError).toBeNull();
+    expect(patientB?.full_name).toBe(patientNameB);
     const { data: forbiddenBFromA, error: forbiddenBError } = await apiA.from("patients").select("id").eq("id", patientB!.id);
     expect(forbiddenBError).toBeNull();
     expect(forbiddenBFromA).toEqual([]);
