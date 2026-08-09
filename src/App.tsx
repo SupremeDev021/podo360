@@ -970,22 +970,34 @@ function ClinicApp() {
     return true;
   }
 
-  function handleSaveAppointment(appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) {
+  async function handleSaveAppointment(appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) {
     const now = new Date().toISOString();
-    const created: ClinicalAppointment = {
+    const draft: Omit<ClinicalAppointment, "id"> = {
         ...appointment,
-        id: `clinical-appointment-${appointments.length + 1}`,
         status: "scheduled",
         createdBy: profile!.id,
         createdAt: now,
         updatedAt: now
       };
-    setAppointments((current) => [created, ...current]);
-    void createClinicalAppointment(created).catch(() => notify("Agendamento salvo apenas localmente", "Nao foi possivel sincronizar com o ambiente online.", "warning"));
-    notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou Prontuário de Evolução.", "success");
+    try {
+      const persisted = await createClinicalAppointment(draft);
+      if (!persisted?.id) throw new Error("appointment_not_persisted");
+      const created: ClinicalAppointment = {
+        ...draft,
+        id: String(persisted.id),
+        createdAt: String(persisted.created_at ?? now),
+        updatedAt: String(persisted.updated_at ?? now)
+      };
+      setAppointments((current) => [created, ...current]);
+      notify("Agendamento criado com sucesso", "Agenda reservada sem criar BA ou Prontuário de Evolução.", "success");
+      return true;
+    } catch {
+      notify("Nao foi possivel criar o agendamento", "Tente novamente em instantes. Nenhum agendamento local foi mantido.", "danger");
+      return false;
+    }
   }
 
-  function handleUpdateAppointmentStatus(appointmentId: string, status: ClinicalAppointment["status"]) {
+  async function handleUpdateAppointmentStatus(appointmentId: string, status: ClinicalAppointment["status"]) {
     const labels: Record<ClinicalAppointment["status"], string> = {
       scheduled: "Agendamento criado com sucesso",
       confirmed: "Agendamento confirmado",
@@ -996,25 +1008,39 @@ function ClinicApp() {
       no_show: "Paciente marcado como faltou",
       rescheduled: "Agendamento reagendado"
     };
-    setAppointments((current) => current.map((appointment) => appointment.id === appointmentId ? { ...appointment, status, updatedAt: new Date().toISOString() } : appointment));
-    notify(labels[status], status === "arrived" ? "Continue pela Abertura de atendimento para gerar BA e Prontuário de Evolução se necessário." : "Status atualizado na Agenda Clínica.", "success");
+    const current = appointments.find((appointment) => appointment.id === appointmentId);
+    if (!current) return false;
+    const updated = { ...current, status, updatedAt: new Date().toISOString() };
+    try {
+      await updateClinicalAppointment(updated);
+      setAppointments((items) => items.map((appointment) => appointment.id === appointmentId ? updated : appointment));
+      notify(labels[status], status === "arrived" ? "Continue pela Abertura de atendimento para gerar BA e Prontuário de Evolução se necessário." : "Status atualizado na Agenda Clínica.", "success");
+      return true;
+    } catch {
+      notify("Nao foi possivel atualizar o agendamento", "Tente novamente em instantes. O status anterior foi preservado.", "danger");
+      return false;
+    }
   }
 
-  function handleUpdateAppointment(appointment: ClinicalAppointment) {
-    setAppointments((current) => current.map((item) => item.id === appointment.id ? appointment : item));
-    void updateClinicalAppointment(appointment).catch(() => {
-      notify("Alteracao salva apenas localmente", "Nao foi possivel sincronizar o agendamento com o ambiente online.", "warning");
-    });
-    notify(
-      appointment.status === "no_show" ? "Paciente marcado como falta." : "Agendamento atualizado com sucesso.",
-      appointment.status === "no_show" ? "A falta foi registrada sem criar BA ou Prontuário de Evolução." : "Data, horario e dados da agenda foram atualizados.",
-      "success"
-    );
+  async function handleUpdateAppointment(appointment: ClinicalAppointment) {
+    try {
+      await updateClinicalAppointment(appointment);
+      setAppointments((current) => current.map((item) => item.id === appointment.id ? appointment : item));
+      notify(
+        appointment.status === "no_show" ? "Paciente marcado como falta." : "Agendamento atualizado com sucesso.",
+        appointment.status === "no_show" ? "A falta foi registrada sem criar BA ou Prontuário de Evolução." : "Data, horario e dados da agenda foram atualizados.",
+        "success"
+      );
+      return true;
+    } catch {
+      notify("Nao foi possivel atualizar o agendamento", "Tente novamente em instantes. Nenhuma alteracao local foi mantida.", "danger");
+      return false;
+    }
   }
 
-  function handleOpenBaFromAppointment(appointment: ClinicalAppointment) {
+  async function handleOpenBaFromAppointment(appointment: ClinicalAppointment) {
     const patient = appointment.patientId ? patients.find((item) => item.id === appointment.patientId) : undefined;
-    setBaOpeningPrefill({
+    const prefill: BaOpeningPrefill = {
       appointmentId: appointment.id,
       patientId: patient?.id,
       fullName: patient?.fullName ?? appointment.temporaryPatientName ?? "",
@@ -1031,9 +1057,19 @@ function ClinicApp() {
       initialNotes: appointment.notes ?? ""
       , payerType: appointment.payerType
       , insuranceName: appointment.insuranceName
-    });
-    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, status: item.status === "converted_to_ba" ? item.status : "arrived", updatedAt: new Date().toISOString() } : item));
+    };
+    if (appointment.status !== "converted_to_ba" && appointment.status !== "arrived") {
+      const updated = { ...appointment, status: "arrived" as const, updatedAt: new Date().toISOString() };
+      try {
+        await updateClinicalAppointment(updated);
+        setAppointments((current) => current.map((item) => item.id === appointment.id ? updated : item));
+      } catch {
+        notify("Nao foi possivel preparar o agendamento", "Tente novamente em instantes. O status anterior foi preservado.", "danger");
+        return;
+      }
+    }
       notify("Não é possível gerar BA diretamente pela Agenda", "Dados enviados para Abertura de atendimento. Confirme a entrada para criar BA.", "info");
+    setBaOpeningPrefill(prefill);
     setActiveView("ba-opening");
   }
 
@@ -1114,7 +1150,8 @@ function ClinicApp() {
     try {
       await reopenAttendanceBa(attendanceId, cleanReason);
     } catch {
-      notify("Reabertura mantida localmente", "Não foi possível sincronizar a reabertura agora. A migration precisa estar aplicada no Supabase.", "warning");
+      notify("Nao foi possivel reabrir o atendimento", "Tente novamente em instantes. O atendimento permanece finalizado.", "danger");
+      throw new Error("attendance_reopen_failed");
     }
 
     const now = new Date().toISOString();
@@ -2624,10 +2661,10 @@ function ClinicalAgendaPage({
   appointments: ClinicalAppointment[];
   patients: Patient[];
   profiles: Profile[];
-  onSaveAppointment: (appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) => void;
-  onUpdateStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => void;
-  onUpdateAppointment: (appointment: ClinicalAppointment) => void;
-  onOpenBa: (appointment: ClinicalAppointment) => void;
+  onSaveAppointment: (appointment: Omit<ClinicalAppointment, "id" | "createdAt" | "updatedAt" | "createdBy" | "status">) => Promise<boolean>;
+  onUpdateStatus: (appointmentId: string, status: ClinicalAppointment["status"]) => Promise<boolean>;
+  onUpdateAppointment: (appointment: ClinicalAppointment) => Promise<boolean>;
+  onOpenBa: (appointment: ClinicalAppointment) => Promise<void>;
   onNotify: (title: string, message: string, tone?: AppNotice["tone"]) => void;
 }) {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month" | "list" | "queue">("day");
@@ -2662,7 +2699,7 @@ function ClinicalAgendaPage({
     return matchesQuery && matchesStatus && matchesProfessional && matchesQueue;
   });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const patient = selectedPatientId ? patients.find((item) => item.id === selectedPatientId) : undefined;
@@ -2678,7 +2715,7 @@ function ClinicalAgendaPage({
       onNotify("Paciente existente vinculado ao agendamento", "Nenhum BA foi criado pela Agenda.", "success");
     }
 
-    onSaveAppointment({
+    const saved = await onSaveAppointment({
       companyId: company.id,
       patientId: patient?.id,
       uniqueMedicalRecordId: patient?.uniqueMedicalRecordId,
@@ -2698,13 +2735,14 @@ function ClinicalAgendaPage({
       payerType: String(form.get("payerType") || "private") as ClinicalAppointment["payerType"]
       , insuranceName: String(form.get("insuranceName") || "") || undefined
     });
+    if (!saved) return;
     event.currentTarget.reset();
     setSelectedPatientId("");
     setPatientSearch("");
     setNewAppointmentOpen(false);
   }
 
-  function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing) return;
     const form = new FormData(event.currentTarget);
@@ -2715,7 +2753,7 @@ function ClinicalAgendaPage({
       onNotify("Horario invalido", "O horario final deve ser maior que o horario inicial.", "warning");
       return;
     }
-    onUpdateAppointment({
+    const saved = await onUpdateAppointment({
       ...editing,
       appointmentDate,
       startTime,
@@ -2725,15 +2763,17 @@ function ClinicalAgendaPage({
       status: String(form.get("status")) as ClinicalAppointment["status"],
       updatedAt: new Date().toISOString()
     });
+    if (!saved) return;
     setEditing(null);
   }
 
-  function handleAbsentSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleAbsentSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!markingAbsent) return;
     const notes = String(new FormData(event.currentTarget).get("absenceNotes") || "");
     const now = new Date().toISOString();
-    onUpdateAppointment({ ...markingAbsent, status: "no_show", markedAbsentAt: now, markedAbsentBy: profiles[0]?.id, absenceNotes: notes, updatedAt: now });
+    const saved = await onUpdateAppointment({ ...markingAbsent, status: "no_show", markedAbsentAt: now, markedAbsentBy: profiles[0]?.id, absenceNotes: notes, updatedAt: now });
+    if (!saved) return;
     setMarkingAbsent(null);
   }
 
