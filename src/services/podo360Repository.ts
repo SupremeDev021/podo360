@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UsedProduct } from "../types";
+import type { AiReferralReport, AnamnesisRecord, Attendance, AttendanceAuditLog, AttendanceImage, AutoclaveRecord, BodyMapEntry, ClinicalAppointment, Company, FinancialTransaction, FootSensitivityMap, Patient, StockProduct, UniqueMedicalRecord, UsedProduct } from "../types";
 
 export const ATTENDANCE_FINALIZED_ERROR = "attendance_finalized";
 export const OPEN_ATTENDANCE_EXISTS_ERROR = "open_attendance_exists";
@@ -215,6 +215,166 @@ export async function listPatients(companyId: string) {
   return ((data ?? []) as PatientDatabaseRow[]).map((row) => mapPatientRow(row));
 }
 
+export async function loadClinicalWorkspace(companyId: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const [patients, attendances, anamneses, footMaps, imageRows, auditLogs] = await Promise.all([
+    listPatients(companyId),
+    supabase.from("attendances").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    supabase.from("anamnesis_records").select("*").eq("company_id", companyId).order("updated_at", { ascending: false }),
+    supabase.from("foot_sensitivity_maps").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    supabase.from("attendance_images").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    supabase.from("attendance_audit_logs").select("*").eq("company_id", companyId).order("created_at", { ascending: false })
+  ]);
+
+  for (const response of [attendances, anamneses, footMaps, imageRows, auditLogs]) {
+    if (response.error) throw response.error;
+  }
+
+  const uniqueRecordIds = Array.from(new Set((patients ?? []).map((patient) => patient.uniqueMedicalRecordId).filter(isUuid)));
+  const uniqueRecordsResponse = uniqueRecordIds.length
+    ? await supabase.from("unique_medical_records").select("*").in("id", uniqueRecordIds)
+    : { data: [], error: null };
+  if (uniqueRecordsResponse.error) throw uniqueRecordsResponse.error;
+
+  const images = await Promise.all((imageRows.data ?? []).map(async (row) => {
+    let displayUrl = row.file_url;
+    if (displayUrl && !/^(https?:|data:|blob:)/i.test(displayUrl)) {
+      const { data } = await supabase!.storage.from("clinical-images").createSignedUrl(displayUrl, 3600);
+      displayUrl = data?.signedUrl ?? "";
+    }
+    return {
+      id: row.id,
+      companyId: row.company_id,
+      patientId: row.patient_id,
+      uniqueMedicalRecordId: row.unique_medical_record_id,
+      attendanceId: row.attendance_id,
+      uniqueRecordNumber: row.unique_record_number,
+      baNumber: row.ba_number,
+      imageType: row.image_type,
+      footSide: row.foot_side ?? undefined,
+      footRegion: row.foot_region ?? undefined,
+      fileUrl: displayUrl,
+      description: row.description ?? undefined,
+      clinicalNotes: row.clinical_notes ?? undefined,
+      comparativeNotes: row.comparative_notes ?? undefined,
+      notes: row.notes ?? undefined,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined
+    } as AttendanceImage;
+  }));
+
+  return {
+    patients: patients ?? [],
+    uniqueMedicalRecords: (uniqueRecordsResponse.data ?? []).map((row) => ({
+      id: row.id,
+      uniqueRecordNumber: row.unique_record_number,
+      patientUniqueId: row.patient_unique_id,
+      cpfHash: row.cpf_hash ?? undefined,
+      normalizedPatientName: row.normalized_patient_name,
+      birthDate: row.birth_date ?? undefined,
+      phoneHash: row.phone_hash ?? undefined,
+      emailHash: row.email_hash ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined
+    } as UniqueMedicalRecord)),
+    attendances: (attendances.data ?? []).map((row) => ({
+      id: row.id,
+      companyId: row.company_id,
+      patientId: row.patient_id,
+      uniqueMedicalRecordId: row.unique_medical_record_id,
+      uniqueRecordNumber: row.unique_record_number,
+      baNumber: row.ba_number,
+      professionalId: row.professional_id ?? undefined,
+      appointmentId: row.appointment_id ?? undefined,
+      convertedFromAppointment: Boolean(row.converted_from_appointment),
+      openedAt: row.opened_at ?? row.attended_at,
+      startedAt: row.started_at ?? undefined,
+      finishedAt: row.finished_at ?? undefined,
+      openedBy: row.opened_by ?? undefined,
+      startedBy: row.started_by ?? undefined,
+      finishedBy: row.finished_by ?? undefined,
+      reopenedAt: row.reopened_at ?? undefined,
+      reopenedBy: row.reopened_by ?? undefined,
+      reopenReason: row.reopen_reason ?? undefined,
+      finalizationCancelledAt: row.finalization_cancelled_at ?? undefined,
+      finalizationCancelledBy: row.finalization_cancelled_by ?? undefined,
+      finalizationCancelledReason: row.finalization_cancelled_reason ?? undefined,
+      previousFinishedAt: row.previous_finished_at ?? undefined,
+      scheduledAt: row.attendance_date ?? row.opened_at ?? row.attended_at,
+      attendanceDate: row.attendance_date ?? undefined,
+      type: row.type ?? "Atendimento podologico",
+      visitKind: row.visit_kind ?? undefined,
+      initialNotes: row.initial_notes ?? undefined,
+      priority: row.priority ?? "normal",
+      payerType: row.payer_type ?? "private",
+      insuranceName: row.insurance_name ?? undefined,
+      procedure: row.procedure_performed ?? "",
+      complaint: row.patient_complaint ?? row.main_complaint ?? "",
+      clinicalEvaluation: row.clinical_evaluation ?? "",
+      conduct: row.conduct_performed ?? "",
+      productsUsed: Array.isArray(row.products_used) ? row.products_used : [],
+      notes: row.notes ?? "",
+      recommendedReturn: row.recommended_return ?? undefined,
+      status: row.status,
+      value: Number(row.amount ?? 0),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined
+    } as Attendance)),
+    anamneses: (anamneses.data ?? []).map((row) => ({
+      id: row.id,
+      companyId: row.company_id,
+      patientId: row.patient_id,
+      uniqueMedicalRecordId: row.unique_medical_record_id,
+      attendanceId: row.attendance_id,
+      uniqueRecordNumber: row.unique_record_number,
+      baNumber: row.ba_number,
+      formData: row.form_data ?? {},
+      currentStep: row.current_step,
+      stepStatuses: row.step_statuses ?? {},
+      isCompleted: Boolean(row.is_completed),
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined
+    } as AnamnesisRecord)),
+    footSensitivityMaps: (footMaps.data ?? []).map((row) => ({
+      id: row.id,
+      companyId: row.company_id,
+      patientId: row.patient_id,
+      uniqueMedicalRecordId: row.unique_medical_record_id,
+      attendanceId: row.attendance_id,
+      uniqueRecordNumber: row.unique_record_number,
+      baNumber: row.ba_number,
+      footSide: row.foot_side,
+      regionKey: row.region_key,
+      pointKey: row.point_key,
+      coordinates: row.coordinates ?? {},
+      sensitivityStatus: row.sensitivity_status,
+      notes: row.notes ?? "",
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined
+    } as FootSensitivityMap)),
+    attendanceImages: images,
+    attendanceAuditLogs: (auditLogs.data ?? []).map((row) => ({
+      id: row.id,
+      companyId: row.company_id,
+      attendanceId: row.attendance_id,
+      baNumber: row.ba_number,
+      patientId: row.patient_id,
+      uniqueMedicalRecordId: row.unique_medical_record_id,
+      action: row.action,
+      previousStatus: row.previous_status ?? undefined,
+      newStatus: row.new_status ?? undefined,
+      reason: row.reason ?? "",
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      metadata: row.metadata ?? {}
+    } as AttendanceAuditLog))
+  };
+}
+
 export async function findPatientForBa(companyId: string, criteria: {
   uniqueRecordNumber?: string;
   cpf?: string;
@@ -272,7 +432,8 @@ export async function createPatient(patient: Patient) {
     email: patient.email,
     address: patient.address,
     profession: patient.profession,
-    notes: patient.notes
+    notes: patient.notes,
+    created_by: sessionData.session.user.id
   };
 
   let createdPatient: PatientDatabaseRow | null = null;
@@ -555,9 +716,22 @@ export async function deleteFootSensitivityMap(entryId: string, companyId: strin
   return true;
 }
 
-export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">, file?: File) {
   if (!isSupabaseConfigured || !supabase) return null;
   await assertAttendanceEditable(image.attendanceId, image.companyId);
+
+  let storagePath = image.fileUrl;
+  if (file) {
+    const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+    const safeName = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 70) || "imagem";
+    storagePath = `${image.companyId}/attendance-images/${image.attendanceId}/${crypto.randomUUID()}-${safeName}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from("clinical-images").upload(storagePath, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: false
+    });
+    if (uploadError) throw uploadError;
+  }
 
   const { data, error } = await supabase
     .from("attendance_images")
@@ -571,7 +745,7 @@ export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "c
       image_type: image.imageType,
       foot_side: image.footSide,
       foot_region: image.footRegion,
-      file_url: image.fileUrl,
+      file_url: storagePath,
       description: image.description,
       clinical_notes: image.clinicalNotes,
       comparative_notes: image.comparativeNotes,
@@ -581,8 +755,17 @@ export async function saveAttendanceImage(image: Omit<AttendanceImage, "id" | "c
     .select()
     .single();
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    if (file) await supabase.storage.from("clinical-images").remove([storagePath]);
+    throw error;
+  }
+
+  let displayUrl = storagePath;
+  if (file) {
+    const { data: signed } = await supabase.storage.from("clinical-images").createSignedUrl(storagePath, 3600);
+    displayUrl = signed?.signedUrl ?? "";
+  }
+  return { ...data, storage_path: storagePath, display_url: displayUrl };
 }
 
 export async function updateAttendanceImageComparativeNotes(companyId: string, imageIds: string[], note: string) {

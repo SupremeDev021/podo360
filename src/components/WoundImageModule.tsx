@@ -5,7 +5,7 @@ import type { AttendanceImage, FootSide } from "../types";
 
 type WoundImageModuleProps = {
   images: AttendanceImage[];
-  onSave: (image: Omit<AttendanceImage, "id" | "createdAt">) => Promise<void> | void;
+  onSave: (image: Omit<AttendanceImage, "id" | "createdAt">, file?: File) => Promise<void> | void;
   companyId: string;
   patientId: string;
   attendanceId: string;
@@ -42,11 +42,14 @@ export function WoundImageModule({
   readOnlyMessage = "Não é possível editar atendimento finalizado."
 }: WoundImageModuleProps) {
   const [previewUrl, setPreviewUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | undefined>();
   const currentImages = useMemo(() => images.filter((image) => image.attendanceId === attendanceId), [attendanceId, images]);
 
   function handleFileChange(file?: File) {
     if (readOnly) return;
     if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
   }
 
@@ -54,8 +57,7 @@ export function WoundImageModule({
     event.preventDefault();
     if (readOnly) return;
     const form = new FormData(event.currentTarget);
-    const file = form.get("woundImage") as File | null;
-    const fileUrl = previewUrl || (file?.name ? `supabase://attendance-images/${patientId}/${attendanceId}/${file.name}` : String(form.get("fileUrl") || ""));
+    const fileUrl = selectedFile ? "" : String(form.get("fileUrl") || "");
     const region = String(form.get("footRegion") || "Outra");
 
     await onSave({
@@ -75,9 +77,11 @@ export function WoundImageModule({
       notes: String(form.get("clinicalNotes") || ""),
       createdBy,
       updatedAt: new Date().toISOString()
-    });
+    }, selectedFile);
 
     event.currentTarget.reset();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(undefined);
     setPreviewUrl("");
   }
 

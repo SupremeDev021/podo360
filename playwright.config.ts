@@ -41,7 +41,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure"
   },
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER === "true" ? undefined : {
     command: "node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173",
     url: baseURL,
     reuseExistingServer: true,

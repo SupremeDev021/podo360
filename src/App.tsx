@@ -49,7 +49,7 @@ import { generateReferralReport } from "./services/aiReferralReportService";
 import { COMPANY_ACCESS_UNAVAILABLE_MESSAGE } from "./services/companyStatusService";
 import { getPlatformAccessSnapshot } from "./services/platformAccessService";
 import { roleLabel } from "./services/rbac";
-import { ATTENDANCE_CONNECTION_ERROR, ATTENDANCE_FINALIZED_ERROR, ATTENDANCE_PERMISSION_DENIED_ERROR, ATTENDANCE_SESSION_EXPIRED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, findPatientForBa, finishAttendanceBa, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
+import { ATTENDANCE_CONNECTION_ERROR, ATTENDANCE_FINALIZED_ERROR, ATTENDANCE_PERMISSION_DENIED_ERROR, ATTENDANCE_SESSION_EXPIRED_ERROR, OPEN_ATTENDANCE_EXISTS_ERROR, createAttendanceBa, createAutoclaveRecord, createClinicalAppointment, createCompanyUser, createFinancialTransaction, createPatient, createStockProduct, deleteFootSensitivityMap, findPatientForBa, finishAttendanceBa, loadClinicalWorkspace, manageCompanyUser, reopenAttendanceBa, saveAnamnesisRecord, saveAttendanceImage, saveAttendanceUsedProducts, saveCompanySettings, saveFootSensitivityMap, startAttendanceBa, updateAttendanceImageComparativeNotes, updateAutoclaveRecord, updateClinicalAppointment, updateFootSensitivityMap, updateOwnPassword, updateStockProduct, uploadCompanyLogo } from "./services/podo360Repository";
 import { formatCnpj, formatCpf, formatPhone, formatCurrencyInput, parseCurrency } from "./utils/masks";
 import type {
   AnamnesisRecord,
@@ -472,6 +472,26 @@ function ClinicApp() {
   }, [loadAuthenticatedAccess, resetClinicState]);
 
   useEffect(() => {
+    if (authStatus !== "authenticated" || !company.id) return;
+    let cancelled = false;
+    void loadClinicalWorkspace(company.id)
+      .then((workspace) => {
+        if (!workspace || cancelled) return;
+        setPatients(workspace.patients);
+        setUniqueMedicalRecords(workspace.uniqueMedicalRecords);
+        setAttendances(workspace.attendances);
+        setAnamneses(workspace.anamneses);
+        setFootSensitivityMaps(workspace.footSensitivityMaps);
+        setAttendanceImages(workspace.attendanceImages);
+        setAttendanceAuditLogs(workspace.attendanceAuditLogs);
+      })
+      .catch(() => {
+        if (!cancelled) notify("Não foi possível carregar os dados clínicos", "Tente novamente em instantes.", "danger");
+      });
+    return () => { cancelled = true; };
+  }, [authStatus, company.id]);
+
+  useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       notify("Conexão restabelecida", "O Podo360 voltou a se comunicar com o serviço online.", "success");
@@ -656,10 +676,11 @@ function ClinicApp() {
     notify(record.isCompleted ? "Ficha finalizada" : "Ficha salva como rascunho", "Progresso da anamnese modular vinculado ao BA.", "success");
   }
 
-  async function handleSaveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">) {
+  async function handleSaveAttendanceImage(image: Omit<AttendanceImage, "id" | "createdAt">, file?: File) {
     if (!guardEditableAttendance(image.attendanceId)) return;
+    let saved;
     try {
-      await saveAttendanceImage(image);
+      saved = await saveAttendanceImage(image, file);
     } catch (error) {
       if (handleFinalizedWriteError(error)) return;
       throw error;
@@ -667,8 +688,9 @@ function ClinicApp() {
     setAttendanceImages((current) => [
       {
         ...image,
-        id: `attendance-image-${current.length + 1}`,
-        createdAt: new Date().toISOString()
+        id: saved?.id ?? `attendance-image-${current.length + 1}`,
+        fileUrl: saved?.display_url ?? image.fileUrl,
+        createdAt: saved?.created_at ?? new Date().toISOString()
       },
       ...current
     ]);
