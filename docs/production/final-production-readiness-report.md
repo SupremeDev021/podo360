@@ -1,111 +1,53 @@
-# Relatorio Final de Prontidao de Producao - Podo360
+# Relatorio final de prontidao de producao
 
-## Atualizacao de 09/08/2026
+Data: 09/08/2026
 
-A origem local deixou de existir. O runtime da Clinica e do Admin passa a usar GitHub Pages, enquanto Auth, Postgres, RLS, RPCs e Storage continuam no Supabase oficial. Os dominios customizados ainda precisam de alteracao DNS no Cloudflare; enquanto isso, as URLs `github.io` sao os destinos externos funcionais. O Cadastro Cliente permanece bloqueado por hospedagem porque o repositorio e privado.
+## Infraestrutura
 
-Data: 28/06/2026
+- Clinica: `https://podo360.supremetechdev.com`
+- Admin: `https://podoadmin360.supremetechdev.com`
+- Cadastro: `https://cadastro.podo360.supremetechdev.com`
+- Erro Cloudflare `530`: eliminado.
+- HTTPS: ativo e obrigatorio.
+- Production healthcheck: aprovado nos cinco alvos.
+- PostgREST: `3/3`, entre 12 e 16 ms na ultima execucao.
 
-## Sistema Clinico
+## Validacoes executadas
 
-Status:
+- Lint da Clinica: aprovado no workflow de deploy.
+- Typecheck da Clinica: aprovado localmente.
+- Build da Clinica: aprovado localmente e no GitHub Actions.
+- Login e logout da Clinica no dominio final: aprovado.
+- Login owner, telas administrativas, Solicitacoes de Cadastro e logout do
+  Admin: aprovados sem page error.
+- Cadastro publico: validacao obrigatoria e e-mail invalido bloqueados.
+- Integracao Cadastro -> Admin: aprovada com solicitacao ficticia controlada.
+- Auditoria de alteracao de status: aprovada.
+- Token de primeiro acesso invalido: bloqueado com mensagem amigavel.
+- Autoclave: registro ficticio criado e removido com RLS.
 
-- Apto para producao com dados clinicos reais.
+## Dados de teste
 
-Pendencia operacional nao bloqueante:
+A solicitacao `TESTE_FINAL_CADASTRO_AUTOMACAO_1786314667950` foi encerrada como
+`rejected`, com observacao explicita para nao converter. A RLS nao permite
+exclusao pelo Admin, por isso o registro permanece como evidencia controlada.
+Nenhum paciente ou BA ficticio foi criado nesta rodada.
 
-- Leaked Password Protection nao foi habilitado porque o recurso exige Supabase Pro ou superior no projeto atual.
-- Reavaliar a ativacao apos upgrade do plano/projeto.
+## Pendencias
 
-## Admin Global
+- Revogar manualmente o token Cloudflare antigo exposto anteriormente. O OAuth
+  usado nesta rodada nao possui permissao para gerenciar tokens pessoais e a API
+  retornou `9109 Unauthorized`.
+- Confirmar no painel Supabase Auth as Redirect URLs listadas em
+  `docs/production/domain-setup.md`.
+- Reexecutar BA, anamnese completa, upload clinico, relatorio/PDF, finalizacao e
+  reabertura com um teste que remova com seguranca todos os IDs criados. O teste
+  completo existente nao implementa cleanup e nao foi executado contra dados
+  reais por essa razao.
+- Revalidar multiempresa quando existir um Usuario B de teste ativo.
 
-Status:
+## Decisao
 
-- Apto para producao.
-- Codigo integrado ao Supabase real.
-- Rotas protegidas por Supabase Auth e `platform_admin_users`.
-- Sem dados mockados no Admin Global.
-- Usuario clinico comum bloqueado.
-- Primeiro `platform_admin_user` ativo validado.
-- Role validada: `owner`.
-- Login autorizado real validado por Playwright.
-
-## Validacoes Tecnicas
-
-- Lint: aprovado.
-- Typecheck: aprovado.
-- Build: aprovado.
-- Playwright Admin Global: 4 aprovados, 0 skipado.
-
-## Credenciais
-
-- `.env`, `.env.local` e `.env.test.local` continuam fora do Git.
-- Nenhuma senha, token ou `service_role` foi versionado.
-- O frontend usa apenas `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
-
-## Decisao Final
-
-O sistema clinico esta apto para dados clinicos reais.
-
-O Admin Global esta apto para producao.
-
-Pendencia operacional nao bloqueante antes do go-live final:
-
-- Leaked Password Protection permanece documentado como pendencia operacional porque exige Supabase Pro ou superior.
-
-## Correcao de Mensagens de Producao - 28/06/2026
-
-Problema corrigido:
-
-- A tela de login do Podo360 exibia mensagem tecnica citando configuracao oficial do Supabase quando o ambiente de autenticacao nao estava disponivel.
-- O Admin Global integrado tambem podia exibir mensagem tecnica de ambiente Supabase.
-
-Correcao:
-
-- Em producao, a mensagem passou a ser: "Nao foi possivel conectar ao servico no momento. Tente novamente em instantes ou entre em contato com o suporte."
-- Detalhes tecnicos sobre `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` ficam restritos a `import.meta.env.DEV`.
-- O Admin separado `podo360-admin` foi mantido sem painel mockado e sem tela branca por asset antigo no `index.html`.
-
-Validado:
-
-- Podo360 sem sessao continua bloqueado.
-- Login real continua funcionando.
-- Admin Global real continua autenticando platform admin.
-- Usuario clinico comum continua bloqueado no Admin Global.
-
-## Rodada Final de Limpeza e E2E - 13/07/2026
-
-Status atualizado:
-
-- Ainda nao esta pronto para producao.
-
-Motivo bloqueante anterior:
-
-- O nucleo sem sessao continua bloqueado, mas a suite E2E autenticada nao conseguiu concluir os fluxos multiempresa porque o Usuario B local configurado retornou `Invalid login credentials` no Supabase Auth.
-- Usuario A autenticou com sucesso no teste direto de Auth.
-- Usuario B precisa ter a senha redefinida/conferida no Supabase Auth e a suite E2E precisa ser executada novamente antes de liberar producao real.
-
-Atualizacao operacional:
-
-- O responsavel removeu os usuarios de teste do Supabase para zerar a base de usuarios.
-- Permanecem somente o Usuario A da clinica inicial e o owner do Admin Global.
-- A autenticacao direta do Usuario A foi revalidada com sucesso.
-- A validacao multiempresa autenticada permanece pendente por decisao operacional, pois nao existe mais Usuario B ativo para a Clinica Teste Isolamento.
-
-Limpeza de codigo realizada:
-
-- Removido `src/data/demoData.ts`, arquivo legado com dados ficticios nao importado pelo app.
-- Confirmado que nao ha import ativo para `demoData`, `demoCompany`, `demoPatients` ou mocks equivalentes no codigo fonte.
-
-Validacoes tecnicas desta rodada:
-
-- Lint: aprovado.
-- Typecheck: aprovado.
-- Build: aprovado com aviso nao bloqueante de chunk grande do Vite.
-- Playwright: 3 testes aprovados, 2 skipados e 12 falharam por bloqueio de autenticacao do Usuario B/fluxos dependentes de login.
-
-Pendencia obrigatoria:
-
-- Criar um novo Usuario B temporario ou usuario de teste equivalente quando for necessario repetir a validacao multiempresa autenticada.
-- Rerodar Playwright autenticado completo.
-- Validar Storage real, isolamento multiempresa, status suspended/active, relatorios/PDF e limpeza final de dados ficticios.
+Os dominios e a hospedagem sem servidor local estao operacionais. A declaracao
+de producao clinica 100% finalizada permanece bloqueada ate a reexecucao segura
+dos fluxos clinicos mutaveis completos.
