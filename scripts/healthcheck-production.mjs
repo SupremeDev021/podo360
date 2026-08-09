@@ -5,11 +5,15 @@ import { clearTimeout, setTimeout } from "node:timers";
 const defaultTargets = [
   {
     name: "clinica",
-    url: process.env.HEALTHCHECK_CLINIC_URL ?? "https://supremedev021.github.io/podo360/healthcheck.json"
+    url: process.env.HEALTHCHECK_CLINIC_URL ?? "https://podo360.supremetechdev.com/healthcheck.json"
   },
   {
     name: "admin",
-    url: process.env.HEALTHCHECK_ADMIN_URL ?? "https://supremedev021.github.io/podo360-admin/healthcheck.json"
+    url: process.env.HEALTHCHECK_ADMIN_URL ?? "https://podoadmin360.supremetechdev.com/healthcheck.json"
+  },
+  {
+    name: "cadastro",
+    url: process.env.HEALTHCHECK_CADASTRO_URL ?? "https://cadastro.podo360.supremetechdev.com/healthcheck.json"
   },
   {
     name: "servico-auth",
@@ -22,13 +26,6 @@ const defaultTargets = [
     acceptedStatuses: [200, 401]
   }
 ];
-
-if (process.env.HEALTHCHECK_INCLUDE_CADASTRO === "true") {
-  defaultTargets.splice(2, 0, {
-    name: "cadastro",
-    url: process.env.HEALTHCHECK_CADASTRO_URL ?? "https://cadastro360.supremetechdev.com/"
-  });
-}
 
 const timeoutMs = Number(process.env.HEALTHCHECK_TIMEOUT_MS ?? 10_000);
 const attempts = Number(process.env.HEALTHCHECK_ATTEMPTS ?? 3);
