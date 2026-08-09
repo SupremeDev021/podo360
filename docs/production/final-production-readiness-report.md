@@ -1,5 +1,9 @@
 # Relatorio Final de Prontidao de Producao - Podo360
 
+## Atualizacao de 09/08/2026
+
+A origem local deixou de existir. O runtime da Clinica e do Admin passa a usar GitHub Pages, enquanto Auth, Postgres, RLS, RPCs e Storage continuam no Supabase oficial. Os dominios customizados ainda precisam de alteracao DNS no Cloudflare; enquanto isso, as URLs `github.io` sao os destinos externos funcionais. O Cadastro Cliente permanece bloqueado por hospedagem porque o repositorio e privado.
+
 Data: 28/06/2026
 
 ## Sistema Clinico

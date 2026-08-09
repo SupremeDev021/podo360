@@ -42,8 +42,11 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_APP_URL: https://supremedev021.github.io/podo360/
-          VITE_AI_PROVIDER: ${{ vars.VITE_AI_PROVIDER || 'mock' }}
+          VITE_AI_PROVIDER: ${{ vars.VITE_AI_PROVIDER || 'disabled' }}
           VITE_AI_REFERRAL_FUNCTION_URL: ${{ vars.VITE_AI_REFERRAL_FUNCTION_URL }}
+
+      - name: Reject local production dependencies
+        run: npm run check:production-bundle
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

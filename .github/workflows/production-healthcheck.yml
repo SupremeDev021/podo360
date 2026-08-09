@@ -22,4 +22,6 @@ jobs:
           HEALTHCHECK_ATTEMPTS: 3
           HEALTHCHECK_MAX_RESPONSE_MS: 5000
           HEALTHCHECK_TIMEOUT_MS: 10000
+          HEALTHCHECK_CLINIC_URL: ${{ vars.HEALTHCHECK_CLINIC_URL || 'https://supremedev021.github.io/podo360/healthcheck.json' }}
+          HEALTHCHECK_ADMIN_URL: ${{ vars.HEALTHCHECK_ADMIN_URL || 'https://supremedev021.github.io/podo360-admin/healthcheck.json' }}
         run: node scripts/healthcheck-production.mjs
