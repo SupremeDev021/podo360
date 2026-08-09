@@ -72,7 +72,11 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
   let cleanupReport: CleanupReport | undefined;
   page.on("console", (message) => { if (message.type() === "error") browserErrors.push(message.text()); });
   page.on("pageerror", (error) => browserErrors.push(error.message));
-  page.on("response", (response) => { if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`); });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      failedResponses.push(`${response.status()} ${new URL(response.url()).origin}${new URL(response.url()).pathname}`);
+    }
+  });
 
   try {
     await authenticate(api);
