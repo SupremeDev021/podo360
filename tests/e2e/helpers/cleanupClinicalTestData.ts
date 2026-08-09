@@ -50,6 +50,19 @@ export async function cleanupClinicalTestData(client: SupabaseClient, runId: str
       .filter((path): path is string => Boolean(path && !/^(https?:|data:|blob:)/i.test(path))));
   }
 
+  if (attendanceIds.length) {
+    const { data: attendanceImages, error: attendanceImageLookupError } = await client
+      .from("attendance_images")
+      .select("file_url")
+      .in("attendance_id", attendanceIds);
+    expect(attendanceImageLookupError, "cleanup: consulta de imagens dos BAs marcados").toBeNull();
+    for (const path of (attendanceImages ?? [])
+      .map((row) => row.file_url)
+      .filter((value): value is string => Boolean(value && !/^(https?:|data:|blob:)/i.test(value)))) {
+      if (!storagePaths.includes(path)) storagePaths.push(path);
+    }
+  }
+
   if (storagePaths.length) {
     const { data: removed, error: storageError } = await client.storage.from("clinical-images").remove(storagePaths);
     expect(storageError, "cleanup: remocao dos objetos clinicos").toBeNull();

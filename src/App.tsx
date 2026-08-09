@@ -684,6 +684,7 @@ function ClinicApp() {
       saved = await saveAttendanceImage(image, file);
     } catch (error) {
       if (handleFinalizedWriteError(error)) return;
+      notify("Não foi possível salvar a imagem agora.", "O arquivo e as observações foram preservados para uma nova tentativa.", "danger");
       throw error;
     }
     setAttendanceImages((current) => [
@@ -695,7 +696,7 @@ function ClinicApp() {
       },
       ...current
     ]);
-      notify("Evolução por imagem salva", "Registro visual vinculado ao BA e ao Prontuário de Evolução.", "success");
+    notify("Evolução por imagem salva", "Registro visual vinculado ao BA e ao Prontuário de Evolução.", "success");
   }
 
   async function handleSaveComparativeNote(imageIds: string[], note: string) {

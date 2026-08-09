@@ -56,30 +56,35 @@ export function WoundImageModule({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (readOnly) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const fileUrl = selectedFile ? "" : String(form.get("fileUrl") || "");
     const region = String(form.get("footRegion") || "Outra");
 
-    await onSave({
-      companyId,
-      patientId,
-      uniqueMedicalRecordId,
-      attendanceId,
-      uniqueRecordNumber,
-      baNumber,
-      imageType: String(form.get("imageType") || "current_state") as AttendanceImage["imageType"],
-      footSide: footSideFromRegion(region),
-      footRegion: region,
-      fileUrl,
-      description: "",
-      clinicalNotes: String(form.get("clinicalNotes") || ""),
-      comparativeNotes: "",
-      notes: String(form.get("clinicalNotes") || ""),
-      createdBy,
-      updatedAt: new Date().toISOString()
-    }, selectedFile);
+    try {
+      await onSave({
+        companyId,
+        patientId,
+        uniqueMedicalRecordId,
+        attendanceId,
+        uniqueRecordNumber,
+        baNumber,
+        imageType: String(form.get("imageType") || "current_state") as AttendanceImage["imageType"],
+        footSide: footSideFromRegion(region),
+        footRegion: region,
+        fileUrl,
+        description: "",
+        clinicalNotes: String(form.get("clinicalNotes") || ""),
+        comparativeNotes: "",
+        notes: String(form.get("clinicalNotes") || ""),
+        createdBy,
+        updatedAt: new Date().toISOString()
+      }, selectedFile);
+    } catch {
+      return;
+    }
 
-    event.currentTarget.reset();
+    formElement.reset();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(undefined);
     setPreviewUrl("");
