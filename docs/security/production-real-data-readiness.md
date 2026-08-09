@@ -1,5 +1,9 @@
 # Prontidao para Dados Clinicos Reais - Podo360
 
+## Atualizacao de infraestrutura - 09/08/2026
+
+Nenhum dado clinico, arquivo de paciente ou credencial foi migrado do servidor perdido: esses recursos ja estavam no Supabase com RLS e Storage. A mudanca desta rodada limita-se aos frontends e ao monitoramento. Nao houve desativacao de RLS, policy permissiva, uso de `service_role` no frontend ou alteracao destrutiva de dados.
+
 Data: 25/06/2026
 
 Projeto Supabase: Podo360 (`xnnt...zgtk`)

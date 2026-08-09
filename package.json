@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc -b",
+    "check:production-bundle": "node scripts/assert-no-local-production-deps.mjs",
     "healthcheck:production": "node scripts/healthcheck-production.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

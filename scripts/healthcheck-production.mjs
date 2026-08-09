@@ -3,11 +3,22 @@ import process from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 
 const defaultTargets = [
-  { name: "clinica", url: "https://podo360.supremetechdev.com/" },
-  { name: "admin", url: "https://podoadmin360.supremetechdev.com/" },
+  {
+    name: "clinica",
+    url: process.env.HEALTHCHECK_CLINIC_URL ?? "https://supremedev021.github.io/podo360/healthcheck.json"
+  },
+  {
+    name: "admin",
+    url: process.env.HEALTHCHECK_ADMIN_URL ?? "https://supremedev021.github.io/podo360-admin/healthcheck.json"
+  },
   {
     name: "servico-auth",
     url: "https://xnntitaajweajashzgtk.supabase.co/auth/v1/health",
+    acceptedStatuses: [200, 401]
+  },
+  {
+    name: "postgrest",
+    url: "https://xnntitaajweajashzgtk.supabase.co/rest/v1/",
     acceptedStatuses: [200, 401]
   }
 ];
@@ -15,7 +26,7 @@ const defaultTargets = [
 if (process.env.HEALTHCHECK_INCLUDE_CADASTRO === "true") {
   defaultTargets.splice(2, 0, {
     name: "cadastro",
-    url: "https://cadastro.podo360.supremetechdev.com/"
+    url: process.env.HEALTHCHECK_CADASTRO_URL ?? "https://cadastro360.supremetechdev.com/"
   });
 }
 
