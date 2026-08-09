@@ -1,22 +1,35 @@
-# Domínio de produção da Clínica
+# Dominio de producao da Clinica
 
-## Destino definitivo
+Data: 09/08/2026
 
-- Domínio: `podo360.supremetechdev.com`
-- Hospedagem: GitHub Pages do repositório `SupremeDev021/podo360`
-- Origem DNS esperada: CNAME `podo360` para `supremedev021.github.io`
-- Proxy inicial: DNS only
+## Estado atual
 
-O build usa caminhos relativos para funcionar tanto no domínio customizado quanto no endereço de contingência `https://supremedev021.github.io/podo360/`.
+- Dominio: `https://podo360.supremetechdev.com`
+- Hospedagem: GitHub Pages via GitHub Actions
+- DNS: CNAME `podo360` para `supremedev021.github.io`
+- Proxy Cloudflare: DNS only
+- HTTPS: habilitado e obrigatorio
+- Healthcheck: `/healthcheck.json`
 
-## Ordem operacional
+O registro do Cloudflare Tunnel perdido foi substituido. A aplicacao nao depende
+de servidor local, Nginx, Tailscale ou Tunnel.
 
-1. Remover o registro ligado ao Cloudflare Tunnel perdido.
-2. Criar o CNAME em modo DNS only.
-3. Confirmar que o DNS resolve para o GitHub Pages.
-4. Configurar `podo360.supremetechdev.com` em Settings > Pages.
-5. Aguardar o certificado e habilitar Enforce HTTPS.
-6. Confirmar `/healthcheck.json`, login e fluxos clínicos.
-7. Atualizar `HEALTHCHECK_CLINIC_URL` para o domínio definitivo.
+O Pages deve permanecer com `build_type=workflow`. O modo legado de publicacao
+da branch `main` serve o HTML de desenvolvimento e nao pode ser reativado.
 
-Não reativar dependência de servidor local, Tailscale, Nginx local ou Tunnel.
+## Contingencia
+
+O workflow e o build preservam os caminhos relativos e o artefato `CNAME`. A
+origem tecnica continua sendo o GitHub Pages do repositorio, mas o dominio
+customizado e a URL oficial.
+
+## Supabase Auth
+
+Manter nas URLs permitidas:
+
+- `https://podo360.supremetechdev.com/*`
+- `https://podoadmin360.supremetechdev.com/*`
+- `https://cadastro.podo360.supremetechdev.com/*`
+- `https://supremedev021.github.io/podo360/*`
+- `https://supremedev021.github.io/podo360-admin/*`
+- `http://localhost:5173/*` somente para desenvolvimento
