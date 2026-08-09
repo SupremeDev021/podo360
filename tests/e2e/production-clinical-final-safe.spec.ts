@@ -122,7 +122,8 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     await page.locator('input[name="woundImage"]').setInputFiles({ name: `${runId}.png`, mimeType: "image/png", buffer: png });
     await page.locator('textarea[name="clinicalNotes"]').fill(`${runId}_IMAGEM`);
     await page.getByRole("button", { name: /Salvar evolu/i }).click();
-    await expect(page.locator(".toast")).toContainText(/Evolu..o por imagem salva/i);
+    await expect(page.locator(".toast"), `respostas HTTP com falha: ${failedResponses.join(", ") || "nenhuma"}`).toBeVisible();
+    await expect(page.locator(".toast"), `respostas HTTP com falha: ${failedResponses.join(", ") || "nenhuma"}`).toContainText(/Evolu..o por imagem salva/i);
 
     const { data: image, error: imageError } = await api.from("attendance_images").select("id,file_url").eq("attendance_id", attendance!.id).single();
     expect(imageError).toBeNull();
