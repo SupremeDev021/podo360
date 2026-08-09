@@ -338,6 +338,7 @@ function ClinicApp() {
   function handleMaskedInput(event: FormEvent<HTMLDivElement>) {
     const input = event.target as HTMLInputElement;
     if (!input?.name) return;
+    if (input.closest(".ba-form")) return;
     if (["phone", "whatsapp", "temporaryPatientPhone", "temporaryPatientWhatsapp"].includes(input.name)) input.value = formatPhone(input.value);
     if (input.name === "cpf") input.value = formatCpf(input.value);
     if (input.name === "document") input.value = formatCnpj(input.value);
