@@ -1,6 +1,5 @@
 import { Camera, ImagePlus, Save } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import type { AttendanceImage, FootSide } from "../types";
 
 type WoundImageModuleProps = {
@@ -43,6 +42,10 @@ export function WoundImageModule({
 }: WoundImageModuleProps) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | undefined>();
+  const [imageType, setImageType] = useState<AttendanceImage["imageType"]>("current_state");
+  const [footRegion, setFootRegion] = useState(footRegions[0]);
+  const [fileUrl, setFileUrl] = useState("");
+  const [clinicalNotes, setClinicalNotes] = useState("");
   const currentImages = useMemo(() => images.filter((image) => image.attendanceId === attendanceId), [attendanceId, images]);
 
   function handleFileChange(file?: File) {
@@ -53,13 +56,9 @@ export function WoundImageModule({
     setPreviewUrl(URL.createObjectURL(file));
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit() {
     if (readOnly) return;
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const fileUrl = selectedFile ? "" : String(form.get("fileUrl") || "");
-    const region = String(form.get("footRegion") || "Outra");
+    const storedFileUrl = selectedFile ? "" : fileUrl;
 
     try {
       await onSave({
@@ -69,14 +68,14 @@ export function WoundImageModule({
         attendanceId,
         uniqueRecordNumber,
         baNumber,
-        imageType: String(form.get("imageType") || "current_state") as AttendanceImage["imageType"],
-        footSide: footSideFromRegion(region),
-        footRegion: region,
-        fileUrl,
+        imageType,
+        footSide: footSideFromRegion(footRegion),
+        footRegion,
+        fileUrl: storedFileUrl,
         description: "",
-        clinicalNotes: String(form.get("clinicalNotes") || ""),
+        clinicalNotes,
         comparativeNotes: "",
-        notes: String(form.get("clinicalNotes") || ""),
+        notes: clinicalNotes,
         createdBy,
         updatedAt: new Date().toISOString()
       }, selectedFile);
@@ -84,15 +83,16 @@ export function WoundImageModule({
       return;
     }
 
-    formElement.reset();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(undefined);
     setPreviewUrl("");
+    setFileUrl("");
+    setClinicalNotes("");
   }
 
   return (
     <div className="wound-module-grid">
-      <form className="panel-form" onSubmit={handleSubmit}>
+      <div className="panel-form">
         <div className="section-heading section-heading--compact">
           <div>
             <h2>Evolução por Imagem</h2>
@@ -123,25 +123,25 @@ export function WoundImageModule({
           </label>
           <label>
             Tipo da imagem
-            <select name="imageType" defaultValue="current_state" disabled={readOnly}>
+            <select name="imageType" disabled={readOnly} onChange={(event) => setImageType(event.target.value as AttendanceImage["imageType"])} value={imageType}>
               {imageTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
           </label>
           <label>
             Regiao relacionada
-            <select name="footRegion" defaultValue="Pé Direito" disabled={readOnly}>
+            <select name="footRegion" disabled={readOnly} onChange={(event) => setFootRegion(event.target.value)} value={footRegion}>
               {footRegions.map((region) => <option key={region} value={region}>{region}</option>)}
             </select>
           </label>
         </div>
 
-        <label>URL do arquivo seguro<input disabled={readOnly} name="fileUrl" placeholder="Preenchido automaticamente apos o envio seguro da imagem" /></label>
-        <label>Observacoes clinicas<textarea disabled={readOnly} name="clinicalNotes" /></label>
+        <label>URL do arquivo seguro<input disabled={readOnly} name="fileUrl" onChange={(event) => setFileUrl(event.target.value)} placeholder="Preenchido automaticamente apos o envio seguro da imagem" value={fileUrl} /></label>
+        <label>Observacoes clinicas<textarea disabled={readOnly} name="clinicalNotes" onChange={(event) => setClinicalNotes(event.target.value)} value={clinicalNotes} /></label>
 
         {previewUrl && <img className="wound-preview" alt="Previa da imagem selecionada" src={previewUrl} />}
 
-        <button className="primary-button" disabled={readOnly} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="submit"><Save size={18} /> Salvar evolução por imagem</button>
-      </form>
+        <button className="primary-button" disabled={readOnly} onClick={handleSubmit} title={readOnly ? "Não é possível editar atendimento finalizado." : undefined} type="button"><Save size={18} /> Salvar evolução por imagem</button>
+      </div>
 
       <section className="data-panel data-panel--flat">
         <h3>Imagens deste BA</h3>
