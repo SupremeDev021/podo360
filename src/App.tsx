@@ -856,9 +856,11 @@ function ClinicApp() {
     const whatsapp = String(form.get("whatsapp") || phone);
     const uniqueRecordNumber = String(form.get("uniqueRecordNumber") || "");
     const existingUniqueRecord = findExistingUniqueRecordForPatient({ fullName, cpf, birthDate, phone: whatsapp }, patients, []);
+    const normalizedRecordNumber = normalizeText(uniqueRecordNumber);
+    const normalizedCpf = normalizeDigits(cpf);
     let existingPatient = patients.find((patient) =>
-      normalizeText(patient.uniqueRecordNumber) === normalizeText(uniqueRecordNumber) ||
-      normalizeDigits(patient.cpf) === normalizeDigits(cpf) ||
+      (normalizedRecordNumber && normalizeText(patient.uniqueRecordNumber) === normalizedRecordNumber) ||
+      (normalizedCpf && normalizeDigits(patient.cpf) === normalizedCpf) ||
       (normalizeText(patient.fullName) === normalizeText(fullName) && patient.birthDate === birthDate)
     );
 
@@ -4039,16 +4041,18 @@ function findExistingUniqueRecordForPatient(
   patients: Patient[],
   hciMatches: HciPatientMatch[]
 ) {
-  const byCpf = patients.find((patient) => normalizeDigits(patient.cpf) === normalizeDigits(input.cpf));
+  const normalizedCpf = normalizeDigits(input.cpf);
+  const normalizedPhone = normalizeDigits(input.phone);
+  const byCpf = normalizedCpf ? patients.find((patient) => normalizeDigits(patient.cpf) === normalizedCpf) : undefined;
   if (byCpf) return { uniqueMedicalRecordId: byCpf.uniqueMedicalRecordId, uniqueRecordNumber: byCpf.uniqueRecordNumber };
 
-  const byCpfAndBirth = patients.find((patient) => normalizeDigits(patient.cpf) === normalizeDigits(input.cpf) && patient.birthDate === input.birthDate);
+  const byCpfAndBirth = normalizedCpf ? patients.find((patient) => normalizeDigits(patient.cpf) === normalizedCpf && patient.birthDate === input.birthDate) : undefined;
   if (byCpfAndBirth) return { uniqueMedicalRecordId: byCpfAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: byCpfAndBirth.uniqueRecordNumber };
 
   const byNameAndBirth = patients.find((patient) => normalizeText(patient.fullName) === normalizeText(input.fullName) && patient.birthDate === input.birthDate);
   if (byNameAndBirth) return { uniqueMedicalRecordId: byNameAndBirth.uniqueMedicalRecordId, uniqueRecordNumber: byNameAndBirth.uniqueRecordNumber };
 
-  const byNameAndPhone = patients.find((patient) => normalizeText(patient.fullName) === normalizeText(input.fullName) && normalizeDigits(patient.whatsapp || patient.phone) === normalizeDigits(input.phone));
+  const byNameAndPhone = normalizedPhone ? patients.find((patient) => normalizeText(patient.fullName) === normalizeText(input.fullName) && normalizeDigits(patient.whatsapp || patient.phone) === normalizedPhone) : undefined;
   if (byNameAndPhone) return { uniqueMedicalRecordId: byNameAndPhone.uniqueMedicalRecordId, uniqueRecordNumber: byNameAndPhone.uniqueRecordNumber };
 
   const hciByNameAndBirth = hciMatches.find((match) => normalizeText(match.patientName) === normalizeText(input.fullName) && match.birthDate === input.birthDate);
