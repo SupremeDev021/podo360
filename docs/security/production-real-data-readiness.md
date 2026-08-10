@@ -1,5 +1,23 @@
 # Prontidao para Dados Clinicos Reais - Podo360
 
+## Validacao final segura - 09/08/2026
+
+O fluxo real de producao foi reexecutado com dados exclusivamente ficticios e
+cleanup por IDs controlados. Foram aprovados BA `BA-2026-000087`, PU
+`PU-2026-000099`, anamnese modular completa, upload no bucket privado
+`clinical-images`, persistencia apos reload, relatorio/impressao, finalizacao,
+bloqueio de escrita, reabertura e logout. A rodada
+`TESTE_CLINICO_FINAL_SEGURO_20260809_235557_8d4ed693` foi removida integralmente.
+
+O teste multiempresa com Usuarios A e B ativos tambem passou: cada usuario
+recebeu lista vazia ao consultar IDs da outra empresa. A conferencia
+pos-cleanup retornou zero nas duas empresas.
+
+Persistem duas pendencias externas de seguranca: revogar manualmente o token
+Cloudflare antigo e confirmar as Redirect URLs no painel Supabase Auth. Essas
+pendencias impedem a declaracao global de producao 100%, embora os fluxos
+clinicos mutaveis estejam aprovados.
+
 ## Atualizacao de infraestrutura - 09/08/2026
 
 Nenhum dado clinico, arquivo de paciente ou credencial foi migrado do servidor perdido: esses recursos ja estavam no Supabase com RLS e Storage. A mudanca desta rodada limita-se aos frontends e ao monitoramento. Nao houve desativacao de RLS, policy permissiva, uso de `service_role` no frontend ou alteracao destrutiva de dados.
