@@ -41,6 +41,13 @@ async function login(page: Page) {
   await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible({ timeout: 30_000 });
 }
 
+async function continueAttendance(page: Page, baNumber: string) {
+  await page.getByRole("button", { name: /^Atendimento$/i }).click();
+  const attendanceCard = page.locator("article.attendance-queue__item").filter({ hasText: baNumber });
+  await expect(attendanceCard).toBeVisible();
+  await attendanceCard.getByRole("button", { name: /Iniciar atendimento|Continuar atendimento/i }).click();
+}
+
 async function fillVisibleControls(form: Locator, marker: string) {
   for (const fieldset of await form.locator("fieldset").all()) {
     const radio = fieldset.locator('input[type="radio"]:not(:disabled)').first();
@@ -67,6 +74,7 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
   test.setTimeout(900_000);
 
   const api = client();
+  page.setDefaultTimeout(30_000);
   const browserErrors: string[] = [];
   const failedResponses: string[] = [];
   let cleanupReport: CleanupReport | undefined;
@@ -105,8 +113,7 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     expect(attendance?.ba_number).toMatch(/^BA-/);
     expect(attendance?.unique_medical_record_id).toBe(patient?.unique_medical_record_id);
 
-    await page.getByRole("button", { name: /^Atendimento$/i }).click();
-    await page.getByRole("button", { name: /Iniciar atendimento|Continuar atendimento/i }).first().click();
+    await continueAttendance(page, attendance!.ba_number);
     await page.getByRole("button", { name: /^Anamnese$/i }).click();
     await expect(page.locator(".wizard-form")).toBeVisible();
 
@@ -132,23 +139,27 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     const { data: downloaded, error: downloadError } = await api.storage.from("clinical-images").download(image!.file_url);
     expect(downloadError).toBeNull();
     expect(downloaded?.size).toBeGreaterThan(0);
+    console.log("[safe-clinical] upload confirmado");
 
     await page.reload();
     await expect(page.getByRole("navigation", { name: /Principal/i })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /^Pacientes$/i }).click();
+    await page.getByPlaceholder(/Nome, CPF, telefone, Prontu.rio de Evolu..o ou BA/i).fill(patientName);
+    await page.getByRole("button", { name: /^Pesquisar$/i }).click();
     await expect(page.getByText(patientName).first()).toBeVisible({ timeout: 30_000 });
     const { data: persisted } = await api.from("anamnesis_records").select("form_data").eq("attendance_id", attendance!.id).single();
     expect(JSON.stringify(persisted?.form_data)).toContain(runId);
+    console.log("[safe-clinical] persistencia confirmada");
 
-    await page.getByRole("button", { name: /^Atendimento$/i }).click();
-    await page.getByRole("button", { name: /Continuar atendimento/i }).first().click();
+    await continueAttendance(page, attendance!.ba_number);
     await page.getByRole("button", { name: /^Anamnese$/i }).click();
-    await page.getByRole("button", { name: /Finalizar atendimento/i }).click();
+    await page.getByRole("button", { name: /Finalizar atendimento/i }).first().click();
     await page.getByRole("button", { name: /Agora n.o/i }).click();
     const { data: afterCancel } = await api.from("attendances").select("status").eq("id", attendance!.id).single();
     expect(afterCancel?.status).toBe("in_progress");
+    console.log("[safe-clinical] cancelamento do modal confirmado");
 
-    await page.getByRole("button", { name: /Finalizar atendimento/i }).click();
+    await page.getByRole("button", { name: /Finalizar atendimento/i }).first().click();
     await page.getByRole("button", { name: /Sim, finalizar/i }).click();
     await expect(page.locator(".toast")).toContainText(/Atendimento finalizado/i);
     const skipFinancial = page.getByRole("button", { name: /N.o gerar lan.amento agora/i });
@@ -156,6 +167,9 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     const { data: finalized } = await api.from("attendances").select("status,finished_at").eq("id", attendance!.id).single();
     expect(finalized?.status).toBe("completed");
     expect(finalized?.finished_at).toBeTruthy();
+    await expect(page.locator(".locked-attendance-banner").first()).toContainText(/Atendimento finalizado/i);
+    await expect(page.getByRole("button", { name: /Salvar rascunho/i })).toBeDisabled();
+    console.log("[safe-clinical] finalizacao confirmada");
 
     await page.getByRole("button", { name: /Gerenciamento de Atendimento/i }).click();
     await page.getByRole("button", { name: /Cancelar finaliza/i }).first().click();
@@ -166,20 +180,35 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
     const { data: reopened } = await api.from("attendances").select("status,reopen_reason").eq("id", attendance!.id).single();
     expect(reopened?.status).toBe("in_progress");
     expect(reopened?.reopen_reason).toContain(runId);
+    console.log("[safe-clinical] reabertura confirmada");
 
-    await page.getByRole("button", { name: /^Atendimento$/i }).click();
-    await page.getByRole("button", { name: /Continuar atendimento/i }).first().click();
-    await page.getByRole("button", { name: /^Relat.rio?s$/i }).click();
-    const popupPromise = page.waitForEvent("popup");
+    await continueAttendance(page, attendance!.ba_number);
+    await page.locator("section.tabs-bar").getByRole("button", { name: /^Relat.rio?s$/i }).click();
+    await page.evaluate(() => {
+      const target = window as Window & { __podoPrintHtml?: string };
+      target.__podoPrintHtml = "";
+      Object.defineProperty(target, "open", {
+        configurable: true,
+        value: () => ({
+          document: {
+            write: (html: string) => { target.__podoPrintHtml = html; },
+            close: () => undefined
+          }
+        })
+      });
+    });
     await page.getByRole("button", { name: /Exportar BA atual/i }).click();
-    const popup = await popupPromise;
-    await popup.waitForLoadState("domcontentloaded");
-    await expect(popup.locator("body")).toContainText(patientName);
-    await popup.close();
+    const printHtml = await page.evaluate(() => (window as Window & { __podoPrintHtml?: string }).__podoPrintHtml ?? "");
+    expect(printHtml).toContain(patientName);
+    expect(printHtml).toContain(attendance!.ba_number);
+    expect(printHtml).toContain("Imprimir / Salvar PDF");
+    console.log("[safe-clinical] relatorio confirmado");
+    console.log(`[safe-clinical:evidence] ${JSON.stringify({ runId, baNumber: attendance!.ba_number, uniqueRecordNumber: patient!.unique_record_number })}`);
 
     await page.getByRole("button", { name: /Sair da conta/i }).click();
     await page.getByRole("dialog").getByRole("button", { name: /^Sair da conta$/i }).click();
     await expect(page.getByRole("heading", { name: /Entrar no sistema/i })).toBeVisible();
+    console.log("[safe-clinical] logout confirmado");
 
     expect(browserErrors, "console/page errors").toEqual([]);
     expect(failedResponses.filter((entry) => !entry.includes("favicon")), "respostas 4xx/5xx").toEqual([]);
@@ -188,7 +217,10 @@ test("fluxo clinico final persiste, exporta e limpa todos os dados da rodada", a
       contentType: "application/json"
     });
   } finally {
+    console.log("[safe-clinical] cleanup iniciado");
+    await authenticate(api);
     cleanupReport = await cleanupClinicalTestData(api, runId);
+    console.log("[safe-clinical] cleanup confirmado");
     await testInfo.attach("clinical-cleanup-evidence", {
       body: JSON.stringify(cleanupReport, null, 2),
       contentType: "application/json"

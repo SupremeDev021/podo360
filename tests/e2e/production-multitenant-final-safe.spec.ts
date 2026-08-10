@@ -68,6 +68,7 @@ test("usuarios A e B permanecem isolados por empresa com cleanup independente", 
   const runB = createRunId();
   const apiA = createApi();
   const apiB = createApi();
+  page.setDefaultTimeout(30_000);
 
   try {
     const profileA = await authenticate(apiA, userAEmail!, userAPassword!);
@@ -109,6 +110,8 @@ test("usuarios A e B permanecem isolados por empresa com cleanup independente", 
       contentType: "application/json"
     });
   } finally {
+    await authenticate(apiA, userAEmail!, userAPassword!);
+    await authenticate(apiB, userBEmail!, userBPassword!);
     const cleanupA = await cleanupClinicalTestData(apiA, runA);
     const cleanupB = await cleanupClinicalTestData(apiB, runB);
     await testInfo.attach("multitenant-cleanup-evidence", {
